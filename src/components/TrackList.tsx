@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Track, DownloadSettings } from "@/types";
 import { toast } from "sonner";
 
@@ -59,11 +60,31 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
     }
   };
 
-  const downloadAll = async () => {
+  const toggleSelectAll = () => {
+    const allSelected = tracks.every(t => t.selected);
+    setTracks(prev => prev.map(track => ({ ...track, selected: !allSelected })));
+  };
+
+  const toggleTrackSelection = (trackId: string) => {
+    setTracks(prev => prev.map(track => 
+      track.id === trackId ? { ...track, selected: !track.selected } : track
+    ));
+  };
+
+  const downloadSelected = async () => {
+    const selectedTracks = tracks.filter(t => t.selected);
+    
+    if (selectedTracks.length === 0) {
+      toast.error("⚠️ Please select at least one track to download");
+      return;
+    }
+
     setDownloading(true);
-    toast.success("🚀 Download started!");
+    toast.success(`🚀 Downloading ${selectedTracks.length} track${selectedTracks.length > 1 ? 's' : ''}...`);
 
     for (let i = 0; i < tracks.length; i++) {
+      if (!tracks[i].selected) continue;
+
       setTracks(prev => prev.map((track, idx) => 
         idx === i ? { ...track, downloadStatus: 'downloading' as const, downloadProgress: 0 } : track
       ));
@@ -90,9 +111,12 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
     }
 
     setDownloading(false);
-    toast.success("✨ All downloads completed!");
+    toast.success("✨ Downloads completed!");
   };
 
+  const selectedCount = tracks.filter(t => t.selected).length;
+  const allSelected = tracks.length > 0 && tracks.every(t => t.selected);
+  const someSelected = tracks.some(t => t.selected) && !allSelected;
   const completedCount = tracks.filter(t => t.downloadStatus === 'completed').length;
   const failedCount = tracks.filter(t => t.downloadStatus === 'failed').length;
   const overallProgress = (completedCount / tracks.length) * 100;
@@ -109,9 +133,25 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
                 <Music2 className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="text-3xl font-bold">Track List</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-3xl font-bold">Track List</h3>
+                  <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-lg">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
+                    <span className="text-sm font-medium">
+                      {allSelected ? 'Deselect All' : 'Select All'}
+                    </span>
+                  </div>
+                </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {tracks.length} tracks • {settings.format.toUpperCase()} • {settings.quality}
+                  {selectedCount > 0 ? (
+                    <span className="text-primary font-semibold">{selectedCount} selected</span>
+                  ) : (
+                    <span>{tracks.length} tracks</span>
+                  )} • {settings.format.toUpperCase()} • {settings.quality}
                 </p>
               </div>
               <Button
@@ -125,9 +165,9 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
             </div>
             
             <Button
-              onClick={downloadAll}
-              disabled={downloading}
-              className="h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-glow hover:shadow-[0_0_50px_hsl(141_76%_48%/0.5)] transition-all duration-300 rounded-xl font-semibold hover-scale"
+              onClick={downloadSelected}
+              disabled={downloading || selectedCount === 0}
+              className="h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-glow hover:shadow-[0_0_50px_hsl(141_76%_48%/0.5)] transition-all duration-300 rounded-xl font-semibold hover-scale disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {downloading ? (
                 <>
@@ -137,7 +177,7 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
               ) : (
                 <>
                   <Download className="w-5 h-5 mr-2" />
-                  Download All
+                  Download {selectedCount > 0 ? `(${selectedCount})` : 'Selected'}
                 </>
               )}
             </Button>
@@ -177,8 +217,17 @@ export const TrackList = ({ tracks: initialTracks, settings }: TrackListProps) =
                 className="p-5 hover:bg-secondary/30 transition-all duration-300 group/track"
               >
                 <div className="flex items-center gap-4">
+                  {/* Checkbox */}
+                  <div className="flex items-center justify-center">
+                    <Checkbox
+                      checked={track.selected}
+                      onCheckedChange={() => toggleTrackSelection(track.id)}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
+                  </div>
+
                   {/* Track Number */}
-                  <div className="w-10 text-center">
+                  <div className="w-8 text-center">
                     <span className="text-muted-foreground font-semibold group-hover/track:text-primary transition-colors">
                       {index + 1}
                     </span>

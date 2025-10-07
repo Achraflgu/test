@@ -19,6 +19,7 @@ export interface Track {
   url: string;
   downloadStatus: 'pending' | 'downloading' | 'completed' | 'failed';
   downloadProgress: number;
+  selected: boolean;
 }
 
 export interface DownloadSettings {

@@ -63,6 +63,7 @@ export const PlaylistInput = ({ onPlaylistLoaded }: PlaylistInputProps) => {
         url: `https://open.spotify.com/track/mock-${i + 1}`,
         downloadStatus: 'pending',
         downloadProgress: 0,
+        selected: true,
       }));
 
       onPlaylistLoaded(mockPlaylist, mockTracks);
