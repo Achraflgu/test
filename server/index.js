@@ -79,23 +79,40 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// Enhanced YouTube helper with multiple fallback methods
+// Enhanced YouTube helper with aggressive fallback methods
 async function addYouTubeEnhancements(args, attempt = 0) {
-  // Rotating user agents to avoid detection
+  // More diverse user agents to avoid detection
   const userAgents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   ];
   
-  // Multiple client types for different approaches
+  // More aggressive client type combinations
   const clientTypes = [
     'android,web,ios',
     'web,android,tv',
     'ios,android,web',
-    'tv,web,android'
+    'tv,web,android',
+    'android,ios',
+    'web,tv',
+    'ios,tv',
+    'android,tv'
+  ];
+  
+  // Additional bypass methods
+  const bypassMethods = [
+    '--no-check-certificate',
+    '--prefer-insecure',
+    '--user-agent',
+    '--referer', 'https://www.youtube.com/',
+    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
   ];
   
   // Select user agent and client type based on attempt
@@ -106,15 +123,25 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   args.push('--user-agent', userAgent);
   args.push('--extractor-args', `youtube:player_client=${clientType}`);
   
-  // Add cookies if available (optional)
+  // Add bypass methods for later attempts
+  if (attempt > 1) {
+    args.push('--no-check-certificate');
+    args.push('--prefer-insecure');
+    args.push('--referer', 'https://www.youtube.com/');
+    args.push('--add-header', 'Accept-Language:en-US,en;q=0.9');
+  }
+  
+  // Add cookies if available (CRITICAL for Render)
   try {
     const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
     if (cookiesExist) {
       args.push('--cookies', YOUTUBE_COOKIES_PATH);
       console.log('🍪 Using YouTube cookies for authentication');
+    } else {
+      console.log('⚠️  No YouTube cookies found - may get blocked on shared IPs');
     }
   } catch (err) {
-    // Silently fail - cookies are optional
+    console.log('⚠️  Cookie check failed - may get blocked on shared IPs');
   }
   
   return { userAgent, clientType };
