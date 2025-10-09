@@ -1,0 +1,22 @@
+# Render.com Configuration for Backend
+# This file configures automatic deployment to Render.com
+
+services:
+  # Backend Service
+  - type: web
+    name: track-miner-backend
+    env: node
+    region: oregon # Free tier region
+    plan: free # FREE TIER
+    buildCommand: cd server && npm install
+    startCommand: cd server && node index.js
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: FRONTEND_URL
+        value: https://your-app-name.netlify.app # UPDATE THIS after deploying frontend
+      - key: NODE_ENV
+        value: production
+    # Install Python, FFmpeg and dependencies
+    buildPlan: starter
+

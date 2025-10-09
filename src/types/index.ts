@@ -3,6 +3,8 @@ export interface Playlist {
   name: string;
   description: string;
   owner: string;
+  ownerUrl?: string;
+  ownerImage?: string;
   imageUrl: string;
   totalTracks: number;
   totalDuration: number;

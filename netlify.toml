@@ -1,0 +1,37 @@
+# Netlify Configuration for Frontend
+# This file configures automatic deployment to Netlify
+
+[build]
+  # Build command
+  command = "npm run build"
+  
+  # Output directory (Vite builds to 'dist')
+  publish = "dist"
+  
+  # Functions directory (if needed)
+  functions = "netlify/functions"
+
+[build.environment]
+  # Node version
+  NODE_VERSION = "18"
+
+# Redirect rules for SPA (Single Page Application)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and performance
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+

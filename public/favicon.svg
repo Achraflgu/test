@@ -1,0 +1,21 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="32" cy="32" r="32" fill="url(#gradient1)"/>
+  
+  <!-- Gradient Definition -->
+  <defs>
+    <linearGradient id="gradient1" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1DB954"/>
+      <stop offset="50%" stop-color="#1ed760"/>
+      <stop offset="100%" stop-color="#FF0000"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Music Note Icon -->
+  <path d="M44 12L24 16V44C24 48.4183 20.4183 52 16 52C11.5817 52 8 48.4183 8 44C8 39.5817 11.5817 36 16 36C18.2 36 20.2 36.8 21.7 38.1V20L44 16.8V36C44 40.4183 40.4183 44 36 44C31.5817 44 28 40.4183 28 36C28 31.5817 31.5817 28 36 28C38.2 28 40.2 28.8 41.7 30.1V12Z" fill="white"/>
+  
+  <!-- Small Play Icon (YouTube indicator) -->
+  <circle cx="52" cy="52" r="10" fill="#FF0000"/>
+  <path d="M49 49L55 52L49 55V49Z" fill="white"/>
+</svg>
+
