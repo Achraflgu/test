@@ -79,20 +79,45 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// Helper function to add YouTube cookies to yt-dlp args
-async function addYouTubeCookies(args) {
+// Enhanced YouTube helper with multiple fallback methods
+async function addYouTubeEnhancements(args, attempt = 0) {
+  // Rotating user agents to avoid detection
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0'
+  ];
+  
+  // Multiple client types for different approaches
+  const clientTypes = [
+    'android,web,ios',
+    'web,android,tv',
+    'ios,android,web',
+    'tv,web,android'
+  ];
+  
+  // Select user agent and client type based on attempt
+  const userAgent = userAgents[attempt % userAgents.length];
+  const clientType = clientTypes[attempt % clientTypes.length];
+  
+  // Add enhancements
+  args.push('--user-agent', userAgent);
+  args.push('--extractor-args', `youtube:player_client=${clientType}`);
+  
+  // Add cookies if available (optional)
   try {
-    // Check if cookies file exists
     const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-    
     if (cookiesExist) {
       args.push('--cookies', YOUTUBE_COOKIES_PATH);
-      return true;
+      console.log('🍪 Using YouTube cookies for authentication');
     }
   } catch (err) {
     // Silently fail - cookies are optional
   }
-  return false;
+  
+  return { userAgent, clientType };
 }
 
 // Cache search results (expires after 5 minutes)
@@ -357,24 +382,25 @@ async function fetchSpotifyTrack(trackId) {
   }
 }
 
-// Fetch YouTube video metadata using yt-dlp with multiple fallbacks
-async function fetchYouTubeVideo(videoId) {
-  return new Promise((resolve) => {
-    console.log('📺 Fetching YouTube video metadata...');
+// Fetch YouTube video metadata using yt-dlp with enhanced fallbacks
+async function fetchYouTubeVideo(videoId, attempt = 0) {
+  return new Promise(async (resolve) => {
+    console.log(`📺 Fetching YouTube video metadata... (attempt ${attempt + 1})`);
     
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     
-    // Try multiple methods in order of reliability
+    // Base arguments
     const ytdlpArgs = [
       '-m', 'yt_dlp',
       url,
       '--dump-json',
       '--no-playlist',
       '--no-warnings',
-      '--ignore-errors',
-      '--extractor-args', 'youtube:player_client=android,web',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      '--ignore-errors'
     ];
+    
+    // Add enhanced methods
+    const { userAgent, clientType } = await addYouTubeEnhancements(ytdlpArgs, attempt);
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
     let output = '';
@@ -388,7 +414,7 @@ async function fetchYouTubeVideo(videoId) {
       errorOutput += data.toString();
     });
     
-    ytdlpProcess.on('close', (code) => {
+    ytdlpProcess.on('close', async (code) => {
       if (code === 0 && output.trim()) {
         try {
           const data = JSON.parse(output);
@@ -404,14 +430,33 @@ async function fetchYouTubeVideo(videoId) {
             downloadProgress: 0,
             selected: true
           };
+          console.log(`✅ YouTube video fetched successfully with ${userAgent.split(' ')[0]} (${clientType})`);
           resolve({ track, data });
         } catch (e) {
           console.error('Failed to parse YouTube data:', e.message);
-          resolve(null);
+          // Retry with different method
+          if (attempt < 3) {
+            console.log(`🔄 Retrying YouTube video fetch with different method...`);
+            setTimeout(async () => {
+              const result = await fetchYouTubeVideo(videoId, attempt + 1);
+              resolve(result);
+            }, 1000 * (attempt + 1)); // Exponential backoff
+          } else {
+            resolve(null);
+          }
         }
       } else {
-        console.error('yt-dlp failed:', errorOutput);
-        resolve(null);
+        console.error(`yt-dlp failed (attempt ${attempt + 1}):`, errorOutput);
+        // Retry with different method if we haven't tried all
+        if (attempt < 3) {
+          console.log(`🔄 Retrying YouTube video fetch with different method...`);
+          setTimeout(async () => {
+            const result = await fetchYouTubeVideo(videoId, attempt + 1);
+            resolve(result);
+          }, 1000 * (attempt + 1)); // Exponential backoff
+        } else {
+          resolve(null);
+        }
       }
     });
     
@@ -1964,17 +2009,21 @@ app.get('/api/youtube/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise((resolve, reject) => {
-      const searchProcess = spawn(PYTHON_CMD, [
+      // Base search arguments
+      const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android,web,ios',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      ]);
+        '--no-playlist'
+      ];
+      
+      // Add enhanced methods
+      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      
+      const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
       let output = '';
       let errorOutput = '';
@@ -2108,17 +2157,21 @@ app.post('/api/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise((resolve, reject) => {
-      const searchProcess = spawn(PYTHON_CMD, [
+      // Base search arguments
+      const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android,web,ios',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      ]);
+        '--no-playlist'
+      ];
+      
+      // Add enhanced methods
+      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      
+      const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
       let output = '';
       let errorOutput = '';
@@ -2462,6 +2515,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     if (youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
       console.log(`  🎯 Using direct YouTube link: ${youtubeLink}`);
       usingDirectLink = true;
+      // Base download arguments
       ytdlpArgs = [
         '-m', 'yt_dlp',
         '-x',
@@ -2477,10 +2531,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--force-overwrites',  // Overwrite incomplete files
         '--no-warnings',
         '--ignore-errors',
-        '--extractor-args', 'youtube:player_client=android,web,ios',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         youtubeLink
       ];
+      
+      // Add enhanced methods
+      await addYouTubeEnhancements(ytdlpArgs, 0);
     } else {
       console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
       
@@ -2497,10 +2552,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
         '--no-warnings',
-        '--ignore-errors',
-        '--extractor-args', 'youtube:player_client=android,web,ios',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        '--ignore-errors'
       ];
+      
+      // Add enhanced methods
+      await addYouTubeEnhancements(ytdlpArgs, 0);
       
       // Add metadata args if artist is not "Unknown Artist"
       if (track.artist !== 'Unknown Artist') {
