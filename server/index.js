@@ -2008,7 +2008,7 @@ app.get('/api/youtube/search', async (req, res) => {
   
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
-    const searchResults = await new Promise((resolve, reject) => {
+    const searchResults = await new Promise(async (resolve, reject) => {
       // Base search arguments
       const searchArgs = [
         '-m', 'yt_dlp',
@@ -2156,7 +2156,7 @@ app.post('/api/search', async (req, res) => {
   
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
-    const searchResults = await new Promise((resolve, reject) => {
+    const searchResults = await new Promise(async (resolve, reject) => {
       // Base search arguments
       const searchArgs = [
         '-m', 'yt_dlp',
