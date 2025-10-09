@@ -55,11 +55,45 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const PORT = process.env.PORT || 3001;
 
+// YouTube cookies path (if available)
+const YOUTUBE_COOKIES_PATH = process.env.YOUTUBE_COOKIES 
+  ? '/tmp/youtube_cookies.txt' 
+  : path.join(__dirname, 'youtube_cookies.txt');
+
+// Setup YouTube cookies if provided via environment variable
+if (process.env.YOUTUBE_COOKIES) {
+  try {
+    fs.writeFile(YOUTUBE_COOKIES_PATH, process.env.YOUTUBE_COOKIES).then(() => {
+      console.log('✅ YouTube cookies loaded from environment');
+    }).catch(err => {
+      console.warn('⚠️  Failed to write YouTube cookies:', err.message);
+    });
+  } catch (err) {
+    console.warn('⚠️  Failed to setup YouTube cookies:', err.message);
+  }
+}
+
 // Store active downloads
 const activeDownloads = new Map();
 
 // Store active processes for cancellation
 const activeProcesses = new Map();
+
+// Helper function to add YouTube cookies to yt-dlp args
+async function addYouTubeCookies(args) {
+  try {
+    // Check if cookies file exists
+    const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+    
+    if (cookiesExist) {
+      args.push('--cookies', YOUTUBE_COOKIES_PATH);
+      return true;
+    }
+  } catch (err) {
+    // Silently fail - cookies are optional
+  }
+  return false;
+}
 
 // Cache search results (expires after 5 minutes)
 const searchCache = new Map();
@@ -323,19 +357,23 @@ async function fetchSpotifyTrack(trackId) {
   }
 }
 
-// Fetch YouTube video metadata using yt-dlp
+// Fetch YouTube video metadata using yt-dlp with multiple fallbacks
 async function fetchYouTubeVideo(videoId) {
   return new Promise((resolve) => {
     console.log('📺 Fetching YouTube video metadata...');
     
     const url = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    // Try multiple methods in order of reliability
     const ytdlpArgs = [
       '-m', 'yt_dlp',
       url,
       '--dump-json',
       '--no-playlist',
-      '--extractor-args', 'youtube:player_client=android',
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+      '--no-warnings',
+      '--ignore-errors',
+      '--extractor-args', 'youtube:player_client=android,web',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
@@ -384,7 +422,7 @@ async function fetchYouTubeVideo(videoId) {
   });
 }
 
-// Fetch YouTube playlist metadata using yt-dlp
+// Fetch YouTube playlist metadata using yt-dlp with multiple fallbacks
 async function fetchYouTubePlaylist(playlistId) {
   return new Promise((resolve) => {
     console.log('📺 Fetching YouTube playlist metadata...');
@@ -395,8 +433,10 @@ async function fetchYouTubePlaylist(playlistId) {
       url,
       '--flat-playlist',
       '--dump-json',
-      '--extractor-args', 'youtube:player_client=android',
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+      '--no-warnings',
+      '--ignore-errors',
+      '--extractor-args', 'youtube:player_client=android,web',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
@@ -1930,8 +1970,10 @@ app.get('/api/youtube/search', async (req, res) => {
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
+        '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=ios,android'
+        '--extractor-args', 'youtube:player_client=android,web,ios',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ]);
       
       let output = '';
@@ -2072,8 +2114,10 @@ app.post('/api/search', async (req, res) => {
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
+        '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=ios,android'
+        '--extractor-args', 'youtube:player_client=android,web,ios',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ]);
       
       let output = '';
@@ -2431,7 +2475,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--no-playlist',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
-        '--extractor-args', 'youtube:player_client=ios,android',
+        '--no-warnings',
+        '--ignore-errors',
+        '--extractor-args', 'youtube:player_client=android,web,ios',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         youtubeLink
       ];
     } else {
@@ -2449,7 +2496,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--add-metadata',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
-        '--extractor-args', 'youtube:player_client=ios,android'
+        '--no-warnings',
+        '--ignore-errors',
+        '--extractor-args', 'youtube:player_client=android,web,ios',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
       // Add metadata args if artist is not "Unknown Artist"
