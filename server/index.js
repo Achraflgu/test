@@ -333,7 +333,9 @@ async function fetchYouTubeVideo(videoId) {
       '-m', 'yt_dlp',
       url,
       '--dump-json',
-      '--no-playlist'
+      '--no-playlist',
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
     ];
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
@@ -392,7 +394,9 @@ async function fetchYouTubePlaylist(playlistId) {
       '-m', 'yt_dlp',
       url,
       '--flat-playlist',
-      '--dump-json'
+      '--dump-json',
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
     ];
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
@@ -2429,6 +2433,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--no-playlist',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
         youtubeLink
       ];
     } else {
@@ -2445,7 +2451,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--embed-metadata',
         '--add-metadata',
         '--no-part',  // Don't use .part files
-        '--force-overwrites'  // Overwrite incomplete files
+        '--force-overwrites',  // Overwrite incomplete files
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
       ];
       
       // Add metadata args if artist is not "Unknown Artist"
