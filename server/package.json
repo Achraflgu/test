@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "postinstall": "pip3 install spotdl yt-dlp || echo 'Python dependencies installation failed'"
+    "postinstall": "python3 -m pip install spotdl yt-dlp || echo 'Python dependencies installation failed'"
   },
   "keywords": [
     "spotify",
