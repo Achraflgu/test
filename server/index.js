@@ -1931,8 +1931,7 @@ app.get('/api/youtube/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android',
-        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+        '--extractor-args', 'youtube:player_client=ios,android'
       ]);
       
       let output = '';
@@ -2074,8 +2073,7 @@ app.post('/api/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android',
-        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+        '--extractor-args', 'youtube:player_client=ios,android'
       ]);
       
       let output = '';
@@ -2433,8 +2431,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--no-playlist',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
-        '--extractor-args', 'youtube:player_client=android',
-        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+        '--extractor-args', 'youtube:player_client=ios,android',
         youtubeLink
       ];
     } else {
@@ -2452,8 +2449,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--add-metadata',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
-        '--extractor-args', 'youtube:player_client=android',
-        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+        '--extractor-args', 'youtube:player_client=ios,android'
       ];
       
       // Add metadata args if artist is not "Unknown Artist"
