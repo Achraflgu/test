@@ -1926,7 +1926,9 @@ app.get('/api/youtube/search', async (req, res) => {
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
       ]);
       
       let output = '';
@@ -2067,7 +2069,9 @@ app.post('/api/search', async (req, res) => {
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
       ]);
       
       let output = '';
