@@ -3807,7 +3807,19 @@ io.on('connection', (socket) => {
 });
 
 // Check versions on startup
-checkAndUpdateVersions().then(() => {
+checkAndUpdateVersions().then(async () => {
+  // If dependencies are not installed, try to install them
+  if (versionInfo.spotdl === 'Unknown' || versionInfo.ytdlp === 'Unknown') {
+    console.log('\n🔄 Dependencies not found, attempting to install...');
+    try {
+      await updateDependencies();
+      await checkAndUpdateVersions();
+      console.log('✅ Dependencies installed successfully!');
+    } catch (error) {
+      console.log('⚠️ Failed to install dependencies:', error.message);
+    }
+  }
+  
   httpServer.listen(PORT, () => {
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
