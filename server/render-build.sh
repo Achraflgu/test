@@ -1,17 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Render.com build script for backend
 # This installs all required dependencies
+
+set -e  # Exit on error
 
 echo "🔨 Installing backend dependencies..."
 npm install
 
 echo "🐍 Installing Python dependencies..."
-pip install --upgrade pip
-pip install spotdl yt-dlp
-
-echo "🎵 Installing FFmpeg..."
-apt-get update
-apt-get install -y ffmpeg
+python3 -m pip install --upgrade pip
+python3 -m pip install spotdl yt-dlp
 
 echo "✅ Build complete!"
 
