@@ -22,7 +22,7 @@ COPY requirements.txt ./
 # Install Node.js dependencies
 RUN npm install
 
-# Install Python dependencies in virtual environment
+# Install Python dependencies in virtual environment (cache-bust: 2025-01-09)
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install -r requirements.txt
 
