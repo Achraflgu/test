@@ -36,6 +36,7 @@ const allowedOrigins = [
   "http://localhost:8082",
   "http://localhost:8083",
   "https://test-s989-cex65hswg-achrafgu92-gmailcoms-projects.vercel.app", // Vercel frontend
+  "https://*.vercel.app", // Allow all Vercel apps
   process.env.FRONTEND_URL // Add production frontend URL from environment
 ].filter(Boolean); // Remove undefined values
 
@@ -52,10 +53,17 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
+    // Check exact matches
     if (allowedOrigins.indexOf(origin) !== -1) {
       console.log('✅ CORS allowed for:', origin);
       callback(null, true);
-    } else {
+    }
+    // Check wildcard patterns
+    else if (origin.endsWith('.vercel.app')) {
+      console.log('✅ CORS allowed for Vercel app:', origin);
+      callback(null, true);
+    }
+    else {
       console.log('❌ CORS blocked for:', origin);
       console.log('Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
@@ -70,14 +78,19 @@ app.use(cors({
 // Manual CORS headers as fallback
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+  
+  // Allow exact matches or Vercel apps
+  if (allowedOrigins.includes(origin) || (origin && origin.endsWith('.vercel.app'))) {
     res.header('Access-Control-Allow-Origin', origin);
+    console.log('✅ Manual CORS header set for:', origin);
   }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
   
   if (req.method === 'OPTIONS') {
+    console.log('✅ OPTIONS preflight request handled');
     res.sendStatus(200);
   } else {
     next();
