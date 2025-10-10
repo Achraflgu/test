@@ -1,10 +1,11 @@
 # Use Node.js 18 as base image (includes npm)
 FROM node:18-slim
 
-# Install Python 3.11 and pip
+# Install Python 3.11, pip, and venv
 RUN apt-get update && apt-get install -y \
     python3.11 \
     python3-pip \
+    python3.11-venv \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
