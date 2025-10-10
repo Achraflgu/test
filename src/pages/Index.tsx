@@ -497,7 +497,7 @@ const Index = () => {
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 rounded-lg">
                 <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
                 <span className="text-xs text-muted-foreground">Latest Commit:</span>
-                <span className="text-xs text-foreground font-mono font-semibold">d0eccb6</span>
+                <span className="text-xs text-foreground font-mono font-semibold">94a6c78</span>
                 <span className="text-xs text-muted-foreground">•</span>
                 <span className="text-xs text-muted-foreground">Oct 10, 2025</span>
               </div>
