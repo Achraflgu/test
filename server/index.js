@@ -3766,6 +3766,11 @@ app.get('/api/download/status/:downloadId', (req, res) => {
 });
 
 // Check if spotdl is installed and get version info
+// Simple health check for Koyeb
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/health', async (req, res) => {
   const spotdlInstalled = await checkSpotdlInstalled();
   
