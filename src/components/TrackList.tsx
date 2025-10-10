@@ -175,7 +175,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       try {
         const searchQuery = `${track.artist} ${track.name}`;
-        const response = await fetch(`http://localhost:3001/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=1`);
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        const response = await fetch(`${apiUrl}/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=1`);
         
         if (!response.ok) {
           throw new Error('Search failed');
