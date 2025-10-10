@@ -575,30 +575,59 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
               console.log(`✅ Got title from oEmbed: "${title}"`);
             }
             
-            // Try to get duration from YouTube page HTML
+            // Try to get duration from YouTube page HTML (multiple patterns)
             try {
-              const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+              const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              });
+              
               if (pageResponse.ok) {
                 const html = await pageResponse.text();
                 
-                // Extract duration from JSON-LD structured data
-                const durationMatch = html.match(/"duration":"PT(\d+)M(\d+)S"/);
-                if (durationMatch) {
-                  const minutes = parseInt(durationMatch[1]);
-                  const seconds = parseInt(durationMatch[2]);
-                  duration = minutes * 60 + seconds;
-                  console.log(`✅ Got duration from page: ${duration}s`);
-                } else {
-                  // Try alternative pattern
-                  const altMatch = html.match(/"lengthSeconds":"(\d+)"/);
-                  if (altMatch) {
-                    duration = parseInt(altMatch[1]);
-                    console.log(`✅ Got duration from lengthSeconds: ${duration}s`);
+                // Try multiple patterns to find duration
+                const patterns = [
+                  /"lengthSeconds":"(\d+)"/,           // Most reliable
+                  /"duration":"PT(\d+)M(\d+)S"/,       // ISO 8601 format
+                  /"duration":"PT(\d+)M"/,              // Minutes only
+                  /"approxDurationMs":"(\d+)"/,        // Milliseconds
+                  /lengthSeconds&quot;:&quot;(\d+)/,   // HTML encoded
+                ];
+                
+                for (const pattern of patterns) {
+                  const match = html.match(pattern);
+                  if (match) {
+                    if (pattern.source.includes('PT') && match[2]) {
+                      // ISO 8601 format PT4M6S
+                      duration = parseInt(match[1]) * 60 + parseInt(match[2]);
+                      console.log(`✅ Got duration (PT format): ${duration}s`);
+                      break;
+                    } else if (pattern.source.includes('PT') && !match[2]) {
+                      // Minutes only PT4M
+                      duration = parseInt(match[1]) * 60;
+                      console.log(`✅ Got duration (minutes only): ${duration}s`);
+                      break;
+                    } else if (pattern.source.includes('approx')) {
+                      // Milliseconds
+                      duration = Math.floor(parseInt(match[1]) / 1000);
+                      console.log(`✅ Got duration (ms): ${duration}s`);
+                      break;
+                    } else {
+                      // Seconds
+                      duration = parseInt(match[1]);
+                      console.log(`✅ Got duration (seconds): ${duration}s`);
+                      break;
+                    }
                   }
+                }
+                
+                if (duration === 0) {
+                  console.log(`⚠️  Duration patterns did not match in HTML`);
                 }
               }
             } catch (err) {
-              console.log(`⚠️  Could not fetch duration from page`);
+              console.log(`⚠️  Could not fetch duration from page:`, err.message);
             }
             
             const track = {
