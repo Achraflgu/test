@@ -3819,6 +3819,16 @@ app.get('/api/download/status/:downloadId', (req, res) => {
 });
 
 // Check if spotdl is installed and get version info
+// Root endpoint for debugging
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Spotify Playlist Downloader Server', 
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    port: PORT
+  });
+});
+
 // Simple health check for Koyeb
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
