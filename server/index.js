@@ -555,31 +555,66 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             resolve(result);
           }, 1000 * (attempt + 1)); // Exponential backoff
         } else {
-          // Final fallback: Try YouTube oEmbed API (no auth needed)
-          console.log(`⚠️  All attempts failed, trying oEmbed fallback...`);
+          // Final fallback: Try YouTube oEmbed API + page scraping for duration
+          console.log(`⚠️  All attempts failed, trying oEmbed + page scraping fallback...`);
           try {
+            // Get title and author from oEmbed
             const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
             const oEmbedResponse = await fetch(oEmbedUrl);
             
+            let title = `YouTube Video ${videoId}`;
+            let artist = 'YouTube';
+            let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            let duration = 0;
+            
             if (oEmbedResponse.ok) {
               const oEmbedData = await oEmbedResponse.json();
-              const track = {
-                id: videoId,
-                name: oEmbedData.title || `YouTube Video ${videoId}`,
-                artist: oEmbedData.author_name || 'YouTube',
-                album: 'YouTube',
-                duration: 0, // oEmbed doesn't provide duration
-                imageUrl: oEmbedData.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                url: `https://www.youtube.com/watch?v=${videoId}`,
-                downloadStatus: 'pending',
-                downloadProgress: 0,
-                selected: true
-              };
-              console.log(`✅ Got metadata from oEmbed: "${track.name}" by ${track.artist}`);
-              resolve({ track, data: null });
-            } else {
-              throw new Error('oEmbed failed');
+              title = oEmbedData.title || title;
+              artist = oEmbedData.author_name || artist;
+              thumbnail = oEmbedData.thumbnail_url || thumbnail;
+              console.log(`✅ Got title from oEmbed: "${title}"`);
             }
+            
+            // Try to get duration from YouTube page HTML
+            try {
+              const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+              if (pageResponse.ok) {
+                const html = await pageResponse.text();
+                
+                // Extract duration from JSON-LD structured data
+                const durationMatch = html.match(/"duration":"PT(\d+)M(\d+)S"/);
+                if (durationMatch) {
+                  const minutes = parseInt(durationMatch[1]);
+                  const seconds = parseInt(durationMatch[2]);
+                  duration = minutes * 60 + seconds;
+                  console.log(`✅ Got duration from page: ${duration}s`);
+                } else {
+                  // Try alternative pattern
+                  const altMatch = html.match(/"lengthSeconds":"(\d+)"/);
+                  if (altMatch) {
+                    duration = parseInt(altMatch[1]);
+                    console.log(`✅ Got duration from lengthSeconds: ${duration}s`);
+                  }
+                }
+              }
+            } catch (err) {
+              console.log(`⚠️  Could not fetch duration from page`);
+            }
+            
+            const track = {
+              id: videoId,
+              name: title,
+              artist: artist,
+              album: 'YouTube',
+              duration: duration,
+              imageUrl: thumbnail,
+              url: `https://www.youtube.com/watch?v=${videoId}`,
+              downloadStatus: 'pending',
+              downloadProgress: 0,
+              selected: true
+            };
+            console.log(`✅ Created track: "${track.name}" by ${track.artist} (${duration}s)`);
+            resolve({ track, data: null });
           } catch (err) {
             // Ultimate fallback: Basic track
             console.log(`⚠️  oEmbed failed, creating basic playable track...`);
