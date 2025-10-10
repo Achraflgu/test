@@ -482,25 +482,24 @@ async function fetchSpotifyTrack(trackId) {
   }
 }
 
-// Fetch YouTube video metadata using yt-dlp with enhanced fallbacks
+// Fetch YouTube video metadata using yt-dlp (SAME METHOD AS PLAYLIST for reliability)
 async function fetchYouTubeVideo(videoId, attempt = 0) {
   return new Promise(async (resolve) => {
-    console.log(`📺 Fetching YouTube video metadata... (attempt ${attempt + 1})`);
+    console.log(`📺 Fetching YouTube video metadata...`);
     
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     
-    // Base arguments
+    // Use SAME reliable args as playlist (works without cookies!)
     const ytdlpArgs = [
       '-m', 'yt_dlp',
       url,
       '--dump-json',
       '--no-playlist',
       '--no-warnings',
-      '--ignore-errors'
+      '--ignore-errors',
+      '--extractor-args', 'youtube:player_client=android,web',  // Same as playlist!
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
-    
-    // Add enhanced methods
-    const { userAgent, clientType } = await addYouTubeEnhancements(ytdlpArgs, attempt);
     
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
     let output = '';
@@ -522,42 +521,45 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             id: data.id || videoId,
             name: data.title || 'Unknown',
             artist: data.uploader || data.channel || 'YouTube',
-            album: data.album || 'YouTube Music',
+            album: data.album || 'YouTube',
             duration: Math.floor(data.duration || 0),
-            imageUrl: data.thumbnail || '/placeholder.svg',
+            imageUrl: data.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             url: `https://www.youtube.com/watch?v=${videoId}`,
             downloadStatus: 'pending',
             downloadProgress: 0,
             selected: true
           };
-          console.log(`✅ YouTube video fetched successfully with ${userAgent.split(' ')[0]} (${clientType})`);
+          console.log(`✅ YouTube video fetched: "${track.name}" by ${track.artist} (${track.duration}s)`);
           resolve({ track, data });
         } catch (e) {
           console.error('Failed to parse YouTube data:', e.message);
-          // Retry with different method
-          if (attempt < 3) {
-            console.log(`🔄 Retrying YouTube video fetch with different method...`);
-            setTimeout(async () => {
-              const result = await fetchYouTubeVideo(videoId, attempt + 1);
-              resolve(result);
-            }, 1000 * (attempt + 1)); // Exponential backoff
-          } else {
-            resolve(null);
-          }
+          // Fall back to oEmbed
+          console.log(`🔄 Falling back to oEmbed...`);
+          const fallbackResult = await fetchVideoFallback(videoId);
+          resolve(fallbackResult);
         }
       } else {
-        console.error(`yt-dlp failed (attempt ${attempt + 1}):`, errorOutput);
-        // Retry with different method if we haven't tried all
-        if (attempt < 3) {
-          console.log(`🔄 Retrying YouTube video fetch with different method...`);
-          setTimeout(async () => {
-            const result = await fetchYouTubeVideo(videoId, attempt + 1);
-            resolve(result);
-          }, 1000 * (attempt + 1)); // Exponential backoff
-        } else {
-          // Final fallback: Try YouTube oEmbed API + page scraping for duration
-          console.log(`⚠️  All attempts failed, trying oEmbed + page scraping fallback...`);
-          try {
+        console.error(`yt-dlp failed:`, errorOutput);
+        // Fall back to oEmbed immediately (no retries)
+        console.log(`🔄 Falling back to oEmbed...`);
+        const fallbackResult = await fetchVideoFallback(videoId);
+        resolve(fallbackResult);
+      }
+    });
+    
+    ytdlpProcess.on('error', (err) => {
+      console.error('yt-dlp process error:', err.message);
+      // Fall back to oEmbed
+      fetchVideoFallback(videoId).then(resolve);
+    });
+  });
+}
+
+// Fallback function for when yt-dlp fails
+async function fetchVideoFallback(videoId) {
+  return new Promise(async (resolve) => {
+    console.log(`⚠️  Using fallback method (oEmbed + page scraping)...`);
+    try {
             // Get title and author from oEmbed
             const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
             const oEmbedResponse = await fetch(oEmbedUrl);
@@ -644,32 +646,24 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             };
             console.log(`✅ Created track: "${track.name}" by ${track.artist} (${duration}s)`);
             resolve({ track, data: null });
-          } catch (err) {
-            // Ultimate fallback: Basic track
-            console.log(`⚠️  oEmbed failed, creating basic playable track...`);
-            const basicTrack = {
-              id: videoId,
-              name: `YouTube Video ${videoId}`,
-              artist: 'YouTube',
-              album: 'YouTube',
-              duration: 0,
-              imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              url: `https://www.youtube.com/watch?v=${videoId}`,
-              downloadStatus: 'pending',
-              downloadProgress: 0,
-              selected: true
-            };
-            console.log(`✅ Created basic track - video is playable`);
-            resolve({ track: basicTrack, data: null });
-          }
-        }
-      }
-    });
-    
-    ytdlpProcess.on('error', (err) => {
-      console.error('yt-dlp process error:', err.message);
-      resolve(null);
-    });
+    } catch (err) {
+      // Ultimate fallback: Basic track
+      console.log(`⚠️  Fallback failed, creating basic playable track...`);
+      const basicTrack = {
+        id: videoId,
+        name: `YouTube Video ${videoId}`,
+        artist: 'YouTube',
+        album: 'YouTube',
+        duration: 0,
+        imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        downloadStatus: 'pending',
+        downloadProgress: 0,
+        selected: true
+      };
+      console.log(`✅ Created basic track - video is playable`);
+      resolve({ track: basicTrack, data: null });
+    }
   });
 }
 
