@@ -17,15 +17,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
-// Keep process alive for Koyeb
+// Keep process alive for Koyeb/Vercel
 process.on('SIGTERM', () => {
   console.log('🔄 SIGTERM received, keeping process alive...');
   // Don't exit, keep running
+  // Child processes with detached:true will continue independently
 });
 
 process.on('SIGINT', () => {
   console.log('🔄 SIGINT received, keeping process alive...');
-  // Don't exit, keep running
+  // Don't exit, keep running  
+  // Child processes with detached:true will continue independently
 });
 
 // CORS configuration - supports both local and production URLs
@@ -223,8 +225,8 @@ const searchCache = new Map();
 const SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Timeout constants
-const PROCESS_TIMEOUT = 60000; // 60 seconds timeout for stuck downloads
-const STUCK_CHECK_INTERVAL = 15000; // Check every 15 seconds
+const PROCESS_TIMEOUT = 180000; // 180 seconds (3 minutes) timeout for stuck downloads  
+const STUCK_CHECK_INTERVAL = 30000; // Check every 30 seconds
 
 // Detect Python command (py on Windows, python on Linux/Mac)
 let PYTHON_CMD = 'python';
@@ -2632,8 +2634,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // Add enhanced methods
+      // Add enhanced methods with extra bypass options
       await addYouTubeEnhancements(ytdlpArgs, 0);
+      
+      // Extra bypass for downloads (more aggressive)
+      ytdlpArgs.push('--socket-timeout', '30');
+      ytdlpArgs.push('--retries', '10');
+      ytdlpArgs.push('--fragment-retries', '10');
+      ytdlpArgs.push('--skip-unavailable-fragments', 'true');
     } else {
       console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
       
@@ -2653,8 +2661,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // Add enhanced methods
+      // Add enhanced methods with extra bypass options
       await addYouTubeEnhancements(ytdlpArgs, 0);
+      
+      // Extra bypass for downloads (more aggressive)
+      ytdlpArgs.push('--socket-timeout', '30');
+      ytdlpArgs.push('--retries', '10');
+      ytdlpArgs.push('--fragment-retries', '10');
+      ytdlpArgs.push('--skip-unavailable-fragments', 'true');
       
       // Add metadata args if artist is not "Unknown Artist"
       if (track.artist !== 'Unknown Artist') {
@@ -2676,7 +2690,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       const result = await new Promise((resolve, reject) => {
         const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs, {
           cwd: outputFolder,
-          shell: false
+          shell: false,
+          detached: true,  // Keep process alive even if parent gets SIGTERM
+          stdio: ['ignore', 'pipe', 'pipe']
         });
         
         let output = '';
