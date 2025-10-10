@@ -555,22 +555,49 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             resolve(result);
           }, 1000 * (attempt + 1)); // Exponential backoff
         } else {
-          // Final fallback: Create basic track from video ID
-          console.log(`⚠️  All attempts failed, creating basic track for playback...`);
-          const basicTrack = {
-            id: videoId,
-            name: `YouTube Video ${videoId}`,
-            artist: 'YouTube',
-            album: 'YouTube',
-            duration: 0,
-            imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-            url: `https://www.youtube.com/watch?v=${videoId}`,
-            downloadStatus: 'pending',
-            downloadProgress: 0,
-            selected: true
-          };
-          console.log(`✅ Created basic track - video is playable but metadata limited`);
-          resolve({ track: basicTrack, data: null });
+          // Final fallback: Try YouTube oEmbed API (no auth needed)
+          console.log(`⚠️  All attempts failed, trying oEmbed fallback...`);
+          try {
+            const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+            const oEmbedResponse = await fetch(oEmbedUrl);
+            
+            if (oEmbedResponse.ok) {
+              const oEmbedData = await oEmbedResponse.json();
+              const track = {
+                id: videoId,
+                name: oEmbedData.title || `YouTube Video ${videoId}`,
+                artist: oEmbedData.author_name || 'YouTube',
+                album: 'YouTube',
+                duration: 0, // oEmbed doesn't provide duration
+                imageUrl: oEmbedData.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+                downloadStatus: 'pending',
+                downloadProgress: 0,
+                selected: true
+              };
+              console.log(`✅ Got metadata from oEmbed: "${track.name}" by ${track.artist}`);
+              resolve({ track, data: null });
+            } else {
+              throw new Error('oEmbed failed');
+            }
+          } catch (err) {
+            // Ultimate fallback: Basic track
+            console.log(`⚠️  oEmbed failed, creating basic playable track...`);
+            const basicTrack = {
+              id: videoId,
+              name: `YouTube Video ${videoId}`,
+              artist: 'YouTube',
+              album: 'YouTube',
+              duration: 0,
+              imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              url: `https://www.youtube.com/watch?v=${videoId}`,
+              downloadStatus: 'pending',
+              downloadProgress: 0,
+              selected: true
+            };
+            console.log(`✅ Created basic track - video is playable`);
+            resolve({ track: basicTrack, data: null });
+          }
         }
       }
     });
