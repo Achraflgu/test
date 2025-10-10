@@ -16,6 +16,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
+// Keep process alive for Koyeb
+process.on('SIGTERM', () => {
+  console.log('🔄 SIGTERM received, keeping process alive...');
+  // Don't exit, keep running
+});
+
+process.on('SIGINT', () => {
+  console.log('🔄 SIGINT received, keeping process alive...');
+  // Don't exit, keep running
+});
+
 // CORS configuration - supports both local and production URLs
 const allowedOrigins = [
   "http://localhost:5173",
@@ -3837,6 +3848,11 @@ checkAndUpdateVersions().then(async () => {
 ║  Status: Ready to download playlists                       ║
 ╚════════════════════════════════════════════════════════════╝
     `);
+    
+    // Keep-alive mechanism for Koyeb
+    setInterval(() => {
+      console.log('🔄 Keep-alive ping - Server is running');
+    }, 30000); // Every 30 seconds
   });
 });
 
