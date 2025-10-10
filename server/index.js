@@ -517,18 +517,44 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
       if (code === 0 && output.trim()) {
         try {
           const data = JSON.parse(output);
+          
+          // Extract duration from multiple possible fields
+          let duration = 0;
+          if (data.duration) {
+            duration = Math.floor(data.duration);
+          } else if (data.duration_string) {
+            // Parse duration string like "4:06" to seconds
+            const parts = data.duration_string.split(':').map(Number);
+            if (parts.length === 2) {
+              duration = parts[0] * 60 + parts[1]; // MM:SS
+            } else if (parts.length === 3) {
+              duration = parts[0] * 3600 + parts[1] * 60 + parts[2]; // HH:MM:SS
+            }
+          }
+          
           const track = {
             id: data.id || videoId,
             name: data.title || 'Unknown',
-            artist: data.uploader || data.channel || 'YouTube',
+            artist: data.uploader || data.channel || data.uploader_id || 'YouTube',
             album: data.album || 'YouTube',
-            duration: Math.floor(data.duration || 0),
-            imageUrl: data.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            duration: duration,
+            imageUrl: data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             url: `https://www.youtube.com/watch?v=${videoId}`,
             downloadStatus: 'pending',
             downloadProgress: 0,
             selected: true
           };
+          
+          if (duration === 0) {
+            console.log(`⚠️  Duration not found in yt-dlp data, trying fallback...`);
+            // If no duration, enhance with fallback
+            const fallbackResult = await fetchVideoFallback(videoId);
+            if (fallbackResult && fallbackResult.track && fallbackResult.track.duration > 0) {
+              track.duration = fallbackResult.track.duration;
+              console.log(`✅ Got duration from fallback: ${track.duration}s`);
+            }
+          }
+          
           console.log(`✅ YouTube video fetched: "${track.name}" by ${track.artist} (${track.duration}s)`);
           resolve({ track, data });
         } catch (e) {
