@@ -22,14 +22,18 @@ COPY requirements.txt ./
 # Install Node.js dependencies
 RUN npm install
 
-# Install Python dependencies
-RUN pip3 install -r requirements.txt
+# Install Python dependencies in virtual environment
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install -r requirements.txt
 
 # Copy application code
 COPY . .
 
 # Expose port
 EXPOSE 3001
+
+# Set PATH to include virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Start the server
 CMD ["node", "index.js"]
