@@ -2,8 +2,9 @@ import { io, Socket } from 'socket.io-client';
 import { Playlist, Track, DownloadSettings } from '@/types';
 
 // API Configuration - supports both local and production
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Trim to remove any accidental spaces in environment variables
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
+const WS_URL = (import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 
 console.log('🌐 API Configuration:', {
   API_URL,
