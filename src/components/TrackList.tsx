@@ -889,9 +889,27 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           // Show success notification with blinking and sound
           const successCount = data.totalDownloaded || tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
           showCompleteNotification(successCount, playlistName);
-          toast.success(data.message, {
-            duration: 5000,
-          });
+          
+          // Show toast with download button if downloadUrl is provided
+          if (data.downloadUrl) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
+            
+            toast.success(data.message, {
+              duration: 30000, // 30 seconds
+              action: {
+                label: '📥 Download ZIP',
+                onClick: () => {
+                  window.open(fullDownloadUrl, '_blank');
+                  toast.success('Download started!');
+                },
+              },
+            });
+          } else {
+            toast.success(data.message, {
+              duration: 5000,
+            });
+          }
         }
       }
     });

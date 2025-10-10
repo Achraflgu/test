@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["server/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/server/index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/server/index.js"
+    }
+  ],
+  "env": {
+    "PYTHON_VERSION": "3.9"
+  }
+}
