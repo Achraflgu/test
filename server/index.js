@@ -180,11 +180,21 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   args.push('--extractor-args', `youtube:player_client=${clientType}`);
   
   // Add bypass methods for later attempts
-  if (attempt > 1) {
+  if (attempt > 0) {
     args.push('--no-check-certificate');
     args.push('--prefer-insecure');
     args.push('--referer', 'https://www.youtube.com/');
     args.push('--add-header', 'Accept-Language:en-US,en;q=0.9');
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+    args.push('--add-header', 'Cache-Control:no-cache');
+    args.push('--add-header', 'Pragma:no-cache');
+  }
+  
+  // Add more aggressive bypass for high attempt numbers
+  if (attempt > 2) {
+    args.push('--sleep-interval', '1');
+    args.push('--max-sleep-interval', '3');
+    args.push('--sleep-requests', '1');
   }
   
   // Add cookies if available (CRITICAL for Render)
@@ -2424,14 +2434,14 @@ app.post('/api/search', async (req, res) => {
         resolve(tracks);
       });
       
-      // Add timeout for search (10 seconds max)
+      // Add timeout for search (30 seconds max - increased for better success rate)
       timeoutHandle = setTimeout(() => {
         if (!searchProcess.killed) {
           console.log('⏱️ Search timeout - killing process');
           searchProcess.kill('SIGTERM');
           reject(new Error('Search timed out'));
         }
-      }, 10000);
+      }, 30000);
     });
     
     const searchElapsed = ((Date.now() - searchStartTime) / 1000).toFixed(2);
