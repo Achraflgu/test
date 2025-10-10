@@ -454,41 +454,54 @@ const Index = () => {
       {/* Footer */}
       <footer className="border-t border-border mt-24 py-8 relative">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Left: Branding */}
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Download className="w-4 h-4 text-primary" />
-              <span className="font-medium">Powered by spotdl & yt-dlp</span>
-            </div>
-
-            {/* Center: Tagline */}
-            <p className="text-sm text-muted-foreground/70">
-              High-quality music downloads • Built with passion
-            </p>
-
-            {/* Right: Version Info */}
-            {versionInfo && (
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-md">
-                    <Music2 className="w-3 h-3 text-primary" />
-                    <span className="text-muted-foreground">spotdl:</span>
-                    <span className="text-foreground font-mono font-semibold">{versionInfo.spotdl}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-md">
-                    <Download className="w-3 h-3 text-primary" />
-                    <span className="text-muted-foreground">yt-dlp:</span>
-                    <span className="text-foreground font-mono font-semibold">{versionInfo.ytdlp}</span>
-                  </div>
-                </div>
-                {versionInfo.lastUpdated && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <CheckCircle2 className="w-3 h-3 text-green-500" />
-                    <span>Updated: {new Date(versionInfo.lastUpdated).toLocaleDateString()}</span>
-                  </div>
-                )}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              {/* Left: Branding */}
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Download className="w-4 h-4 text-primary" />
+                <span className="font-medium">Powered by spotdl & yt-dlp</span>
               </div>
-            )}
+
+              {/* Center: Tagline */}
+              <p className="text-sm text-muted-foreground/70">
+                High-quality music downloads • Built with passion
+              </p>
+
+              {/* Right: Version Info */}
+              {versionInfo && (
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-md">
+                      <Music2 className="w-3 h-3 text-primary" />
+                      <span className="text-muted-foreground">spotdl:</span>
+                      <span className="text-foreground font-mono font-semibold">{versionInfo.spotdl}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-md">
+                      <Download className="w-3 h-3 text-primary" />
+                      <span className="text-muted-foreground">yt-dlp:</span>
+                      <span className="text-foreground font-mono font-semibold">{versionInfo.ytdlp}</span>
+                    </div>
+                  </div>
+                  {versionInfo.lastUpdated && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CheckCircle2 className="w-3 h-3 text-green-500" />
+                      <span>Updated: {new Date(versionInfo.lastUpdated).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Latest Commit Info */}
+            <div className="flex items-center justify-center gap-2 pt-2 border-t border-border/50">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 rounded-lg">
+                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                <span className="text-xs text-muted-foreground">Frontend:</span>
+                <span className="text-xs text-foreground font-mono font-semibold">04db258</span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className="text-xs text-muted-foreground">Oct 10, 2025</span>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
