@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import fetch from 'node-fetch';
 import sharp from 'sharp';
+import archiver from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3097,7 +3098,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           totalSuccess: musicFiles.length,
           totalFailed: 0,
           attempts: attempt,
-          message: `🎉 All ${musicFiles.length} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}`
+          downloadUrl: `/api/download/archive/${downloadId}`,
+          message: `🎉 All ${musicFiles.length} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
         });
         
         shouldContinue = false;
@@ -3832,6 +3834,54 @@ app.get('/api/download/status/:downloadId', (req, res) => {
   }
 
   res.json(downloadInfo);
+});
+
+// Download completed files as ZIP archive
+app.get('/api/download/archive/:downloadId', async (req, res) => {
+  const { downloadId } = req.params;
+  const downloadInfo = activeDownloads.get(downloadId);
+
+  if (!downloadInfo) {
+    return res.status(404).json({ error: 'Download not found' });
+  }
+
+  if (downloadInfo.status !== 'completed') {
+    return res.status(400).json({ error: 'Download not completed yet' });
+  }
+
+  const { outputFolder } = downloadInfo;
+  
+  try {
+    // Check if folder exists
+    await fs.access(outputFolder);
+    
+    // Get folder name for the ZIP file
+    const folderName = path.basename(outputFolder);
+    const zipFileName = `${folderName}.zip`;
+    
+    // Set response headers
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+    
+    // Create archive
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Maximum compression
+    });
+    
+    // Pipe archive to response
+    archive.pipe(res);
+    
+    // Add all files from the output folder
+    archive.directory(outputFolder, false);
+    
+    // Finalize the archive
+    await archive.finalize();
+    
+    console.log(`📦 ZIP archive created and sent: ${zipFileName}`);
+  } catch (error) {
+    console.error('Error creating ZIP archive:', error);
+    res.status(500).json({ error: 'Failed to create ZIP archive' });
+  }
 });
 
 // Check if spotdl is installed and get version info
