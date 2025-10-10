@@ -149,8 +149,12 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   ];
   
-  // More aggressive client type combinations
+  // More aggressive client type combinations - web_embedded is less restrictive
   const clientTypes = [
+    'web_embedded',           // Most reliable - doesn't require sign-in
+    'android,web_embedded',
+    'ios,web_embedded',
+    'tv,web_embedded',
     'android,web,ios',
     'web,android,tv',
     'ios,android,web',
