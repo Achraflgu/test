@@ -452,7 +452,7 @@ const Index = () => {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-border mt-24 py-8 relative z-10">
+      <footer className="border-t border-border mt-24 py-8 relative">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Left: Branding */}

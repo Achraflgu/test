@@ -87,6 +87,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const tracksRef = useRef(tracks);
   const currentPlayingTrackRef = useRef(currentPlayingTrack);
   const isShuffledRef = useRef(isShuffled);
+  const volumeRef = useRef(volume);
+  const isMutedRef = useRef(isMuted);
   
   // Keep refs in sync
   useEffect(() => {
@@ -112,6 +114,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   useEffect(() => {
     isShuffledRef.current = isShuffled;
   }, [isShuffled]);
+  
+  useEffect(() => {
+    volumeRef.current = volume;
+  }, [volume]);
+  
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -205,7 +215,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     if (playerRef.current) {
       playerRef.current.loadVideoById(youtubeId);
-      playerRef.current.setVolume(volume);
+      // Set volume after a short delay to ensure it's applied after video loads
+      setTimeout(() => {
+        if (playerRef.current) {
+          playerRef.current.setVolume(volumeRef.current);
+          if (isMutedRef.current) {
+            playerRef.current.mute();
+          } else {
+            playerRef.current.unMute();
+          }
+        }
+      }, 100);
     } else {
       playerRef.current = new (window as any).YT.Player('youtube-player', {
         height: '0',
@@ -217,7 +237,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         },
         events: {
           onReady: (event: any) => {
-            event.target.setVolume(volume);
+            event.target.setVolume(volumeRef.current);
+            if (isMutedRef.current) {
+              event.target.mute();
+            } else {
+              event.target.unMute();
+            }
             event.target.playVideo();
           },
           onStateChange: (event: any) => {
@@ -297,6 +322,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             } else if (event.data === (window as any).YT.PlayerState.PLAYING) {
               setIsPlaying(true);
               setDuration(event.target.getDuration());
+              // Ensure volume is correctly set when playback starts
+              event.target.setVolume(volumeRef.current);
+              if (isMutedRef.current) {
+                event.target.mute();
+              } else {
+                event.target.unMute();
+              }
             } else if (event.data === (window as any).YT.PlayerState.PAUSED) {
               setIsPlaying(false);
             }
