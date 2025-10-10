@@ -24,6 +24,7 @@ const allowedOrigins = [
   "http://localhost:8081",
   "http://localhost:8082",
   "http://localhost:8083",
+  "https://test-s989-cex65hswg-achrafgu92-gmailcoms-projects.vercel.app", // Vercel frontend
   process.env.FRONTEND_URL // Add production frontend URL from environment
 ].filter(Boolean); // Remove undefined values
 
