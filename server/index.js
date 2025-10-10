@@ -555,7 +555,22 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             resolve(result);
           }, 1000 * (attempt + 1)); // Exponential backoff
         } else {
-          resolve(null);
+          // Final fallback: Create basic track from video ID
+          console.log(`⚠️  All attempts failed, creating basic track for playback...`);
+          const basicTrack = {
+            id: videoId,
+            name: `YouTube Video ${videoId}`,
+            artist: 'YouTube',
+            album: 'YouTube',
+            duration: 0,
+            imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            downloadStatus: 'pending',
+            downloadProgress: 0,
+            selected: true
+          };
+          console.log(`✅ Created basic track - video is playable but metadata limited`);
+          resolve({ track: basicTrack, data: null });
         }
       }
     });
