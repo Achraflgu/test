@@ -53,6 +53,12 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
+    // TEMPORARY: Allow all origins for debugging
+    console.log('✅ CORS allowed for:', origin);
+    callback(null, true);
+    
+    // TODO: Re-enable proper CORS checking after debugging
+    /*
     // Check exact matches
     if (allowedOrigins.indexOf(origin) !== -1) {
       console.log('✅ CORS allowed for:', origin);
@@ -68,6 +74,7 @@ app.use(cors({
       console.log('Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
+    */
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -79,8 +86,8 @@ app.use(cors({
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Allow exact matches or Vercel apps
-  if (allowedOrigins.includes(origin) || (origin && origin.endsWith('.vercel.app'))) {
+  // TEMPORARY: Allow all origins
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
     console.log('✅ Manual CORS header set for:', origin);
   }
