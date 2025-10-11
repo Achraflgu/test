@@ -2945,17 +2945,57 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // For SEARCHES: Use simple web_embedded (NO NewPipe/strategies - they break searches!)
-      // NewPipe extractors return 0 search results, so use standard web client for searching
+      // For SEARCHES: Use simple web_embedded for search phase (NO NewPipe - it breaks searches!)
+      // But ADD download enhancements for after the search finds the video
       ytdlpArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       ytdlpArgs.push('--extractor-args', 'youtube:player_client=web_embedded');
       
-      // Extra bypass for downloads (more aggressive) - applied AFTER search finds the video
-      ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
+      // Add download strategies (proxies, rate limiting, etc.) based on attempt number
+      const strategy = Math.floor(attemptNumber / 3);
+      console.log(`\n🔧 Download Strategy ${strategy + 1} (Attempt ${attemptNumber + 1}) - Search-based`);
+      
+      // Strategy-specific enhancements for downloads (AFTER search completes)
+      if (strategy === 1) {
+        // Strategy 2: Use Invidious proxies
+        const invidiousInstances = [
+          'https://invidious.fdn.fr',
+          'https://inv.riverside.rocks',
+          'https://yewtu.be',
+          'https://invidious.kavin.rocks',
+          'https://vid.puffyan.us',
+          'https://invidious.namazso.eu'
+        ];
+        const proxy = invidiousInstances[attemptNumber % invidiousInstances.length];
+        ytdlpArgs.push('--proxy', proxy);
+        ytdlpArgs.push('--no-check-certificate');
+        console.log(`🔒 Strategy: Invidious Privacy Proxy\n   🌐 Proxy: ${proxy}`);
+      } else if (strategy === 2) {
+        // Strategy 3: Rate-limited human simulation
+        ytdlpArgs.push('--sleep-interval', '3');
+        ytdlpArgs.push('--max-sleep-interval', '7');
+        ytdlpArgs.push('--limit-rate', '500K');
+        console.log(`🐢 Strategy: Slow Human-Like Download\n   🐢 Slow mode: 3-7s delays, 500KB/s limit`);
+        
+        // Add free proxies if enabled
+        if (process.env.USE_FREE_PROXIES === 'true') {
+          const proxy = proxyManager.getProxyForYtdlp();
+          if (proxy) {
+            ytdlpArgs.push('--proxy', proxy);
+            ytdlpArgs.push('--no-check-certificate');
+            console.log(`   🌐 + Free proxy: ${proxy}`);
+          }
+        }
+      } else {
+        // Strategy 1 & 4: Standard (no special proxy, relies on web_embedded reliability)
+        console.log(`📱 Strategy: Standard Web Client (web_embedded)`);
+      }
+      
+      // Extra bypass for downloads (more aggressive)
+      ytdlpArgs.push('--socket-timeout', '60');
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
-      ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
-      ytdlpArgs.push('--http-chunk-size', '1M'); // smaller chunks reduce proxy timeouts
+      ytdlpArgs.push('--skip-unavailable-fragments');
+      ytdlpArgs.push('--http-chunk-size', '1M');
       
       // Add metadata args if artist is not "Unknown Artist"
       if (track.artist !== 'Unknown Artist') {
