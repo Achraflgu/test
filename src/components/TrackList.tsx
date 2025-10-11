@@ -539,6 +539,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Check if player exists AND has valid YouTube methods
     if (playerRef.current && playerRef.current.loadVideoById && typeof playerRef.current.loadVideoById === 'function') {
       try {
+        console.log('📺 Using existing player, loading video:', youtubeId);
         playerRef.current.loadVideoById(youtubeId);
         // Set volume after a short delay to ensure it's applied after video loads
         setTimeout(() => {
@@ -551,20 +552,33 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             }
           }
         }, 100);
+        return; // Successfully loaded, exit early
       } catch (error) {
-        console.error('Error loading video, recreating player:', error);
+        console.error('❌ Error loading video, recreating player:', error);
         // Player is corrupt, destroy and recreate
         try {
-          playerRef.current.destroy();
+          if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
+            playerRef.current.destroy();
+          }
         } catch (e) {
-          // Ignore destroy errors
+          console.log('⚠️ Destroy failed (ignored):', e);
         }
         playerRef.current = null;
-        // Fall through to create new player
+        // Wait a bit before recreating
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
     if (!playerRef.current) {
+      // Ensure the player container exists in the DOM
+      const playerElement = document.getElementById('youtube-player');
+      if (!playerElement) {
+        console.error('YouTube player container not found in DOM');
+        toast.error('Player initialization failed. Please refresh the page.');
+        return;
+      }
+      
+      console.log('🎬 Creating new YouTube player...');
       playerRef.current = new (window as any).YT.Player('youtube-player', {
         height: '0',
         width: '0',
@@ -1184,6 +1198,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Update tracks when parent tracks change (for add/replace feature)
   useEffect(() => {
     setTracks(initialTracks);
+    
+    // If tracks change significantly (new playlist), clean up player to avoid corruption
+    if (initialTracks.length > 0 && tracks.length > 0) {
+      const tracksAreDifferent = initialTracks[0]?.id !== tracks[0]?.id;
+      if (tracksAreDifferent && playerRef.current) {
+        console.log('🔄 New playlist detected, cleaning up player...');
+        try {
+          if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
+            playerRef.current.destroy();
+          }
+        } catch (e) {
+          console.log('⚠️ Player cleanup error (ignored):', e);
+        }
+        playerRef.current = null;
+        setCurrentPlayingTrack(null);
+        setIsPlaying(false);
+        setIsPlayingAll(false);
+      }
+    }
   }, [initialTracks]);
 
   // Update folder name when playlist name changes
