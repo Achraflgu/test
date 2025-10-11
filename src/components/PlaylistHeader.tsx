@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, Music, User, ExternalLink, Play, RefreshCw } from "lucide-react";
+import { Clock, Music, User, ExternalLink, Play, RefreshCw, RotateCcw } from "lucide-react";
 import { Playlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,13 +13,16 @@ interface PlaylistHeaderProps {
     urls: string[];
   };
   onReload?: () => void;
+  onReset?: () => void;
+  hasActiveTracks?: boolean;
 }
 
-export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload }: PlaylistHeaderProps) => {
+export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload, onReset, hasActiveTracks = false }: PlaylistHeaderProps) => {
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
   const [selectedPlaylistIndex, setSelectedPlaylistIndex] = useState<number>(0);
   const [isReloading, setIsReloading] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
   const handleReload = async () => {
     if (!onReload) return;
@@ -35,6 +38,12 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload }: Playli
     } finally {
       setIsReloading(false);
     }
+  };
+
+  const handleReset = () => {
+    if (!onReset) return;
+    setShowResetDialog(false);
+    onReset();
   };
 
   const formatDuration = (seconds: number) => {
@@ -242,6 +251,21 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload }: Playli
                 >
                   <RefreshCw className={`w-4 h-4 mr-1.5 ${isReloading ? 'animate-spin' : ''}`} />
                   <span className="text-xs font-semibold">Reload</span>
+                </Button>
+              )}
+              
+              {/* Reset Button */}
+              {onReset && (
+                <Button
+                  onClick={() => setShowResetDialog(true)}
+                  disabled={!hasActiveTracks}
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 hover:border-orange-500 transition-all rounded-lg hover:scale-105 disabled:opacity-50"
+                  title="Reset session (clear playlist and player)"
+                >
+                  <RotateCcw className="w-4 h-4 mr-1.5" />
+                  <span className="text-xs font-semibold">Reset</span>
                 </Button>
               )}
             </div>
@@ -635,6 +659,60 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload }: Playli
               className="rounded-xl border-border/50"
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Session Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-500">
+              <RotateCcw className="w-5 h-5" />
+              Reset Current Session?
+            </DialogTitle>
+            <DialogDescription>
+              This will clear the current playlist, tracks, and stop playback. Your saved playlists will NOT be affected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg space-y-2">
+              <h4 className="font-semibold text-sm">What will be reset:</h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li>• Current playlist and all tracks</li>
+                <li>• Playback queue and player state</li>
+                <li>• Player position and time</li>
+              </ul>
+              <p className="text-xs text-orange-500 font-medium mt-2">⚠️ Page will reload after reset</p>
+            </div>
+
+            <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg space-y-2">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <ExternalLink className="w-4 h-4 text-primary" />
+                What will be kept:
+              </h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li>• All saved playlists (in History)</li>
+                <li>• Download settings</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowResetDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleReset}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset Session
             </Button>
           </DialogFooter>
         </DialogContent>

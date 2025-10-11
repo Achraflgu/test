@@ -17,7 +17,7 @@ import {
 } from "@/lib/tabNotifications";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { loadCurrentTrackList } from "@/lib/playlistStorage";
+import { loadCurrentTrackList, resetPlayerSession } from "@/lib/playlistStorage";
 
 const Index = () => {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
@@ -80,6 +80,11 @@ const Index = () => {
       toast.success('Playlist restored', {
         description: `${savedTrackList.tracks.length} tracks loaded from previous session`
       });
+      
+      // Scroll to top to show playlist header
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
     }
   }, []); // Only run on mount
 
@@ -138,6 +143,21 @@ const Index = () => {
     toast.info('Search text detected! Switched to Search mode', {
       description: 'Click Search to find music'
     });
+  };
+
+  // Handle reset session
+  const handleResetSession = () => {
+    // Clear all localStorage data except saved playlists
+    resetPlayerSession();
+    
+    toast.success('Session reset', {
+      description: 'Page will reload...'
+    });
+    
+    // Reload page after short delay
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
   };
 
   // Fetch version info and request notification permission on mount
@@ -434,6 +454,8 @@ const Index = () => {
                     playlistInput.click();
                   }
                 }}
+                onReset={handleResetSession}
+                hasActiveTracks={tracks.length > 0}
               />
             )}
             <TrackList 

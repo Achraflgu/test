@@ -80,9 +80,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [showRemoveConfirmDialog, setShowRemoveConfirmDialog] = useState(false);
   const [tracksToRemove, setTracksToRemove] = useState<Track[]>([]);
   
-  // Reset session confirmation state
-  const [showResetConfirmDialog, setShowResetConfirmDialog] = useState(false);
-  
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const repeatModeRef = useRef(repeatMode);
@@ -147,6 +144,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         setCurrentTime(savedSession.currentTime || 0);
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
+        
+        // Force player reload after restoration to prevent stuck state
+        setTimeout(() => {
+          if (playerRef.current) {
+            try {
+              playerRef.current.seekTo(savedSession.currentTime || 0);
+            } catch (err) {
+              console.log('Player not ready yet, will seek when ready');
+            }
+          }
+        }, 1000);
       }
     }
     
@@ -652,44 +660,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
   };
 
-  // Handle reset session
-  const handleResetSession = () => {
-    // Stop playback
-    if (playerRef.current) {
-      playerRef.current.stopVideo();
-    }
-    
-    // Clear player state
-    setCurrentPlayingTrack(null);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlayingAll(false);
-    setPlaylistQueue([]);
-    setRepeatMode('all');
-    setIsShuffled(false);
-    setIsPlayerMinimized(false);
-    
-    // Clear tracks (this will also clear from localStorage via useEffect)
-    setTracks([]);
-    if (onTracksUpdate) {
-      onTracksUpdate([]);
-    }
-    
-    // Clear session from localStorage (keeps saved playlists intact)
-    resetPlayerSession();
-    
-    setShowResetConfirmDialog(false);
-    
-    toast.success('Session reset', {
-      description: 'Track list cleared, playback stopped'
-    });
-    
-    // Reload page to reset everything
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
-  };
+  // Note: Reset session handler moved to PlaylistHeader component
 
   const getStatusIcon = (status: Track['downloadStatus'], progress: number, track?: Track) => {
     switch (status) {
@@ -1374,19 +1345,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
               </Button>
 
-              {/* Reset Session */}
-              <Button
-                onClick={() => setShowResetConfirmDialog(true)}
-                disabled={!currentPlayingTrack && playlistQueue.length === 0}
-                variant="outline"
-                className="group relative h-11 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500 hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                title="Reset current session (clear queue, stop playback)"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                <RotateCcw className="w-4 h-4 mr-1.5 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Reset</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Reset</span>
-              </Button>
+              {/* Reset Session - moved from here to PlaylistHeader */}
               
               {/* Download Button */}
               <Button
@@ -2997,62 +2956,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         </DialogContent>
       </Dialog>
 
-      {/* Reset Session Confirmation Dialog */}
-      <Dialog open={showResetConfirmDialog} onOpenChange={setShowResetConfirmDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-orange-500">
-              <RotateCcw className="w-5 h-5" />
-              Reset Current Session?
-            </DialogTitle>
-            <DialogDescription>
-              This will clear the current playback queue and stop the player. Your saved playlists will NOT be affected.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg space-y-2">
-              <h4 className="font-semibold text-sm">What will be reset:</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• Current playing track</li>
-                <li>• Playback queue ({playlistQueue.length} tracks)</li>
-                <li>• Track list ({tracks.length} tracks)</li>
-                <li>• Playlist info</li>
-                <li>• Player position and time</li>
-                <li>• Repeat/shuffle modes</li>
-              </ul>
-              <p className="text-xs text-orange-500 font-medium mt-2">⚠️ Page will reload after reset</p>
-            </div>
-
-            <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg space-y-2">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
-                What will be kept:
-              </h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• All saved playlists</li>
-                <li>• Download settings</li>
-              </ul>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowResetConfirmDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleResetSession}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset Session
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
