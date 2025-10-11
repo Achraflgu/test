@@ -2288,9 +2288,9 @@ app.get('/api/youtube/search', async (req, res) => {
   const searchStartTime = Date.now();
   
   try {
-    // Use yt-dlp with FAST args (same as playlist - no complex enhancements)
+    // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise(async (resolve, reject) => {
-      // FAST search arguments (like playlist fetch)
+      // Base search arguments - NO PROXIES for search (they cause failures)
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2299,42 +2299,56 @@ app.get('/api/youtube/search', async (req, res) => {
         '--no-warnings',
         '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android,web',  // Fast method!
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 13) gzip'
       ];
       
-      // Add cookies if available (but don't wait for complex enhancements)
-      try {
-        const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-        if (cookiesExist) {
-          searchArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
-        }
-      } catch (err) {
-        // No cookies available
+      // Add cookies if available (makes searches more reliable)
+      if (process.env.YOUTUBE_COOKIES) {
+        searchArgs.push('--cookies', cookiesFile);
+        console.log('🍪 Using YouTube cookies for search (Player)');
+      } else {
+        console.log('⚠️ No YouTube cookies - search may be limited or blocked');
       }
       
+      // ⚡ IMPORTANT: Don't use proxies for search - they get blocked and slow down searches
+      
+      console.log('🔍 Running yt-dlp search command (Player)...');
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
       let output = '';
       let errorOutput = '';
+      let timeoutHandle = null;
       
       searchProcess.stdout.on('data', (data) => {
         output += data.toString();
       });
       
       searchProcess.stderr.on('data', (data) => {
-        errorOutput += data.toString();
+        const errText = data.toString();
+        errorOutput += errText;
+        // Log important errors in real-time
+        if (errText.includes('Sign in') || errText.includes('bot') || errText.includes('ERROR')) {
+          console.log('⚠️ Search warning (Player):', errText.trim());
+        }
       });
       
       searchProcess.on('close', (code) => {
+        // Clear timeout on completion
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        
         if (code !== 0) {
-          console.error('Search error:', errorOutput);
+          console.error('❌ Search failed with exit code:', code);
+          console.error('Error output:', errorOutput);
           reject(new Error('Search failed'));
           return;
         }
         
         // Parse JSON output (one JSON object per line)
         const lines = output.trim().split('\n').filter(line => line.trim());
+        console.log(`📊 Received ${lines.length} lines of output from yt-dlp (Player)`);
         const tracks = [];
         
         for (const line of lines) {
@@ -2345,6 +2359,14 @@ app.get('/api/youtube/search', async (req, res) => {
             const videoId = data.id || data.url || '';
             const thumbnail = data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
             const duration = data.duration || 0;
+            
+            console.log(`  📝 Parsing result (Player): "${title}" (ID: ${videoId})`);
+            
+            // Skip if no valid data
+            if (!title || !videoId) {
+              console.log('  ⚠️ Skipping - missing title or videoId');
+              continue;
+            }
           
           // Parse title to extract artist and song name
           let artist = 'Unknown Artist';
@@ -2399,12 +2421,22 @@ app.get('/api/youtube/search', async (req, res) => {
             selected: true
           });
         } catch (e) {
-          console.error('Error parsing search result:', e.message);
+          console.error('❌ Error parsing search result (Player):', e.message);
         }
       }
       
+      console.log(`✅ Successfully parsed ${tracks.length} tracks from ${lines.length} lines (Player)`);
       resolve(tracks);
     });
+    
+    // Add timeout for search (30 seconds max - increased for better success rate)
+    timeoutHandle = setTimeout(() => {
+      if (!searchProcess.killed) {
+        console.log('⏱️ Search timeout (Player) - killing process');
+        searchProcess.kill('SIGTERM');
+        reject(new Error('Search timed out'));
+      }
+    }, 30000);
   });
   
   const searchTime = ((Date.now() - searchStartTime) / 1000).toFixed(2);
