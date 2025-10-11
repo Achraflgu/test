@@ -11,7 +11,7 @@ timeout /t 2 /nobreak >nul
 echo [32mStarting server and frontend...[0m
 echo.
 
-start "" cmd /c "cd server && node index.js"
+start "" cmd /c "cd server && set YTDL_OPTIONS_PATH=%CD%\yt-dlp.conf && node index.js"
 timeout /t 3 /nobreak >nul
 start "" cmd /c "npm run dev"
 

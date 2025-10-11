@@ -59,6 +59,11 @@ echo.
 echo Starting backend server...
 echo.
 
+:: Set yt-dlp config location (fixes YouTube blocking)
+set YTDL_OPTIONS_PATH=%CD%\yt-dlp.conf
+echo Using yt-dlp config: %YTDL_OPTIONS_PATH%
+echo.
+
 :: Start the server
 node index.js
 
