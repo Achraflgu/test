@@ -2802,8 +2802,9 @@ async function fetchYouTubeMetadata(searchQuery, youtubeLink = null) {
 }
 
 // Try yt-dlp fallback for failed tracks - WITH PARALLEL DOWNLOADS
-async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, downloadId, youtubeLinks = {}, settings = {}) {
+async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, downloadId, youtubeLinks = {}, settings = {}, attemptNumber = 0) {
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
+  console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
   const parallelDownloads = settings.threads || 8;
   console.log(`⚡ Using ${parallelDownloads} parallel downloads`);
@@ -2916,8 +2917,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // Add enhanced methods with extra bypass options
-      await addYouTubeEnhancements(ytdlpArgs, 0);
+      // Add enhanced methods with strategy cycling based on attempt number
+      await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
       
       // Extra bypass for downloads (more aggressive)
       ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
@@ -3295,8 +3296,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         message: '🎯 YouTube-only download - using yt-dlp...'
       });
       
-      // Use yt-dlp fallback which handles YouTube URLs properly
-      const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, {}, settings);
+      // Use yt-dlp fallback which handles YouTube URLs properly (first attempt)
+      const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, {}, settings, 0);
       
       // Check results
       try {
@@ -3866,8 +3867,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const progressMade = remaining < lastFailCount || lastFailCount === 0;
           lastFailCount = remaining;
           
-          // If no progress after 3 attempts, these tracks are unavailable
-          const giveUp = !progressMade && attempt >= 3;
+          // If no progress after 9 attempts, these tracks are unavailable
+          // (need 9 attempts to try all 4 strategies: NewPipe 0-2, Invidious 3-5, Rate-Limited 6-8, Mixed 9+)
+          const giveUp = !progressMade && attempt >= 9;
           
           if (remaining > 0 && attempt < maxAttempts && !giveUp) {
             totalFailed = remaining;
@@ -3881,8 +3883,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 message: `🔄 Trying yt-dlp fallback for ${remaining} failed tracks...`
               });
               
-              // Try yt-dlp fallback with captured YouTube links
-              const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, youtubeLinks, settings);
+              // Try yt-dlp fallback with captured YouTube links (pass attempt number for strategy cycling)
+              const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, youtubeLinks, settings, attempt);
               
               // Re-count after yt-dlp attempt
               const filesAfterYtdlp = await fs.readdir(outputFolder);
@@ -3970,8 +3972,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                     message: `📺 Phase 2: Downloading ${downloadInfo.youtubeTracks.length} YouTube tracks...`
                   });
                   
-                  // Download YouTube tracks
-                  await tryYtDlpFallback(downloadInfo.youtubeTracks, outputFolder, outputPath, socket, downloadId, {}, settings);
+                  // Download YouTube tracks (first attempt)
+                  await tryYtDlpFallback(downloadInfo.youtubeTracks, outputFolder, outputPath, socket, downloadId, {}, settings, 0);
                   
                   // Clear flag so we don't download them again
                   downloadInfo.hasYouTubeTracks = false;
