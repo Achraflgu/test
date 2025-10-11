@@ -150,11 +150,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         setTimeout(() => {
           console.log('🔄 Restoring track:', savedSession.currentTrack.name);
           const restoredTrack = savedSession.currentTrack;
-          const youtubeId = restoredTrack.youtubeId || restoredTrack.id;
+          let youtubeId = restoredTrack.youtubeId || restoredTrack.id;
           
           if (!youtubeId) {
             console.error('❌ No YouTube ID found for track');
             return;
+          }
+          
+          // Remove "search-" prefix if present (from YouTube search results)
+          if (youtubeId.startsWith('search-')) {
+            youtubeId = youtubeId.replace('search-', '');
+            console.log('🔧 Cleaned search prefix from ID');
           }
           
           console.log('📺 Loading video ID:', youtubeId);
@@ -345,6 +351,16 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
 
     let youtubeId = getYouTubeId(track.url);
+    
+    // If no URL, try using the track's youtubeId or id directly
+    if (!youtubeId) {
+      youtubeId = track.youtubeId || track.id;
+      
+      // Remove "search-" prefix if present (from YouTube search results)
+      if (youtubeId && youtubeId.startsWith('search-')) {
+        youtubeId = youtubeId.replace('search-', '');
+      }
+    }
     
     // If not a YouTube URL (e.g., Spotify), search for it on YouTube
     if (!youtubeId) {
