@@ -291,53 +291,67 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     { country: 'IN', lang: 'en-IN,en;q=0.9,hi;q=0.8', tz: 'Asia/Kolkata' }
   ];
   
-  // Helper function to add free proxy with intelligent selection and enhanced chaining
+  // Helper function to add proxy with intelligent selection and enhanced chaining
   const addFreeProxy = () => {
-    if (process.env.USE_FREE_PROXIES === 'true') {
-      // 🎯 SMART PROXY SELECTION: Prefer working proxies, fallback to random
-      let proxy = null;
-      
-      // First priority: Use a verified working proxy if available
+    let proxy = null;
+    let proxyType = 'none';
+    
+    // 🎯 PRIORITY 1: Oxylabs Premium Proxy (BEST - 60-80% success rate)
+    if (process.env.OXYLABS_PROXY) {
+      proxy = process.env.OXYLABS_PROXY;
+      proxyType = 'Oxylabs Premium';
+      console.log(`   🌐 Using Oxylabs proxy to bypass YouTube blocking`);
+    }
+    // 🎯 PRIORITY 2: ScraperAPI (GOOD - 40-60% success rate)
+    else if (process.env.SCRAPERAPI_KEY) {
+      proxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
+      proxyType = 'ScraperAPI';
+      console.log(`   🌐 Using ScraperAPI proxy`);
+    }
+    // 🎯 PRIORITY 3: Free Rotating Proxies (FALLBACK - 1-4% success rate)
+    else if (process.env.USE_FREE_PROXIES === 'true') {
+      // SMART PROXY SELECTION: Prefer working proxies, fallback to random
       if (proxyManager.workingProxies && proxyManager.workingProxies.length > 0) {
         const workingIndex = Math.floor(Math.random() * proxyManager.workingProxies.length);
         const workingProxy = proxyManager.workingProxies[workingIndex];
         proxy = `http://${workingProxy}`;
+        proxyType = 'Free (Verified)';
         console.log(`   🎯 Using verified working proxy: ${proxy}`);
       } else {
-        // Second priority: Get a random proxy (might work)
+        // Get a random proxy (might work)
         proxy = proxyManager.getProxyForYtdlp();
+        proxyType = 'Free (Random)';
         if (proxy) {
           console.log(`   🌐 Using random proxy: ${proxy}`);
         }
       }
-      
-      if (proxy) {
-        args.push('--proxy', proxy);
-        args.push('--no-check-certificate');
-        
-        // 🔥 ENHANCED PROXY CHAINING (for advanced bot bypass strategies)
-        if (strategy < 5) {
-          // Add proxy masking headers to confuse tracking algorithms
-          args.push('--add-header', 'Via:1.1 ' + Math.random().toString(36).substr(2, 8) + '.proxy.youtube.com');
-          args.push('--add-header', 'X-Forwarded-Proto:https');
-          args.push('--add-header', 'X-Forwarded-Port:443');
-          args.push('--add-header', `X-Real-IP:${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`);
-          args.push('--add-header', 'X-Forwarded-Host:youtube.com');
-          args.push('--add-header', 'X-Forwarded-For:' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255));
-          args.push('--add-header', 'X-Proxy-Connection:keep-alive');
-          args.push('--add-header', 'X-Proxy-Authorization:Basic ' + Buffer.from('anonymous:anonymous').toString('base64'));
-          
-          console.log(`   🌐 Enhanced proxy chain: ${proxy} (full IP masking + headers)`);
-        } else {
-          console.log(`   🌐 Standard proxy: ${proxy}`);
-        }
-        return true;
-      } else {
-        console.log(`   ❌ No proxies available from pool of ${proxyManager.proxies ? proxyManager.proxies.length : 0}`);
-        return false;
-      }
     }
-    return false;
+    
+    if (proxy) {
+      args.push('--proxy', proxy);
+      args.push('--no-check-certificate');
+      
+      // 🔥 ENHANCED PROXY CHAINING (for advanced bot bypass strategies)
+      if (strategy < 5 && proxyType === 'Free (Verified)' || proxyType === 'Free (Random)') {
+        // Add proxy masking headers to confuse tracking algorithms (ONLY for free proxies)
+        args.push('--add-header', 'Via:1.1 ' + Math.random().toString(36).substr(2, 8) + '.proxy.youtube.com');
+        args.push('--add-header', 'X-Forwarded-Proto:https');
+        args.push('--add-header', 'X-Forwarded-Port:443');
+        args.push('--add-header', `X-Real-IP:${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`);
+        args.push('--add-header', 'X-Forwarded-Host:youtube.com');
+        args.push('--add-header', 'X-Forwarded-For:' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255));
+        args.push('--add-header', 'X-Proxy-Connection:keep-alive');
+        args.push('--add-header', 'X-Proxy-Authorization:Basic ' + Buffer.from('anonymous:anonymous').toString('base64'));
+        console.log(`   🌐 Enhanced proxy chain: ${proxy} (full IP masking + headers)`);
+      }
+      
+      return true;
+    } else {
+      if (process.env.USE_FREE_PROXIES === 'true') {
+        console.log(`   ❌ No proxies available from pool of ${proxyManager.proxies ? proxyManager.proxies.length : 0}`);
+      }
+      return false;
+    }
   };
   
   // ===== STRATEGY 1: Advanced Bot Detection Bypass (0-1) =====
@@ -4797,8 +4811,28 @@ checkAndUpdateVersions().then(async () => {
     }
   }
   
-  // Initialize free proxy pool if enabled
+  // 🔍 CHECK PROXY CONFIGURATION
+  console.log('\n🔍 Checking proxy configuration...');
+  
+  // Check Oxylabs (Priority 1)
+  if (process.env.OXYLABS_PROXY) {
+    console.log('✅ Oxylabs proxy configured! 🎯');
+    console.log(`   Proxy: ${process.env.OXYLABS_PROXY.split('@')[1] || 'dc.oxylabs.io:8000'}`);
+  } else {
+    console.log('⚠️  Oxylabs proxy NOT configured');
+  }
+  
+  // Check ScraperAPI (Priority 2)
+  if (process.env.SCRAPERAPI_KEY) {
+    console.log('✅ ScraperAPI key configured!');
+    console.log(`   Key: ${process.env.SCRAPERAPI_KEY.substring(0, 8)}...`);
+  } else {
+    console.log('⚠️  ScraperAPI key NOT configured');
+  }
+  
+  // Initialize free proxy pool if enabled (Priority 3 - Fallback)
   if (process.env.USE_FREE_PROXIES === 'true') {
+    console.log('✅ Free proxies enabled (fallback)');
     console.log('\n🌐 Initializing free proxy pool...');
     try {
       await proxyManager.fetchProxies();
@@ -4808,7 +4842,21 @@ checkAndUpdateVersions().then(async () => {
       console.log('⚠️ Failed to load proxies:', error.message);
       console.log('Will try to fetch proxies on first use');
     }
+  } else {
+    console.log('⚠️  Free proxies NOT enabled');
   }
+  
+  console.log('\n📊 Download Success Rate Estimate:');
+  if (process.env.OXYLABS_PROXY) {
+    console.log('   🟢 60-80% (Oxylabs Premium)');
+  } else if (process.env.SCRAPERAPI_KEY) {
+    console.log('   🟡 40-60% (ScraperAPI)');
+  } else if (process.env.USE_FREE_PROXIES === 'true') {
+    console.log('   🔴 1-4% (Free Proxies Only)');
+  } else {
+    console.log('   ⚫ 0% (No Proxies - will fail)');
+  }
+  console.log('');
   
   httpServer.listen(PORT, () => {
     console.log(`
