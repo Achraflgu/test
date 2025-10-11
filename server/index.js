@@ -2944,10 +2944,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // Add enhanced methods with extra bypass options
-      await addYouTubeEnhancements(ytdlpArgs, 0);
+      // For SEARCHES: Use simple web_embedded (NO NewPipe/strategies - they break searches!)
+      // NewPipe extractors return 0 search results, so use standard web client for searching
+      ytdlpArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      ytdlpArgs.push('--extractor-args', 'youtube:player_client=web_embedded');
       
-      // Extra bypass for downloads (more aggressive)
+      // Extra bypass for downloads (more aggressive) - applied AFTER search finds the video
       ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
