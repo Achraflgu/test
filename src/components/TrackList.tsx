@@ -145,52 +145,37 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
         
-        // Force complete player reload after restoration to prevent stuck state
+        // Trigger playTrack to properly load the video (but don't auto-play)
         setTimeout(() => {
-          if (playerRef.current) {
-            try {
-              // Destroy and recreate player to ensure clean state
-              playerRef.current.destroy();
-              playerRef.current = null;
+          console.log('🔄 Restoring track:', savedSession.currentTrack.name);
+          const restoredTrack = savedSession.currentTrack;
+          
+          // Use playTrack function to properly load video
+          const youtubeId = restoredTrack.youtubeId || restoredTrack.id;
+          if (youtubeId && (window as any).YT) {
+            if (playerRef.current) {
+              // Player exists, just load the video
+              playerRef.current.loadVideoById(youtubeId);
+              playerRef.current.pauseVideo();
               
-              // Recreate player after a short delay
               setTimeout(() => {
-                const youtubeId = savedSession.currentTrack.youtubeId || savedSession.currentTrack.id;
-                if (youtubeId && (window as any).YT) {
-                  playerRef.current = new (window as any).YT.Player('youtube-player', {
-                    videoId: youtubeId,
-                    playerVars: {
-                      autoplay: 0,
-                      controls: 0,
-                      modestbranding: 1,
-                      rel: 0,
-                      showinfo: 0
-                    },
-                    events: {
-                      onReady: (event: any) => {
-                        event.target.setVolume(volumeRef.current);
-                        if (isMutedRef.current) {
-                          event.target.mute();
-                        }
-                        // Seek to saved position but don't play
-                        event.target.seekTo(savedSession.currentTime || 0);
-                        event.target.pauseVideo();
-                        console.log('✅ Player reloaded at', savedSession.currentTime, 'seconds');
-                      },
-                      onStateChange: (event: any) => {
-                        if (event.data === (window as any).YT.PlayerState.PLAYING) {
-                          setDuration(event.target.getDuration());
-                        }
-                      }
-                    }
-                  });
+                if (playerRef.current) {
+                  const savedTime = savedSession.currentTime || 0;
+                  playerRef.current.seekTo(savedTime);
+                  playerRef.current.pauseVideo();
+                  
+                  // Get duration
+                  const videoDuration = playerRef.current.getDuration();
+                  if (videoDuration && videoDuration > 0) {
+                    setDuration(videoDuration);
+                  }
+                  
+                  console.log('✅ Player restored at', savedTime, 'seconds, duration:', videoDuration);
                 }
-              }, 500);
-            } catch (err) {
-              console.log('Player reload error:', err);
+              }, 1000);
             }
           }
-        }, 1500);
+        }, 2000);
       }
     }
     

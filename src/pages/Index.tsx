@@ -81,13 +81,25 @@ const Index = () => {
         description: `${savedTrackList.tracks.length} tracks loaded from previous session`
       });
       
-      // Scroll to track list section
+      // Scroll to track list section after a longer delay to ensure it's rendered
       setTimeout(() => {
         const trackListSection = document.querySelector('[data-track-list]');
+        console.log('🔍 Looking for track list section:', trackListSection);
         if (trackListSection) {
-          trackListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          console.log('✅ Found track list, scrolling...');
+          trackListSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          console.log('⚠️ Track list section not found yet, trying again...');
+          // Try again after another delay
+          setTimeout(() => {
+            const retry = document.querySelector('[data-track-list]');
+            if (retry) {
+              console.log('✅ Found track list on retry, scrolling...');
+              retry.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 500);
         }
-      }, 300);
+      }, 800);
     }
   }, []); // Only run on mount
 
