@@ -17,9 +17,12 @@ import {
   Edit2,
   Check,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Download,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportPlaylists, importPlaylists } from '@/lib/playlistStorage';
 
 interface SavedPlaylist {
   id: string;
@@ -66,6 +69,10 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  
+  // Import mode state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
 
   // Refresh playlists when dialog opens
   useEffect(() => {
@@ -124,6 +131,52 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
       savePlaylists([]);
       toast.success('All playlists cleared');
     }
+  };
+
+  // Export playlists to JSON file
+  const handleExport = () => {
+    const result = exportPlaylists();
+    if (result.success) {
+      toast.success(`Exported ${result.count} playlists`, {
+        description: 'File downloaded successfully'
+      });
+    } else {
+      toast.error('Export failed', {
+        description: result.error
+      });
+    }
+  };
+
+  // Import playlists from JSON file
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const result = await importPlaylists(file, importMode);
+    
+    if (result.success) {
+      const refreshedPlaylists = loadPlaylists();
+      setSavedPlaylists(refreshedPlaylists);
+      
+      toast.success(
+        importMode === 'replace' 
+          ? `Replaced with ${result.count} playlists`
+          : `Added ${result.count} new playlists`,
+        {
+          description: importMode === 'merge' 
+            ? 'Duplicates were skipped'
+            : 'Previous playlists were removed'
+        }
+      );
+      setShowImportDialog(false);
+    } else {
+      toast.error('Import failed', {
+        description: result.error
+      });
+    }
+    
+    // Reset file input
+    event.target.value = '';
   };
 
   // Start editing a playlist
@@ -241,16 +294,39 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
               </div>
             </div>
             
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearAll}
-              disabled={savedPlaylists.length === 0}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Clear All
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={savedPlaylists.length === 0}
+                className="hover:bg-primary/10"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImportDialog(true)}
+                className="hover:bg-primary/10"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Import
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAll}
+                disabled={savedPlaylists.length === 0}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear All
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
@@ -531,6 +607,62 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
           </div>
         </div>
       </DialogContent>
+      
+      {/* Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import Playlists</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Select a JSON file exported from Track Miner to import playlists.
+            </p>
+            
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Import Mode</label>
+              <div className="flex gap-3">
+                <Button
+                  variant={importMode === 'merge' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setImportMode('merge')}
+                  className="flex-1"
+                >
+                  <span className="mr-2">🔀</span>
+                  Merge
+                </Button>
+                <Button
+                  variant={importMode === 'replace' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setImportMode('replace')}
+                  className="flex-1"
+                >
+                  <span className="mr-2">♻️</span>
+                  Replace
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {importMode === 'merge' 
+                  ? 'Add new playlists without removing existing ones (duplicates skipped)'
+                  : '⚠️ Replace all existing playlists with imported ones'}
+              </p>
+            </div>
+            
+            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+              <Input
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Choose a JSON file to import
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

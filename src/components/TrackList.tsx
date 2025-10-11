@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle } from "lucide-react";
+import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +16,7 @@ import {
   resetTabTitle,
 } from "@/lib/tabNotifications";
 import { savePlaylistToHistory } from "@/components/SavedPlaylists";
+import { savePlayerSession, loadPlayerSession, savePlayerSettings, loadPlayerSettings, resetPlayerSession } from "@/lib/playlistStorage";
 
 interface TrackListProps {
   tracks: Track[];
@@ -79,6 +80,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [showRemoveConfirmDialog, setShowRemoveConfirmDialog] = useState(false);
   const [tracksToRemove, setTracksToRemove] = useState<Track[]>([]);
   
+  // Reset session confirmation state
+  const [showResetConfirmDialog, setShowResetConfirmDialog] = useState(false);
+  
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const repeatModeRef = useRef(repeatMode);
@@ -122,6 +126,65 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  // ============ PERSISTENCE: RESTORE STATE ON MOUNT ============
+  useEffect(() => {
+    // Restore player session (queue, current track, position)
+    const savedSession = loadPlayerSession();
+    if (savedSession) {
+      console.log('📥 Restoring player session...', savedSession);
+      
+      if (savedSession.currentQueue && savedSession.currentQueue.length > 0) {
+        setPlaylistQueue(savedSession.currentQueue);
+        setIsPlayingAll(true);
+      }
+      
+      if (savedSession.currentTrack) {
+        setCurrentPlayingTrack(savedSession.currentTrack);
+        setCurrentTime(savedSession.currentTime || 0);
+        // Keep player paused (do NOT auto-play)
+        setIsPlaying(false);
+      }
+    }
+    
+    // Restore player settings (volume, repeat, shuffle, minimized, position)
+    const savedSettings = loadPlayerSettings();
+    if (savedSettings) {
+      console.log('📥 Restoring player settings...', savedSettings);
+      setVolume(savedSettings.volume);
+      setIsMuted(savedSettings.isMuted);
+      setIsShuffled(savedSettings.isShuffled);
+      setRepeatMode(savedSettings.repeatMode);
+      setIsPlayerMinimized(savedSettings.isMinimized);
+    }
+  }, []); // Only run on mount
+
+  // ============ PERSISTENCE: SAVE STATE ON CHANGES ============
+  // Save player session (queue, current track, position)
+  useEffect(() => {
+    if (currentPlayingTrack || playlistQueue.length > 0) {
+      const session = {
+        currentTrack: currentPlayingTrack,
+        currentQueue: playlistQueue,
+        currentTime: currentTime,
+        isPlaying: false, // Always save as paused
+        timestamp: Date.now()
+      };
+      savePlayerSession(session);
+    }
+  }, [currentPlayingTrack, playlistQueue, currentTime]);
+
+  // Save player settings
+  useEffect(() => {
+    const settings = {
+      volume,
+      isMuted,
+      isShuffled,
+      repeatMode,
+      isMinimized: isPlayerMinimized
+    };
+    savePlayerSettings(settings);
+  }, [volume, isMuted, isShuffled, repeatMode, isPlayerMinimized]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -570,6 +633,34 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setShowDuplicateConfirmDialog(false);
       setDuplicateInfo(null);
     }
+  };
+
+  // Handle reset session
+  const handleResetSession = () => {
+    // Stop playback
+    if (playerRef.current) {
+      playerRef.current.stopVideo();
+    }
+    
+    // Clear player state
+    setCurrentPlayingTrack(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlayingAll(false);
+    setPlaylistQueue([]);
+    setRepeatMode('all');
+    setIsShuffled(false);
+    setIsPlayerMinimized(false);
+    
+    // Clear session from localStorage (keeps saved playlists intact)
+    resetPlayerSession();
+    
+    setShowResetConfirmDialog(false);
+    
+    toast.success('Session reset', {
+      description: 'Queue cleared, playback stopped'
+    });
   };
 
   const getStatusIcon = (status: Track['downloadStatus'], progress: number, track?: Track) => {
@@ -1253,6 +1344,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <X className="w-4 h-4 mr-1.5 relative z-10" />
                 <span className="hidden xl:inline relative z-10">Remove</span>
                 <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
+              </Button>
+
+              {/* Reset Session */}
+              <Button
+                onClick={() => setShowResetConfirmDialog(true)}
+                disabled={!currentPlayingTrack && playlistQueue.length === 0}
+                variant="outline"
+                className="group relative h-11 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500 hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                title="Reset current session (clear queue, stop playback)"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                <RotateCcw className="w-4 h-4 mr-1.5 relative z-10" />
+                <span className="hidden xl:inline relative z-10">Reset</span>
+                <span className="xl:hidden relative z-10 hidden sm:inline">Reset</span>
               </Button>
               
               {/* Download Button */}
@@ -2859,6 +2964,61 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             >
               <Save className="w-4 h-4 mr-2" />
               Save Playlist
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Session Confirmation Dialog */}
+      <Dialog open={showResetConfirmDialog} onOpenChange={setShowResetConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-500">
+              <RotateCcw className="w-5 h-5" />
+              Reset Current Session?
+            </DialogTitle>
+            <DialogDescription>
+              This will clear the current playback queue and stop the player. Your saved playlists will NOT be affected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg space-y-2">
+              <h4 className="font-semibold text-sm">What will be reset:</h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li>• Current playing track</li>
+                <li>• Playback queue ({playlistQueue.length} tracks)</li>
+                <li>• Player position and time</li>
+                <li>• Repeat/shuffle modes</li>
+              </ul>
+            </div>
+
+            <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg space-y-2">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary" />
+                What will be kept:
+              </h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li>• All saved playlists</li>
+                <li>• Volume and settings</li>
+                <li>• Track list on this page</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowResetConfirmDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetSession}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset Session
             </Button>
           </DialogFooter>
         </DialogContent>
