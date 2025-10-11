@@ -140,29 +140,32 @@ const activeProcesses = new Map();
 
 // Enhanced YouTube helper with aggressive fallback methods
 async function addYouTubeEnhancements(args, attempt = 0) {
-  // More diverse user agents to avoid detection
+  // Prioritize mobile user agents to match Android client (reduces blocking)
   const userAgents = [
+    'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
-    'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0'
   ];
   
-  // More aggressive client type combinations - web_embedded is less restrictive
+  // More aggressive client type combinations - android is most reliable for avoiding blocks
   const clientTypes = [
-    'web_embedded',           // Most reliable - doesn't require sign-in
-    'android,web_embedded',
+    'android',                 // Most reliable - mobile clients are less blocked
+    'android,web_embedded',    // Fallback combination
+    'ios',                     // iOS as backup
+    'android,ios',             // Mobile combination
+    'android,web',             // Mixed approach
+    'web_embedded',            // Web embedded (more blocks)
     'ios,web_embedded',
     'tv,web_embedded',
     'android,web,ios',
     'web,android,tv',
     'ios,android,web',
     'tv,web,android',
-    'android,ios',
     'web,tv',
     'ios,tv',
     'android,tv'
@@ -3295,7 +3298,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       '--format', settings.format || 'mp3',
       '--bitrate', settings.quality || '320k',
       '--threads', (settings.threads || 8).toString(),
-      '--overwrite', 'skip'
+      '--overwrite', 'skip',
+      // FIX: Use Android client to bypass YouTube blocking
+      '--yt-dlp-args', '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10'
     ];
 
     console.log('Running spotdl command:', `${PYTHON_CMD} ${spotdlArgs.slice(0, 6).join(' ')}... (${spotifyUrls.length} Spotify URLs)`);
