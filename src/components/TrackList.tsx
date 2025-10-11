@@ -145,16 +145,52 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
         
-        // Force player reload after restoration to prevent stuck state
+        // Force complete player reload after restoration to prevent stuck state
         setTimeout(() => {
           if (playerRef.current) {
             try {
-              playerRef.current.seekTo(savedSession.currentTime || 0);
+              // Destroy and recreate player to ensure clean state
+              playerRef.current.destroy();
+              playerRef.current = null;
+              
+              // Recreate player after a short delay
+              setTimeout(() => {
+                const youtubeId = savedSession.currentTrack.youtubeId || savedSession.currentTrack.id;
+                if (youtubeId && (window as any).YT) {
+                  playerRef.current = new (window as any).YT.Player('youtube-player', {
+                    videoId: youtubeId,
+                    playerVars: {
+                      autoplay: 0,
+                      controls: 0,
+                      modestbranding: 1,
+                      rel: 0,
+                      showinfo: 0
+                    },
+                    events: {
+                      onReady: (event: any) => {
+                        event.target.setVolume(volumeRef.current);
+                        if (isMutedRef.current) {
+                          event.target.mute();
+                        }
+                        // Seek to saved position but don't play
+                        event.target.seekTo(savedSession.currentTime || 0);
+                        event.target.pauseVideo();
+                        console.log('✅ Player reloaded at', savedSession.currentTime, 'seconds');
+                      },
+                      onStateChange: (event: any) => {
+                        if (event.data === (window as any).YT.PlayerState.PLAYING) {
+                          setDuration(event.target.getDuration());
+                        }
+                      }
+                    }
+                  });
+                }
+              }, 500);
             } catch (err) {
-              console.log('Player not ready yet, will seek when ready');
+              console.log('Player reload error:', err);
             }
           }
-        }, 1000);
+        }, 1500);
       }
     }
     

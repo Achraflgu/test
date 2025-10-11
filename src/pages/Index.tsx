@@ -81,10 +81,13 @@ const Index = () => {
         description: `${savedTrackList.tracks.length} tracks loaded from previous session`
       });
       
-      // Scroll to top to show playlist header
+      // Scroll to track list section
       setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
+        const trackListSection = document.querySelector('[data-track-list]');
+        if (trackListSection) {
+          trackListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
     }
   }, []); // Only run on mount
 
