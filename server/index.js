@@ -2956,25 +2956,39 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       
       // Strategy-specific enhancements for downloads (AFTER search completes)
       if (strategy === 1) {
-        // Strategy 2: Use Invidious proxies
-        const invidiousInstances = [
-          'https://invidious.fdn.fr',
-          'https://inv.riverside.rocks',
-          'https://yewtu.be',
-          'https://invidious.kavin.rocks',
-          'https://vid.puffyan.us',
-          'https://invidious.namazso.eu'
-        ];
-        const proxy = invidiousInstances[attemptNumber % invidiousInstances.length];
-        ytdlpArgs.push('--proxy', proxy);
-        ytdlpArgs.push('--no-check-certificate');
-        console.log(`🔒 Strategy: Invidious Privacy Proxy\n   🌐 Proxy: ${proxy}`);
+        // Strategy 2: Audio-only extraction (different API, less monitored)
+        console.log(`🎵 Strategy: Audio-Only Extraction (bypasses video checks)`);
+        ytdlpArgs.push('--format', 'bestaudio');
+        ytdlpArgs.push('--extract-audio');
+        
+        // Add aggressive bypass headers
+        ytdlpArgs.push('--add-header', 'Accept:*/*');
+        ytdlpArgs.push('--add-header', 'Accept-Encoding:gzip, deflate');
+        ytdlpArgs.push('--add-header', 'Connection:keep-alive');
+        ytdlpArgs.push('--add-header', 'Sec-Fetch-Mode:navigate');
+        ytdlpArgs.push('--add-header', 'Sec-Fetch-Dest:video');
+        
+        // Try free proxies if enabled
+        if (process.env.USE_FREE_PROXIES === 'true') {
+          const proxy = proxyManager.getProxyForYtdlp();
+          if (proxy) {
+            ytdlpArgs.push('--proxy', proxy);
+            ytdlpArgs.push('--no-check-certificate');
+            console.log(`   🌐 + Free proxy: ${proxy}`);
+          }
+        }
       } else if (strategy === 2) {
-        // Strategy 3: Rate-limited human simulation
-        ytdlpArgs.push('--sleep-interval', '3');
-        ytdlpArgs.push('--max-sleep-interval', '7');
-        ytdlpArgs.push('--limit-rate', '500K');
-        console.log(`🐢 Strategy: Slow Human-Like Download\n   🐢 Slow mode: 3-7s delays, 500KB/s limit`);
+        // Strategy 3: Extremely slow rate limiting (ultra-human-like)
+        ytdlpArgs.push('--sleep-interval', '5');
+        ytdlpArgs.push('--max-sleep-interval', '10');
+        ytdlpArgs.push('--sleep-requests', '1');
+        ytdlpArgs.push('--limit-rate', '250K'); // Even slower
+        console.log(`🐌 Strategy: Ultra-Slow Human Simulation\n   🐌 Ultra-slow: 5-10s delays, 250KB/s limit`);
+        
+        // Add even more aggressive headers
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua:"Not_A Brand";v="8", "Chromium";v="120"');
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua-Mobile:?0');
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua-Platform:"Windows"');
         
         // Add free proxies if enabled
         if (process.env.USE_FREE_PROXIES === 'true') {
@@ -2985,8 +2999,27 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`   🌐 + Free proxy: ${proxy}`);
           }
         }
+      } else if (strategy === 3) {
+        // Strategy 4: Lower quality (less CPU = less suspicious)
+        console.log(`📉 Strategy: Low Quality Download (less detection)`);
+        ytdlpArgs.push('--format', 'worstaudio/worst');
+        ytdlpArgs.push('--audio-quality', '5'); // Lower quality
+        
+        // Add random delays
+        ytdlpArgs.push('--sleep-interval', Math.floor(Math.random() * 5) + 2);
+        ytdlpArgs.push('--max-sleep-interval', Math.floor(Math.random() * 10) + 5);
+        
+        // Try free proxies if enabled
+        if (process.env.USE_FREE_PROXIES === 'true') {
+          const proxy = proxyManager.getProxyForYtdlp();
+          if (proxy) {
+            ytdlpArgs.push('--proxy', proxy);
+            ytdlpArgs.push('--no-check-certificate');
+            console.log(`   🌐 + Free proxy: ${proxy}`);
+          }
+        }
       } else {
-        // Strategy 1 & 4: Standard (no special proxy, relies on web_embedded reliability)
+        // Strategy 1: Standard (no special changes)
         console.log(`📱 Strategy: Standard Web Client (web_embedded)`);
       }
       
