@@ -888,7 +888,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Keep playTrack ref updated
   useEffect(() => {
     playTrackRef.current = playTrack;
-    console.log('✅ playTrackRef.current updated');
   }, [playTrack]);
 
   // Update current time
