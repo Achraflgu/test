@@ -604,58 +604,77 @@ async function fetchVideoFallback(videoId) {
             }
             
             // Try to get duration from YouTube page HTML (multiple patterns)
+            console.log(`🔍 Attempting to scrape duration from YouTube page...`);
             try {
               const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
                 headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                  'Accept-Language': 'en-US,en;q=0.5'
                 }
               });
               
+              console.log(`📄 Page response status: ${pageResponse.status}`);
+              
               if (pageResponse.ok) {
                 const html = await pageResponse.text();
+                console.log(`📄 Got HTML page (${html.length} bytes)`);
                 
                 // Try multiple patterns to find duration
                 const patterns = [
-                  /"lengthSeconds":"(\d+)"/,           // Most reliable
-                  /"duration":"PT(\d+)M(\d+)S"/,       // ISO 8601 format
-                  /"duration":"PT(\d+)M"/,              // Minutes only
-                  /"approxDurationMs":"(\d+)"/,        // Milliseconds
-                  /lengthSeconds&quot;:&quot;(\d+)/,   // HTML encoded
+                  { regex: /"lengthSeconds":"(\d+)"/, name: 'lengthSeconds' },
+                  { regex: /"duration":"PT(\d+)M(\d+)S"/, name: 'PT format (M:S)' },
+                  { regex: /"duration":"PT(\d+)M"/, name: 'PT format (M only)' },
+                  { regex: /"approxDurationMs":"(\d+)"/, name: 'approxDurationMs' },
+                  { regex: /lengthSeconds&quot;:&quot;(\d+)/, name: 'lengthSeconds (HTML encoded)' },
+                  { regex: /"length":"(\d+)"/, name: 'length field' },
+                  { regex: /\"lengthText\":\{\"simpleText\":\"(\d+):(\d+)\"/, name: 'lengthText' },
                 ];
                 
-                for (const pattern of patterns) {
-                  const match = html.match(pattern);
+                console.log(`🔍 Trying ${patterns.length} duration extraction patterns...`);
+                
+                for (const patternObj of patterns) {
+                  const match = html.match(patternObj.regex);
                   if (match) {
-                    if (pattern.source.includes('PT') && match[2]) {
+                    console.log(`🎯 Pattern "${patternObj.name}" matched!`);
+                    if (patternObj.name.includes('PT') && match[2]) {
                       // ISO 8601 format PT4M6S
                       duration = parseInt(match[1]) * 60 + parseInt(match[2]);
-                      console.log(`✅ Got duration (PT format): ${duration}s`);
+                      console.log(`✅ Got duration from ${patternObj.name}: ${duration}s (${match[1]}m ${match[2]}s)`);
                       break;
-                    } else if (pattern.source.includes('PT') && !match[2]) {
+                    } else if (patternObj.name.includes('PT') && !match[2]) {
                       // Minutes only PT4M
                       duration = parseInt(match[1]) * 60;
-                      console.log(`✅ Got duration (minutes only): ${duration}s`);
+                      console.log(`✅ Got duration from ${patternObj.name}: ${duration}s (${match[1]}m)`);
                       break;
-                    } else if (pattern.source.includes('approx')) {
+                    } else if (patternObj.name.includes('approx')) {
                       // Milliseconds
                       duration = Math.floor(parseInt(match[1]) / 1000);
-                      console.log(`✅ Got duration (ms): ${duration}s`);
+                      console.log(`✅ Got duration from ${patternObj.name}: ${duration}s (${match[1]}ms)`);
+                      break;
+                    } else if (patternObj.name === 'lengthText' && match[2]) {
+                      // MM:SS format
+                      duration = parseInt(match[1]) * 60 + parseInt(match[2]);
+                      console.log(`✅ Got duration from ${patternObj.name}: ${duration}s (${match[1]}:${match[2]})`);
                       break;
                     } else {
                       // Seconds
                       duration = parseInt(match[1]);
-                      console.log(`✅ Got duration (seconds): ${duration}s`);
+                      console.log(`✅ Got duration from ${patternObj.name}: ${duration}s`);
                       break;
                     }
                   }
                 }
                 
                 if (duration === 0) {
-                  console.log(`⚠️  Duration patterns did not match in HTML`);
+                  console.log(`❌ None of the ${patterns.length} duration patterns matched!`);
+                  console.log(`🔍 HTML snippet (first 500 chars): ${html.substring(0, 500)}`);
                 }
+              } else {
+                console.log(`❌ Page fetch failed with status: ${pageResponse.status}`);
               }
             } catch (err) {
-              console.log(`⚠️  Could not fetch duration from page:`, err.message);
+              console.log(`❌ Error fetching duration from page:`, err.message);
             }
             
             const track = {
