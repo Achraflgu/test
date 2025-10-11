@@ -225,6 +225,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   if (process.env.SCRAPERAPI_KEY) {
     const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
     args.push('--proxy', scraperApiProxy);
+    args.push('--no-check-certificate');  // Skip SSL verification when using proxy
     console.log('🌐 Using ScraperAPI proxy to bypass YouTube blocking');
   }
   // Otherwise, use free rotating proxies (FREE but less reliable)
@@ -3314,7 +3315,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Add ScraperAPI proxy if available (PAID)
     if (process.env.SCRAPERAPI_KEY) {
       const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
-      ytdlpArgs += ` --proxy ${scraperApiProxy}`;
+      ytdlpArgs += ` --proxy ${scraperApiProxy} --no-check-certificate`;
       console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');
     }
     // Otherwise, use free rotating proxies (FREE)
