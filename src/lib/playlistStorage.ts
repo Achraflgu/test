@@ -228,14 +228,15 @@ export const loadCurrentTrackList = (): CurrentTrackList | null => {
 // ============ RESET SESSION ============
 
 /**
- * Reset current session (clear queue, player state)
+ * Reset current session (clear queue, player state, track list)
  * Keep saved playlists intact
  */
 export const resetPlayerSession = () => {
   try {
-    // Remove only session and settings, keep saved playlists and track list
+    // Remove session, settings, and current track list - keep only saved playlists
     localStorage.removeItem(STORAGE_KEYS.PLAYER_SESSION);
     localStorage.removeItem(STORAGE_KEYS.PLAYER_SETTINGS);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_TRACKLIST);
     
     return { success: true };
   } catch (error) {

@@ -17,6 +17,7 @@ import {
 } from "@/lib/tabNotifications";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { loadCurrentTrackList } from "@/lib/playlistStorage";
 
 const Index = () => {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
@@ -44,6 +45,44 @@ const Index = () => {
   // Saved playlists count for live updates
   const [savedPlaylistsCount, setSavedPlaylistsCount] = useState(0);
   
+  // Restore track list and playlist info on mount
+  useEffect(() => {
+    const savedTrackList = loadCurrentTrackList();
+    if (savedTrackList && savedTrackList.tracks.length > 0) {
+      console.log('📥 Restoring playlist from localStorage...', savedTrackList);
+      setTracks(savedTrackList.tracks);
+      
+      // Restore playlist info if available
+      if (savedTrackList.playlistName) {
+        const restoredPlaylist: Playlist = {
+          id: 'restored',
+          name: savedTrackList.playlistName,
+          description: `Restored playlist with ${savedTrackList.tracks.length} tracks`,
+          owner: 'You',
+          totalTracks: savedTrackList.tracks.length,
+          totalDuration: savedTrackList.tracks.reduce((sum, t) => sum + (t.duration || 0), 0),
+          imageUrl: savedTrackList.playlistImages?.[0] || '/placeholder.svg',
+          url: savedTrackList.playlistUrl || ''
+        };
+        setPlaylist(restoredPlaylist);
+        
+        if (savedTrackList.playlistName) {
+          setPlaylistNames([savedTrackList.playlistName]);
+        }
+        if (savedTrackList.playlistImages && savedTrackList.playlistImages.length > 0) {
+          setPlaylistImages(savedTrackList.playlistImages);
+        }
+        if (savedTrackList.playlistUrl) {
+          setPlaylistUrls([savedTrackList.playlistUrl]);
+        }
+      }
+      
+      toast.success('Playlist restored', {
+        description: `${savedTrackList.tracks.length} tracks loaded from previous session`
+      });
+    }
+  }, []); // Only run on mount
+
   // Update saved playlists count
   useEffect(() => {
     const updateCount = () => {

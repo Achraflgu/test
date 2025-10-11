@@ -129,17 +129,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   // ============ PERSISTENCE: RESTORE STATE ON MOUNT ============
   useEffect(() => {
-    // Restore track list if no tracks provided via props
-    if (initialTracks.length === 0) {
-      const savedTrackList = loadCurrentTrackList();
-      if (savedTrackList && savedTrackList.tracks.length > 0) {
-        console.log('📥 Restoring track list from localStorage...', savedTrackList.tracks.length, 'tracks');
-        setTracks(savedTrackList.tracks);
-        if (onTracksUpdate) {
-          onTracksUpdate(savedTrackList.tracks);
-        }
-      }
-    }
+    // Note: Track list restoration is now handled by parent component (Index.tsx)
+    // This ensures the playlist header also gets restored with the correct info
     
     // Restore player session (queue, current track, position)
     const savedSession = loadPlayerSession();
@@ -679,14 +670,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setIsShuffled(false);
     setIsPlayerMinimized(false);
     
+    // Clear tracks (this will also clear from localStorage via useEffect)
+    setTracks([]);
+    if (onTracksUpdate) {
+      onTracksUpdate([]);
+    }
+    
     // Clear session from localStorage (keeps saved playlists intact)
     resetPlayerSession();
     
     setShowResetConfirmDialog(false);
     
     toast.success('Session reset', {
-      description: 'Queue cleared, playback stopped'
+      description: 'Track list cleared, playback stopped'
     });
+    
+    // Reload page to reset everything
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
   };
 
   const getStatusIcon = (status: Track['downloadStatus'], progress: number, track?: Track) => {
@@ -3014,9 +3016,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <ul className="text-sm space-y-1 text-muted-foreground">
                 <li>• Current playing track</li>
                 <li>• Playback queue ({playlistQueue.length} tracks)</li>
+                <li>• Track list ({tracks.length} tracks)</li>
+                <li>• Playlist info</li>
                 <li>• Player position and time</li>
                 <li>• Repeat/shuffle modes</li>
               </ul>
+              <p className="text-xs text-orange-500 font-medium mt-2">⚠️ Page will reload after reset</p>
             </div>
 
             <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg space-y-2">
@@ -3026,8 +3031,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               </h4>
               <ul className="text-sm space-y-1 text-muted-foreground">
                 <li>• All saved playlists</li>
-                <li>• Volume and settings</li>
-                <li>• Track list on this page</li>
+                <li>• Download settings</li>
               </ul>
             </div>
           </div>
