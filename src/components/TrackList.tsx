@@ -755,17 +755,26 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     if (!playerRef.current || !currentPlayingTrack) return;
     
     // Verify player has required methods
-    if (!playerRef.current.pauseVideo || !playerRef.current.playVideo) {
-      toast.error('Player not ready. Please try again.');
+    if (typeof playerRef.current.pauseVideo !== 'function' || 
+        typeof playerRef.current.playVideo !== 'function') {
+      console.log('⚠️ Player methods not ready, attempting to replay track...');
+      // Player exists but not ready - try to play the current track again
+      playTrack(currentPlayingTrack);
       return;
     }
     
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
-      setIsPlaying(false);
-    } else {
-      playerRef.current.playVideo();
-      setIsPlaying(true);
+    try {
+      if (isPlaying) {
+        playerRef.current.pauseVideo();
+        setIsPlaying(false);
+      } else {
+        playerRef.current.playVideo();
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.error('❌ togglePlayPause error:', error);
+      // If there's an error, recreate the player
+      playTrack(currentPlayingTrack);
     }
   };
 
@@ -818,7 +827,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const toggleMute = () => {
-    if (playerRef.current) {
+    if (!playerRef.current) return;
+    
+    if (typeof playerRef.current.mute !== 'function' || 
+        typeof playerRef.current.unMute !== 'function') {
+      console.log('⚠️ Mute methods not ready');
+      return;
+    }
+    
+    try {
       if (isMuted) {
         playerRef.current.unMute();
         setIsMuted(false);
@@ -826,6 +843,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         playerRef.current.mute();
         setIsMuted(true);
       }
+    } catch (error) {
+      console.error('❌ toggleMute error:', error);
     }
   };
 
