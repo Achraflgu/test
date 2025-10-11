@@ -2993,6 +2993,5 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       </Dialog>
 
     </div>
-    </div>
   );
 };
