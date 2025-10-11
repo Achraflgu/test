@@ -257,12 +257,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     
                     if (mode === 'one') {
                       console.log('🔁 Repeating same track...');
-                      // Repeat current track
+                      // Repeat current track - DO NOT go to next
                       if (playerRef.current) {
-                        playerRef.current.seekTo(0);
+                        playerRef.current.seekTo(0, true);
                         playerRef.current.playVideo();
                       }
-                    } else if (mode === 'all') {
+                      return; // Exit early - don't process any other mode
+                    }
+                    
+                    if (mode === 'all') {
                       console.log('🔁 Repeat All - finding next track...');
                       // Auto-play next track (will loop)
                       const queue = isPlayingAllRef.current ? playlistQueueRef.current : tracksRef.current;
@@ -573,12 +576,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               
               if (mode === 'one') {
                 console.log('🔁 Repeating same track...');
-                // Repeat current track
+                // Repeat current track - DO NOT go to next
                 if (playerRef.current) {
-                  playerRef.current.seekTo(0);
+                  playerRef.current.seekTo(0, true);
                   playerRef.current.playVideo();
                 }
-              } else if (mode === 'all') {
+                return; // Exit early - don't process any other mode
+              }
+              
+              if (mode === 'all') {
                 console.log('🔁 Repeat All - finding next track...');
                 // Auto-play next track (will loop)
                 const queue = isPlayingAllRef.current ? playlistQueueRef.current : tracksRef.current;
