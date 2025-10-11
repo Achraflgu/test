@@ -220,6 +220,13 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     console.log('⚠️  Cookie check failed - may get blocked on shared IPs');
   }
   
+  // Add ScraperAPI proxy if available (bypasses YouTube blocks)
+  if (process.env.SCRAPERAPI_KEY) {
+    const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
+    args.push('--proxy', scraperApiProxy);
+    console.log('🌐 Using ScraperAPI proxy to bypass YouTube blocking');
+  }
+  
   return { userAgent, clientType };
 }
 
@@ -3290,6 +3297,16 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       }
     }
     
+    // Build yt-dlp args for spotdl (including proxy if available)
+    let ytdlpArgs = '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10';
+    
+    // Add ScraperAPI proxy if available
+    if (process.env.SCRAPERAPI_KEY) {
+      const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
+      ytdlpArgs += ` --proxy ${scraperApiProxy}`;
+      console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');
+    }
+    
     const spotdlArgs = [
       '-m', 'spotdl',
       'download',
@@ -3300,7 +3317,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       '--threads', (settings.threads || 8).toString(),
       '--overwrite', 'skip',
       // FIX: Use Android client to bypass YouTube blocking
-      '--yt-dlp-args', '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10'
+      '--yt-dlp-args', ytdlpArgs
     ];
 
     console.log('Running spotdl command:', `${PYTHON_CMD} ${spotdlArgs.slice(0, 6).join(' ')}... (${spotifyUrls.length} Spotify URLs)`);
