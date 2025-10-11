@@ -2822,10 +2822,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       await addYouTubeEnhancements(ytdlpArgs, 0);
       
       // Extra bypass for downloads (more aggressive)
-      ytdlpArgs.push('--socket-timeout', '30');
-      ytdlpArgs.push('--retries', '10');
-      ytdlpArgs.push('--fragment-retries', '10');
+      ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
+      ytdlpArgs.push('--retries', '15');
+      ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
+      ytdlpArgs.push('--http-chunk-size', '1M'); // smaller chunks reduce proxy timeouts
     } else {
       console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
       
@@ -2849,10 +2850,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       await addYouTubeEnhancements(ytdlpArgs, 0);
       
       // Extra bypass for downloads (more aggressive)
-      ytdlpArgs.push('--socket-timeout', '30');
-      ytdlpArgs.push('--retries', '10');
-      ytdlpArgs.push('--fragment-retries', '10');
+      ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
+      ytdlpArgs.push('--retries', '15');
+      ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
+      ytdlpArgs.push('--http-chunk-size', '1M'); // smaller chunks reduce proxy timeouts
       
       // Add metadata args if artist is not "Unknown Artist"
       if (track.artist !== 'Unknown Artist') {
