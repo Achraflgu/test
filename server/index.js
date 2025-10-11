@@ -139,113 +139,190 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// Enhanced YouTube helper with aggressive fallback methods
+// Enhanced YouTube helper with MULTIPLE STRATEGIES (NO COOKIES)
 async function addYouTubeEnhancements(args, attempt = 0) {
-  // Prioritize mobile user agents to match Android client (reduces blocking)
+  // Strategy 1: NewPipe Extractor (Attempt 0-2) - Android app method, less detected
+  // Strategy 2: Invidious Proxy (Attempt 3-5) - Privacy frontend proxy
+  // Strategy 3: Rate-Limited Android (Attempt 6-8) - Slower, more human-like
+  // Strategy 4: Mixed Clients (Attempt 9+) - Try everything
+  
+  const strategy = Math.floor(attempt / 3); // Change strategy every 3 attempts
+  
+  console.log(`\n🔧 Download Strategy ${strategy + 1} (Attempt ${attempt + 1})`);
+  
+  // Diverse user agents (prioritize mobile to avoid desktop detection)
   const userAgents = [
+    // NewPipe-style (Android app simulation)
+    'com.google.android.youtube/19.09.37 (Linux; U; Android 13) gzip',
+    'com.google.android.youtube/18.48.38 (Linux; U; Android 12) gzip',
+    // Mobile browsers
     'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36',
-    'Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36',
     'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
+    // Desktop browsers (less preferred)
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   ];
   
-  // More aggressive client type combinations - android is most reliable for avoiding blocks
+  // NewPipe extractors (most reliable for avoiding blocks)
+  const newPipeClients = [
+    'android_testsuite',       // NewPipe method - bypasses many checks
+    'android_vr',              // VR client - less monitored
+    'android_producer',        // Producer tools - less restricted
+    'android_creator',         // Creator studio - different access
+    'android_unplugged',       // YouTube Premium variant
+    'android_music'            // YouTube Music - different API
+  ];
+  
+  // Standard client types
   const clientTypes = [
-    'android',                 // Most reliable - mobile clients are less blocked
-    'android,web_embedded',    // Fallback combination
-    'ios',                     // iOS as backup
-    'android,ios',             // Mobile combination
-    'android,web',             // Mixed approach
-    'web_embedded',            // Web embedded (more blocks)
+    'android',
+    'ios',
+    'android,web_embedded',
     'ios,web_embedded',
-    'tv,web_embedded',
-    'android,web,ios',
-    'web,android,tv',
-    'ios,android,web',
-    'tv,web,android',
-    'web,tv',
-    'ios,tv',
-    'android,tv'
+    'tv',
+    'web_embedded'
   ];
   
-  // Additional bypass methods
-  const bypassMethods = [
-    '--no-check-certificate',
-    '--prefer-insecure',
-    '--user-agent',
-    '--referer', 'https://www.youtube.com/',
-    '--add-header', 'Accept-Language:en-US,en;q=0.9',
-    '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+  // Invidious instances (free YouTube proxies - rotate them)
+  const invidiousInstances = [
+    'https://invidious.fdn.fr',
+    'https://inv.riverside.rocks',
+    'https://invidious.snopyta.org',
+    'https://yewtu.be',
+    'https://invidious.kavin.rocks',
+    'https://vid.puffyan.us',
+    'https://invidious.namazso.eu',
+    'https://inv.bp.projectsegfau.lt'
   ];
   
-  // Select user agent and client type based on attempt
-  const userAgent = userAgents[attempt % userAgents.length];
-  const clientType = clientTypes[attempt % clientTypes.length];
+  // ===== STRATEGY 1: NewPipe Extractor (Attempt 0-2) =====
+  if (strategy === 0) {
+    console.log('📱 Strategy: NewPipe Android Extractor (Best for avoiding detection)');
+    
+    const newPipeClient = newPipeClients[attempt % newPipeClients.length];
+    const userAgent = userAgents[0]; // Use Android app user agent
+    
+    args.push('--user-agent', userAgent);
+    args.push('--extractor-args', `youtube:player_client=${newPipeClient}`);
+    args.push('--extractor-args', 'youtube:player_skip=webpage,configs,js');
+    args.push('--no-check-certificate');
+    
+    // Add Oxylabs proxy if available
+    if (process.env.OXYLABS_PROXY) {
+      args.push('--proxy', process.env.OXYLABS_PROXY);
+      console.log('   🌐 + Oxylabs proxy');
+    }
+    
+    console.log(`   📱 Client: ${newPipeClient}`);
+    return { userAgent, clientType: newPipeClient, strategy: 'NewPipe' };
+  }
   
-  // Add enhancements
-  args.push('--user-agent', userAgent);
-  args.push('--extractor-args', `youtube:player_client=${clientType}`);
-  
-  // Add bypass methods for later attempts
-  if (attempt > 0) {
+  // ===== STRATEGY 2: Invidious Proxy (Attempt 3-5) =====
+  if (strategy === 1) {
+    console.log('🔒 Strategy: Invidious Privacy Proxy (Free proxy layer)');
+    
+    const invidiousInstance = invidiousInstances[attempt % invidiousInstances.length];
+    const userAgent = userAgents[attempt % userAgents.length];
+    const clientType = 'web_embedded';
+    
+    args.push('--user-agent', userAgent);
+    args.push('--extractor-args', `youtube:player_client=${clientType}`);
+    args.push('--proxy', invidiousInstance);
     args.push('--no-check-certificate');
     args.push('--prefer-insecure');
+    
+    console.log(`   🌐 Proxy: ${invidiousInstance}`);
+    return { userAgent, clientType, strategy: 'Invidious' };
+  }
+  
+  // ===== STRATEGY 3: Rate-Limited Human Simulation (Attempt 6-8) =====
+  if (strategy === 2) {
+    console.log('🐢 Strategy: Slow Human-Like Download (Rate limited)');
+    
+    const userAgent = userAgents[2 + (attempt % 2)]; // Use mobile browsers
+    const clientType = 'android';
+    
+    args.push('--user-agent', userAgent);
+    args.push('--extractor-args', `youtube:player_client=${clientType}`);
+    
+    // Add human-like delays
+    args.push('--sleep-interval', '3');      // 3 second delay between requests
+    args.push('--max-sleep-interval', '7');  // Up to 7 seconds
+    args.push('--sleep-requests', '2');      // Sleep every 2 requests
+    args.push('--limit-rate', '500K');       // Slow download speed (human-like)
+    
+    // Add browser-like headers
     args.push('--referer', 'https://www.youtube.com/');
     args.push('--add-header', 'Accept-Language:en-US,en;q=0.9');
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
-    args.push('--add-header', 'Cache-Control:no-cache');
-    args.push('--add-header', 'Pragma:no-cache');
-  }
-  
-  // Add more aggressive bypass for high attempt numbers
-  if (attempt > 2) {
-    args.push('--sleep-interval', '1');
-    args.push('--max-sleep-interval', '3');
-    args.push('--sleep-requests', '1');
-  }
-  
-  // Add cookies if available (CRITICAL for Render)
-  try {
-    const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-    if (cookiesExist) {
-      args.push('--cookies', YOUTUBE_COOKIES_PATH);
-      console.log('🍪 Using YouTube cookies for authentication');
-    } else {
-      console.log('⚠️  No YouTube cookies found - may get blocked on shared IPs');
+    args.push('--add-header', 'DNT:1');
+    args.push('--add-header', 'Upgrade-Insecure-Requests:1');
+    
+    // Add Oxylabs proxy if available
+    if (process.env.OXYLABS_PROXY) {
+      args.push('--proxy', process.env.OXYLABS_PROXY);
+      args.push('--no-check-certificate');
+      console.log('   🌐 + Oxylabs proxy');
     }
-  } catch (err) {
-    console.log('⚠️  Cookie check failed - may get blocked on shared IPs');
+    // Try free proxies as fallback
+    else if (process.env.USE_FREE_PROXIES === 'true') {
+      const proxy = proxyManager.getProxyForYtdlp();
+      if (proxy) {
+        args.push('--proxy', proxy);
+        args.push('--no-check-certificate');
+        console.log(`   🌐 + Free proxy: ${proxy}`);
+      }
+    }
+    
+    console.log('   🐢 Slow mode: 3-7s delays, 500KB/s limit');
+    return { userAgent, clientType, strategy: 'RateLimited' };
   }
   
-  // Add Oxylabs proxy if available (PROFESSIONAL - best option)
-  if (process.env.OXYLABS_PROXY) {
+  // ===== STRATEGY 4: Mixed Everything (Attempt 9+) =====
+  console.log('🎲 Strategy: Mixed Random (Try everything)');
+  
+  const randomStrategy = attempt % 3;
+  let userAgent, clientType, strategyName;
+  
+  if (randomStrategy === 0) {
+    // NewPipe
+    userAgent = userAgents[0];
+    clientType = newPipeClients[attempt % newPipeClients.length];
+    args.push('--extractor-args', 'youtube:player_skip=webpage,configs,js');
+    strategyName = 'NewPipe-Mixed';
+  } else if (randomStrategy === 1) {
+    // Standard client
+    userAgent = userAgents[attempt % userAgents.length];
+    clientType = clientTypes[attempt % clientTypes.length];
+    strategyName = 'Standard-Mixed';
+  } else {
+    // Aggressive bypass
+    userAgent = userAgents[attempt % userAgents.length];
+    clientType = 'android_testsuite';
+    args.push('--sleep-requests', '1');
+    strategyName = 'Aggressive-Mixed';
+  }
+  
+  args.push('--user-agent', userAgent);
+  args.push('--extractor-args', `youtube:player_client=${clientType}`);
+  args.push('--no-check-certificate');
+  args.push('--prefer-insecure');
+  args.push('--referer', 'https://www.youtube.com/');
+  
+  // Rotate proxies
+  if (process.env.OXYLABS_PROXY && attempt % 2 === 0) {
     args.push('--proxy', process.env.OXYLABS_PROXY);
-    args.push('--no-check-certificate');  // Skip SSL verification when using proxy
-    console.log('🌐 Using Oxylabs proxy to bypass YouTube blocking');
-  }
-  // Add ScraperAPI proxy if available (bypasses YouTube blocks - PAID)
-  else if (process.env.SCRAPERAPI_KEY) {
-    const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
-    args.push('--proxy', scraperApiProxy);
-    args.push('--no-check-certificate');  // Skip SSL verification when using proxy
-    console.log('🌐 Using ScraperAPI proxy to bypass YouTube blocking');
-  }
-  // Otherwise, use free rotating proxies (FREE but less reliable)
-  else if (process.env.USE_FREE_PROXIES === 'true') {
+    console.log('   🌐 + Oxylabs proxy');
+  } else if (process.env.USE_FREE_PROXIES === 'true') {
     const proxy = proxyManager.getProxyForYtdlp();
     if (proxy) {
       args.push('--proxy', proxy);
-      console.log(`🌐 Using free proxy: ${proxy}`);
-    } else {
-      console.log('⚠️  No free proxies available, trying without proxy');
+      console.log(`   🌐 + Free proxy: ${proxy}`);
     }
   }
   
-  return { userAgent, clientType };
+  console.log(`   🎲 Method: ${strategyName}`);
+  return { userAgent, clientType, strategy: strategyName };
 }
 
 // Cache search results (expires after 5 minutes)
