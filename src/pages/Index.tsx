@@ -18,6 +18,16 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { loadCurrentTrackList, resetPlayerSession } from "@/lib/playlistStorage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Index = () => {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
@@ -160,6 +170,14 @@ const Index = () => {
   const handleDownloadingChange = (downloading: boolean, downloadId?: string) => {
     setIsDownloading(downloading);
     setActiveDownloadId(downloadId || '');
+    
+    // Show notification when download starts
+    if (downloading && !isDownloading) {
+      toast.info('⚠️ Download in progress', {
+        description: "You'll be asked to confirm if you try to close this tab",
+        duration: 5000,
+      });
+    }
   };
 
   // Helper to detect if text is a supported music URL

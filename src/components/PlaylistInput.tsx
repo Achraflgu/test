@@ -121,6 +121,13 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
     if (error) setError(""); // Clear error when user types
   };
 
+  // Handle Enter key press
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !loading && url.trim()) {
+      fetchPlaylistData();
+    }
+  };
+
   const fetchPlaylistData = async () => {
     if (!url.trim()) {
       setError("Please enter a music URL");
@@ -209,6 +216,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
               placeholder="Spotify (track/playlist/album/artist) or YouTube (video/playlist) URL..."
               value={url}
               onChange={(e) => handleUrlChange(e.target.value)}
+              onKeyPress={handleKeyPress}
               className={`h-14 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground rounded-xl px-5 text-lg focus-visible:ring-2 transition-all ${
                 isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : isSearchText ? 'border-blue-500 focus-visible:ring-blue-500' : 'focus-visible:ring-primary'
               }`}
