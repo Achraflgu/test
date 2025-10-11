@@ -90,6 +90,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const isShuffledRef = useRef(isShuffled);
   const volumeRef = useRef(volume);
   const isMutedRef = useRef(isMuted);
+  const playTrackRef = useRef<((track: Track) => Promise<void>) | null>(null);
   
   // Keep refs in sync
   useEffect(() => {
@@ -491,15 +492,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     nextIndex = currentIndex + 1;
                   }
                   
-                  if (nextIndex < queue.length) {
-                    playTrack(queue[nextIndex]);
+                  if (nextIndex < queue.length && playTrackRef.current) {
+                    playTrackRef.current(queue[nextIndex]);
                   } else {
                     // Loop back to start (or random if shuffled)
-                    if (shuffled && queue.length > 1) {
+                    if (shuffled && queue.length > 1 && playTrackRef.current) {
                       const randomIndex = Math.floor(Math.random() * queue.length);
-                      playTrack(queue[randomIndex]);
-                    } else {
-                      playTrack(queue[0]);
+                      playTrackRef.current(queue[randomIndex]);
+                    } else if (playTrackRef.current) {
+                      playTrackRef.current(queue[0]);
                     }
                   }
                 }
@@ -515,9 +516,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   if (shuffled) {
                     // Random next track (exclude current and already played)
                     const availableIndices = queue.map((_, i) => i).filter(i => i !== currentIndex);
-                    if (availableIndices.length > 0) {
+                    if (availableIndices.length > 0 && playTrackRef.current) {
                       const nextIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-                      playTrack(queue[nextIndex]);
+                      playTrackRef.current(queue[nextIndex]);
                     } else {
                       // No more tracks
                       setIsPlaying(false);
@@ -525,8 +526,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       toast.info('🎵 Playlist finished');
                     }
                   } else {
-                    if (currentIndex < queue.length - 1) {
-                      playTrack(queue[currentIndex + 1]);
+                    if (currentIndex < queue.length - 1 && playTrackRef.current) {
+                      playTrackRef.current(queue[currentIndex + 1]);
                     } else {
                       // End of playlist
                       setIsPlaying(false);
@@ -554,6 +555,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       });
     }
   };
+
+  // Keep playTrack ref updated
+  useEffect(() => {
+    playTrackRef.current = playTrack;
+  }, [playTrack]);
 
   // Update current time
   useEffect(() => {
