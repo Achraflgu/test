@@ -92,6 +92,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const volumeRef = useRef(volume);
   const isMutedRef = useRef(isMuted);
   const playTrackRef = useRef<((track: Track) => Promise<void>) | null>(null);
+  const pendingSeekTimeRef = useRef<number | null>(null); // 🔥 For restoring Spotify track position
   
   // Keep refs in sync
   useEffect(() => {
@@ -415,6 +416,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               setCurrentPlayingTrack(savedSession.currentTrack); // Keep track visible
               setIsPlaying(false); // But mark as not playing
               
+              // 🔥 FIX: Store saved time so we can seek to it after fresh playback
+              pendingSeekTimeRef.current = savedTime;
+              console.log('⏱️ Saved time for later seek:', savedTime + 's');
+              
               // Destroy any broken player
               if (playerRef.current) {
                 try {
@@ -717,7 +722,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Play new track
     setCurrentPlayingTrack(track);
     setIsPlaying(true);
-    setCurrentTime(0);
+    
+    // 🔥 FIX: Don't reset time if we have a pending seek (Spotify restoration)
+    if (pendingSeekTimeRef.current === null) {
+      setCurrentTime(0);
+    } else {
+      console.log('⏱️ Keeping current time for pending seek:', pendingSeekTimeRef.current + 's');
+    }
+    
     setDuration(track.duration);
 
     // Create YouTube player
@@ -785,7 +797,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             } else {
               event.target.unMute();
             }
-            event.target.playVideo();
+            
+            // 🔥 FIX: Check if we need to seek to a saved position (for Spotify restoration)
+            if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
+              const seekTime = pendingSeekTimeRef.current;
+              console.log('⏩ Seeking to saved position:', seekTime + 's');
+              
+              // Wait for player to be fully ready, then seek
+              setTimeout(() => {
+                try {
+                  event.target.seekTo(seekTime, true);
+                  setCurrentTime(seekTime);
+                  console.log('✅ Restored position:', seekTime + 's');
+                  toast.success('🎵 Position Restored!', { 
+                    description: `Resumed at ${Math.floor(seekTime / 60)}:${String(Math.floor(seekTime % 60)).padStart(2, '0')}`,
+                    duration: 2000 
+                  });
+                } catch (err) {
+                  console.error('❌ Failed to seek:', err);
+                }
+                // Clear the pending seek time
+                pendingSeekTimeRef.current = null;
+              }, 1000);
+            } else {
+              event.target.playVideo();
+            }
           },
           onStateChange: (event: any) => {
             if (event.data === (window as any).YT.PlayerState.ENDED) {
