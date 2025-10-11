@@ -221,8 +221,14 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     console.log('⚠️  Cookie check failed - may get blocked on shared IPs');
   }
   
+  // Add Oxylabs proxy if available (PROFESSIONAL - best option)
+  if (process.env.OXYLABS_PROXY) {
+    args.push('--proxy', process.env.OXYLABS_PROXY);
+    args.push('--no-check-certificate');  // Skip SSL verification when using proxy
+    console.log('🌐 Using Oxylabs proxy to bypass YouTube blocking');
+  }
   // Add ScraperAPI proxy if available (bypasses YouTube blocks - PAID)
-  if (process.env.SCRAPERAPI_KEY) {
+  else if (process.env.SCRAPERAPI_KEY) {
     const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
     args.push('--proxy', scraperApiProxy);
     args.push('--no-check-certificate');  // Skip SSL verification when using proxy
@@ -3314,8 +3320,13 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Build yt-dlp args for spotdl (including proxy if available)
     let ytdlpArgs = '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10';
     
+    // Add Oxylabs proxy if available (PROFESSIONAL - best option)
+    if (process.env.OXYLABS_PROXY) {
+      ytdlpArgs += ` --proxy ${process.env.OXYLABS_PROXY} --no-check-certificate`;
+      console.log('🌐 Oxylabs proxy enabled for spotdl downloads');
+    }
     // Add ScraperAPI proxy if available (PAID)
-    if (process.env.SCRAPERAPI_KEY) {
+    else if (process.env.SCRAPERAPI_KEY) {
       const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       ytdlpArgs += ` --proxy ${scraperApiProxy} --no-check-certificate`;
       console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');
