@@ -3000,23 +3000,46 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           }
         }
       } else if (strategy === 3) {
-        // Strategy 4: Lower quality (less CPU = less suspicious)
-        console.log(`📉 Strategy: Low Quality Download (less detection)`);
+        // Strategy 4: DESPERATION MODE - Try EVERYTHING at once
+        console.log(`🔥 Strategy: DESPERATION MODE (All bypasses enabled)`);
+        
+        // Lower quality
         ytdlpArgs.push('--format', 'worstaudio/worst');
-        ytdlpArgs.push('--audio-quality', '5'); // Lower quality
+        ytdlpArgs.push('--audio-quality', '5');
         
-        // Add random delays
-        ytdlpArgs.push('--sleep-interval', Math.floor(Math.random() * 5) + 2);
-        ytdlpArgs.push('--max-sleep-interval', Math.floor(Math.random() * 10) + 5);
+        // Extreme delays
+        ytdlpArgs.push('--sleep-interval', '10');
+        ytdlpArgs.push('--max-sleep-interval', '20');
+        ytdlpArgs.push('--sleep-requests', '1');
+        ytdlpArgs.push('--limit-rate', '100K'); // VERY slow
         
-        // Try free proxies if enabled
+        // ALL aggressive headers
+        ytdlpArgs.push('--add-header', 'Accept:*/*');
+        ytdlpArgs.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
+        ytdlpArgs.push('--add-header', 'Connection:keep-alive');
+        ytdlpArgs.push('--add-header', 'Sec-Fetch-Mode:navigate');
+        ytdlpArgs.push('--add-header', 'Sec-Fetch-Dest:video');
+        ytdlpArgs.push('--add-header', 'Sec-Fetch-Site:same-origin');
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua:"Not_A Brand";v="8", "Chromium";v="120"');
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua-Mobile:?0');
+        ytdlpArgs.push('--add-header', 'Sec-Ch-Ua-Platform:"Windows"');
+        ytdlpArgs.push('--add-header', 'DNT:1');
+        ytdlpArgs.push('--add-header', 'Upgrade-Insecure-Requests:1');
+        
+        // Longer timeouts
+        ytdlpArgs.push('--socket-timeout', '120');
+        
+        // MUST use free proxies for desperation mode
         if (process.env.USE_FREE_PROXIES === 'true') {
           const proxy = proxyManager.getProxyForYtdlp();
           if (proxy) {
             ytdlpArgs.push('--proxy', proxy);
             ytdlpArgs.push('--no-check-certificate');
             console.log(`   🌐 + Free proxy: ${proxy}`);
+            console.log(`   🔥 DESPERATION: Trying EVERY bypass method!`);
           }
+        } else {
+          console.log(`   ⚠️  Enable USE_FREE_PROXIES for better results`);
         }
       } else {
         // Strategy 1: Standard (no special changes)
