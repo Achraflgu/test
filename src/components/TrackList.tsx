@@ -170,9 +170,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               }
             }
             
+            // 🔥 FIX: Check YouTube ID cache for Spotify tracks
+            if (!youtubeId && youtubeIdCache.has(restoredTrack.id)) {
+              youtubeId = youtubeIdCache.get(restoredTrack.id) || null;
+              console.log('⚡ [2/5] YouTube ID from cache:', youtubeId);
+            }
+            
             // Validate the YouTube ID
             if (!youtubeId || !isValidYouTubeId(youtubeId)) {
-              throw new Error('Invalid video id: ' + (youtubeId || 'none'));
+              throw new Error('Invalid video id: ' + (youtubeId || 'none') + ' (Spotify tracks need YouTube ID - click play to search)');
             }
             
             console.log('✅ [2/5] YouTube ID extracted:', youtubeId);
@@ -398,9 +404,22 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             });
           } catch (err: any) {
             console.error('❌ Player restoration failed:', err.message);
-            toast.error('Could not restore player', {
-              description: 'Track info saved, click play to start'
-            });
+            
+            // Check if it's a Spotify track
+            const isSpotifyTrack = savedSession.currentTrack.url && 
+                                   (savedSession.currentTrack.url.includes('spotify.com') || 
+                                    savedSession.currentTrack.url.startsWith('https://open.spotify.com'));
+            
+            if (isSpotifyTrack) {
+              toast.info('🎵 Spotify Track Loaded', {
+                description: 'Click ▶️ Play to start listening',
+                duration: 4000
+              });
+            } else {
+              toast.error('Could not restore player', {
+                description: 'Track info saved, click ▶️ Play to start'
+              });
+            }
           }
         };
         
