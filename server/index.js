@@ -310,7 +310,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'X-Goog-Visitor-Id:CgtZbGRkVUZBdVFZbyiTk-WmBg');
     
     // Method 4: Anti-Bot Headers
-    args.push('--add-header', 'Sec-Ch-Ua-Model:"");
+    args.push('--add-header', 'Sec-Ch-Ua-Model:""');
     args.push('--add-header', 'Sec-Ch-Ua-Full-Version-List:"Not_A Brand";v="8.0.0.0", "Chromium";v="120.0.6099.230"');
     args.push('--add-header', 'Sec-Ch-Ua-Arch:"x86"');
     args.push('--add-header', 'Sec-Ch-Ua-Bitness:"64"');
