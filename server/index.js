@@ -2276,8 +2276,13 @@ app.get('/api/youtube/search', async (req, res) => {
       ];
       
       // Add cookies if available (but don't wait for complex enhancements)
-      if (YOUTUBE_COOKIES) {
-        searchArgs.push('--cookies', YOUTUBE_COOKIES);
+      try {
+        const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+        if (cookiesExist) {
+          searchArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+        }
+      } catch (err) {
+        // No cookies available
       }
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
