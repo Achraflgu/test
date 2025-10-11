@@ -250,6 +250,106 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 onStateChange: (event: any) => {
                   const playerState = event.data;
                   
+                  // Handle track end
+                  if (playerState === (window as any).YT.PlayerState.ENDED) {
+                    console.log('🔚 Track ended! Repeat mode:', repeatModeRef.current);
+                    const mode = repeatModeRef.current;
+                    
+                    if (mode === 'one') {
+                      console.log('🔁 Repeating same track...');
+                      // Repeat current track
+                      if (playerRef.current) {
+                        playerRef.current.seekTo(0);
+                        playerRef.current.playVideo();
+                      }
+                    } else if (mode === 'all') {
+                      console.log('🔁 Repeat All - finding next track...');
+                      // Auto-play next track (will loop)
+                      const queue = isPlayingAllRef.current ? playlistQueueRef.current : tracksRef.current;
+                      const currentTrack = currentPlayingTrackRef.current;
+                      const shuffled = isShuffledRef.current;
+                      
+                      console.log('📋 Queue length:', queue.length, 'Current track:', currentTrack?.name, 'playTrackRef:', !!playTrackRef.current);
+                      
+                      if (currentTrack && queue.length > 0) {
+                        const currentIndex = queue.findIndex(t => t.id === currentTrack.id);
+                        let nextIndex;
+                        
+                        if (shuffled) {
+                          const availableIndices = queue.map((_, i) => i).filter(i => i !== currentIndex);
+                          nextIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+                        } else {
+                          nextIndex = currentIndex + 1;
+                        }
+                        
+                        console.log('⏭️ Current index:', currentIndex, 'Next index:', nextIndex, 'Queue length:', queue.length);
+                        
+                        if (nextIndex < queue.length && playTrackRef.current) {
+                          console.log('▶️ Playing next track:', queue[nextIndex].name);
+                          playTrackRef.current(queue[nextIndex]);
+                        } else {
+                          console.log('🔄 Looping back to start...');
+                          if (shuffled && queue.length > 1 && playTrackRef.current) {
+                            const randomIndex = Math.floor(Math.random() * queue.length);
+                            console.log('🎲 Random track:', queue[randomIndex].name);
+                            playTrackRef.current(queue[randomIndex]);
+                          } else if (playTrackRef.current) {
+                            console.log('🔙 Playing first track:', queue[0].name);
+                            playTrackRef.current(queue[0]);
+                          }
+                        }
+                      } else {
+                        console.log('❌ Cannot find next track - no current track or empty queue');
+                      }
+                    } else {
+                      // mode === 'off' - play next but don't loop
+                      const queue = isPlayingAllRef.current ? playlistQueueRef.current : tracksRef.current;
+                      const currentTrack = currentPlayingTrackRef.current;
+                      const shuffled = isShuffledRef.current;
+                      
+                      if (currentTrack && queue.length > 0) {
+                        const currentIndex = queue.findIndex(t => t.id === currentTrack.id);
+                        
+                        if (shuffled) {
+                          const availableIndices = queue.map((_, i) => i).filter(i => i !== currentIndex);
+                          if (availableIndices.length > 0 && playTrackRef.current) {
+                            const nextIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+                            playTrackRef.current(queue[nextIndex]);
+                          } else {
+                            setIsPlaying(false);
+                            setCurrentPlayingTrack(null);
+                            toast.info('🎵 Playlist finished');
+                          }
+                        } else {
+                          if (currentIndex < queue.length - 1 && playTrackRef.current) {
+                            playTrackRef.current(queue[currentIndex + 1]);
+                          } else {
+                            setIsPlaying(false);
+                            setCurrentPlayingTrack(null);
+                            toast.info('🎵 Playlist finished');
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Update playing state
+                  if (playerState === (window as any).YT.PlayerState.PLAYING) {
+                    setIsPlaying(true);
+                    const duration = event.target.getDuration();
+                    if (duration && duration > 0 && duration !== Infinity) {
+                      setDuration(duration);
+                    }
+                    event.target.setVolume(volumeRef.current);
+                    if (isMutedRef.current) {
+                      event.target.mute();
+                    } else {
+                      event.target.unMute();
+                    }
+                  } else if (playerState === (window as any).YT.PlayerState.PAUSED) {
+                    setIsPlaying(false);
+                  }
+                  
                   // Get duration when state changes
                   if (playerState === (window as any).YT.PlayerState.PLAYING || 
                       playerState === (window as any).YT.PlayerState.PAUSED) {
@@ -362,6 +462,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const playTrack = async (track: Track) => {
+    console.log('🎵 playTrack called for:', track.name);
+    
     // If same track, toggle play/pause
     if (currentPlayingTrack?.id === track.id && playerRef.current) {
       if (isPlaying) {
@@ -465,20 +567,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           },
           onStateChange: (event: any) => {
             if (event.data === (window as any).YT.PlayerState.ENDED) {
+              console.log('🔚 Track ended (playTrack player)! Repeat mode:', repeatModeRef.current);
               // Handle track end based on repeat mode using refs
               const mode = repeatModeRef.current;
               
               if (mode === 'one') {
+                console.log('🔁 Repeating same track...');
                 // Repeat current track
                 if (playerRef.current) {
                   playerRef.current.seekTo(0);
                   playerRef.current.playVideo();
                 }
               } else if (mode === 'all') {
+                console.log('🔁 Repeat All - finding next track...');
                 // Auto-play next track (will loop)
                 const queue = isPlayingAllRef.current ? playlistQueueRef.current : tracksRef.current;
                 const currentTrack = currentPlayingTrackRef.current;
                 const shuffled = isShuffledRef.current;
+                
+                console.log('📋 Queue length:', queue.length, 'Current track:', currentTrack?.name, 'playTrackRef:', !!playTrackRef.current);
                 
                 if (currentTrack && queue.length > 0) {
                   const currentIndex = queue.findIndex(t => t.id === currentTrack.id);
@@ -492,17 +599,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     nextIndex = currentIndex + 1;
                   }
                   
+                  console.log('⏭️ Current index:', currentIndex, 'Next index:', nextIndex, 'Queue length:', queue.length);
+                  
                   if (nextIndex < queue.length && playTrackRef.current) {
+                    console.log('▶️ Playing next track:', queue[nextIndex].name);
                     playTrackRef.current(queue[nextIndex]);
                   } else {
+                    console.log('🔄 Looping back to start...');
                     // Loop back to start (or random if shuffled)
                     if (shuffled && queue.length > 1 && playTrackRef.current) {
                       const randomIndex = Math.floor(Math.random() * queue.length);
+                      console.log('🎲 Random track:', queue[randomIndex].name);
                       playTrackRef.current(queue[randomIndex]);
                     } else if (playTrackRef.current) {
+                      console.log('🔙 Playing first track:', queue[0].name);
                       playTrackRef.current(queue[0]);
                     }
                   }
+                } else {
+                  console.log('❌ Cannot find next track - no current track or empty queue');
                 }
               } else {
                 // mode === 'off' - play next but don't loop
@@ -559,6 +674,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Keep playTrack ref updated
   useEffect(() => {
     playTrackRef.current = playTrack;
+    console.log('✅ playTrackRef.current updated');
   }, [playTrack]);
 
   // Update current time
