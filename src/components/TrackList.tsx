@@ -25,9 +25,10 @@ interface TrackListProps {
   playlistName?: string;
   playlistImages?: string[];
   onTracksUpdate?: (tracks: Track[]) => void;
+  onDownloadingChange?: (isDownloading: boolean, downloadId?: string) => void;
 }
 
-export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], onTracksUpdate }: TrackListProps) => {
+export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], onTracksUpdate, onDownloadingChange }: TrackListProps) => {
   const [tracks, setTracks] = useState(initialTracks);
   const [downloading, setDownloading] = useState(false);
   const [showDuplicatesDialog, setShowDuplicatesDialog] = useState(false);
@@ -126,6 +127,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  // Notify parent about downloading status changes
+  useEffect(() => {
+    if (onDownloadingChange) {
+      onDownloadingChange(downloading, downloadId);
+    }
+  }, [downloading, downloadId, onDownloadingChange]);
 
   // ============ PERSISTENCE: RESTORE STATE ON MOUNT ============
   useEffect(() => {

@@ -44,6 +44,9 @@ const Index = () => {
   const [showSavedPlaylists, setShowSavedPlaylists] = useState(false);
   // Saved playlists count for live updates
   const [savedPlaylistsCount, setSavedPlaylistsCount] = useState(0);
+  // Track active downloads
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [activeDownloadId, setActiveDownloadId] = useState<string>('');
   
   // Restore track list and playlist info on mount
   useEffect(() => {
@@ -127,6 +130,37 @@ const Index = () => {
       window.removeEventListener('playlistsSaved', updateCount);
     };
   }, []);
+
+  // Download confirmation on tab close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDownloading) {
+        // Show browser's built-in confirmation dialog
+        e.preventDefault();
+        e.returnValue = ''; // Modern browsers require this
+        
+        // Cancel download on backend (fire and forget)
+        if (activeDownloadId) {
+          const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+          fetch(`${API_URL}/api/download/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ downloadId: activeDownloadId }),
+            keepalive: true // Ensures request completes even if page is closing
+          }).catch(err => console.error('Failed to cancel download:', err));
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDownloading, activeDownloadId]);
+
+  // Callback from TrackList when download status changes
+  const handleDownloadingChange = (downloading: boolean, downloadId?: string) => {
+    setIsDownloading(downloading);
+    setActiveDownloadId(downloadId || '');
+  };
 
   // Helper to detect if text is a supported music URL
   const isValidMusicUrl = (text: string): boolean => {
@@ -477,6 +511,7 @@ const Index = () => {
                   });
                 }
               }}
+              onDownloadingChange={handleDownloadingChange}
             />
           </div>
         )}
