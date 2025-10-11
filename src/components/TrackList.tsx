@@ -154,29 +154,38 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             const restoredTrack = savedSession.currentTrack;
-            let youtubeId = restoredTrack.youtubeId || restoredTrack.id;
+            
+            // Extract YouTube ID using the same logic as playTrack
+            let youtubeId = getYouTubeId(restoredTrack.url);
+            
+            // If no URL, try using the track's youtubeId or id directly
+            if (!youtubeId) {
+              youtubeId = restoredTrack.youtubeId || restoredTrack.id;
+              
+              // Remove "search-" prefix if present (from YouTube search results)
+              if (youtubeId && youtubeId.startsWith('search-')) {
+                youtubeId = youtubeId.replace('search-', '');
+                console.log('🔧 [2/5] Cleaned search ID:', youtubeId);
+              }
+            }
             
             if (!youtubeId) {
-              throw new Error('No YouTube ID found');
+              throw new Error('Invalid video id');
             }
             
-            // Clean the ID
-            if (youtubeId.startsWith('search-')) {
-              youtubeId = youtubeId.replace('search-', '');
-              console.log('🔧 [2/5] Cleaned ID:', youtubeId);
-            }
+            console.log('✅ [2/5] YouTube ID extracted:', youtubeId);
             
             // Verify YouTube API
             if (!(window as any).YT || !(window as any).YT.Player) {
               throw new Error('YouTube API not loaded');
             }
-            console.log('✅ [2/5] YouTube API verified');
+            console.log('✅ [3/5] YouTube API verified');
             
             // Clean up old player
             if (playerRef.current) {
               try {
                 playerRef.current.destroy();
-                console.log('🗑️ [3/5] Old player destroyed');
+                console.log('🗑️ [4/5] Old player destroyed');
               } catch (err) {
                 console.log('⚠️ Old player cleanup skipped');
               }
@@ -186,7 +195,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Create new player with enhanced error handling
-            console.log('✨ [4/5] Creating player with video:', youtubeId);
+            console.log('✨ [5/5] Creating player with video:', youtubeId);
             
             playerRef.current = new (window as any).YT.Player('youtube-player', {
               videoId: youtubeId,
