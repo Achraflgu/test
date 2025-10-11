@@ -11,7 +11,8 @@
 export const STORAGE_KEYS = {
   SAVED_PLAYLISTS: 'saved-playlists',
   PLAYER_SESSION: 'player-session',
-  PLAYER_SETTINGS: 'player-settings'
+  PLAYER_SETTINGS: 'player-settings',
+  CURRENT_TRACKLIST: 'current-tracklist'  // Main track list on page
 };
 
 // Types
@@ -34,6 +35,14 @@ export interface PlayerSession {
   currentQueue: any[];
   currentTime: number;
   isPlaying: boolean;
+  timestamp: number;
+}
+
+export interface CurrentTrackList {
+  tracks: any[];
+  playlistUrl?: string;
+  playlistName?: string;
+  playlistImages?: string[];
   timestamp: number;
 }
 
@@ -190,6 +199,32 @@ export const loadPlayerSettings = (): PlayerSettings | null => {
   }
 };
 
+// ============ TRACK LIST PERSISTENCE ============
+
+/**
+ * Save current track list (main list on page)
+ */
+export const saveCurrentTrackList = (trackList: CurrentTrackList) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_TRACKLIST, JSON.stringify(trackList));
+  } catch (error) {
+    console.error('Failed to save track list:', error);
+  }
+};
+
+/**
+ * Load current track list
+ */
+export const loadCurrentTrackList = (): CurrentTrackList | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.CURRENT_TRACKLIST);
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error('Failed to load track list:', error);
+    return null;
+  }
+};
+
 // ============ RESET SESSION ============
 
 /**
@@ -198,7 +233,7 @@ export const loadPlayerSettings = (): PlayerSettings | null => {
  */
 export const resetPlayerSession = () => {
   try {
-    // Remove only session and settings, keep saved playlists
+    // Remove only session and settings, keep saved playlists and track list
     localStorage.removeItem(STORAGE_KEYS.PLAYER_SESSION);
     localStorage.removeItem(STORAGE_KEYS.PLAYER_SETTINGS);
     

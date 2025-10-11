@@ -16,7 +16,7 @@ import {
   resetTabTitle,
 } from "@/lib/tabNotifications";
 import { savePlaylistToHistory } from "@/components/SavedPlaylists";
-import { savePlayerSession, loadPlayerSession, savePlayerSettings, loadPlayerSettings, resetPlayerSession } from "@/lib/playlistStorage";
+import { savePlayerSession, loadPlayerSession, savePlayerSettings, loadPlayerSettings, resetPlayerSession, saveCurrentTrackList, loadCurrentTrackList } from "@/lib/playlistStorage";
 
 interface TrackListProps {
   tracks: Track[];
@@ -129,6 +129,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   // ============ PERSISTENCE: RESTORE STATE ON MOUNT ============
   useEffect(() => {
+    // Restore track list if no tracks provided via props
+    if (initialTracks.length === 0) {
+      const savedTrackList = loadCurrentTrackList();
+      if (savedTrackList && savedTrackList.tracks.length > 0) {
+        console.log('📥 Restoring track list from localStorage...', savedTrackList.tracks.length, 'tracks');
+        setTracks(savedTrackList.tracks);
+        if (onTracksUpdate) {
+          onTracksUpdate(savedTrackList.tracks);
+        }
+      }
+    }
+    
     // Restore player session (queue, current track, position)
     const savedSession = loadPlayerSession();
     if (savedSession) {
@@ -185,6 +197,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     };
     savePlayerSettings(settings);
   }, [volume, isMuted, isShuffled, repeatMode, isPlayerMinimized]);
+
+  // Save track list whenever it changes
+  useEffect(() => {
+    if (tracks.length > 0) {
+      const trackList = {
+        tracks,
+        playlistUrl,
+        playlistName,
+        playlistImages,
+        timestamp: Date.now()
+      };
+      saveCurrentTrackList(trackList);
+    }
+  }, [tracks, playlistUrl, playlistName, playlistImages]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
