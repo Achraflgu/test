@@ -536,20 +536,35 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       return;
     }
 
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(youtubeId);
-      // Set volume after a short delay to ensure it's applied after video loads
-      setTimeout(() => {
-        if (playerRef.current) {
-          playerRef.current.setVolume(volumeRef.current);
-          if (isMutedRef.current) {
-            playerRef.current.mute();
-          } else {
-            playerRef.current.unMute();
+    // Check if player exists AND has valid YouTube methods
+    if (playerRef.current && playerRef.current.loadVideoById && typeof playerRef.current.loadVideoById === 'function') {
+      try {
+        playerRef.current.loadVideoById(youtubeId);
+        // Set volume after a short delay to ensure it's applied after video loads
+        setTimeout(() => {
+          if (playerRef.current && playerRef.current.setVolume) {
+            playerRef.current.setVolume(volumeRef.current);
+            if (isMutedRef.current) {
+              playerRef.current.mute();
+            } else {
+              playerRef.current.unMute();
+            }
           }
+        }, 100);
+      } catch (error) {
+        console.error('Error loading video, recreating player:', error);
+        // Player is corrupt, destroy and recreate
+        try {
+          playerRef.current.destroy();
+        } catch (e) {
+          // Ignore destroy errors
         }
-      }, 100);
-    } else {
+        playerRef.current = null;
+        // Fall through to create new player
+      }
+    }
+    
+    if (!playerRef.current) {
       playerRef.current = new (window as any).YT.Player('youtube-player', {
         height: '0',
         width: '0',
@@ -716,6 +731,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const togglePlayPause = () => {
     if (!playerRef.current || !currentPlayingTrack) return;
     
+    // Verify player has required methods
+    if (!playerRef.current.pauseVideo || !playerRef.current.playVideo) {
+      toast.error('Player not ready. Please try again.');
+      return;
+    }
+    
     if (isPlaying) {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
@@ -763,9 +784,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const seekTo = (time: number) => {
-    if (playerRef.current && playerRef.current.seekTo) {
-      playerRef.current.seekTo(time, true);
-      setCurrentTime(time);
+    if (playerRef.current && playerRef.current.seekTo && typeof playerRef.current.seekTo === 'function') {
+      try {
+        playerRef.current.seekTo(time, true);
+        setCurrentTime(time);
+      } catch (error) {
+        console.error('Error seeking:', error);
+      }
     }
   };
 
@@ -782,12 +807,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const changeVolume = (newVolume: number) => {
-    if (playerRef.current && playerRef.current.setVolume) {
-      playerRef.current.setVolume(newVolume);
-      setVolume(newVolume);
-      if (newVolume > 0 && isMuted) {
-        setIsMuted(false);
-        playerRef.current.unMute();
+    if (playerRef.current && playerRef.current.setVolume && typeof playerRef.current.setVolume === 'function') {
+      try {
+        playerRef.current.setVolume(newVolume);
+        setVolume(newVolume);
+        if (newVolume > 0 && isMuted) {
+          setIsMuted(false);
+          if (playerRef.current.unMute) {
+            playerRef.current.unMute();
+          }
+        }
+      } catch (error) {
+        console.error('Error changing volume:', error);
       }
     }
   };
