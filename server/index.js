@@ -140,9 +140,6 @@ const activeDownloads = new Map();
 const activeProcesses = new Map();
 
 // 🔥 ADVANCED BOT DETECTION BYPASS UTILITIES
-const fs = require('fs').promises;
-const path = require('path');
-
 async function addAdvancedBotBypass(args, strategy, attempt) {
   console.log(`   🤖 Adding advanced bot bypass methods for ${strategy}...`);
   
@@ -160,7 +157,7 @@ async function addAdvancedBotBypass(args, strategy, attempt) {
   
   try {
     // Create temporary cookies file (more secure than headers)
-    const tempCookieFile = path.join(require('os').tmpdir(), `youtube_cookies_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
+    const tempCookieFile = path.join(os.tmpdir(), `youtube_cookies_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
     const selectedCookies = fakeCookies[attempt % fakeCookies.length];
     
     // Write cookies in Netscape format
@@ -454,7 +451,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     const client = clientTypes.ios_clients[attempt % clientTypes.ios_clients.length];
     const userAgent = userAgents.ios[attempt % userAgents.ios.length];
     
-    args.push('--user-agent', userAgent);
+  args.push('--user-agent', userAgent);
     args.push('--extractor-args', `youtube:player_client=${client}`);
     args.push('--no-check-certificate');
     
