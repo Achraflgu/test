@@ -2290,7 +2290,7 @@ app.get('/api/youtube/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments
+      // Base search arguments for search (NO PROXIES - they block searches)
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2298,11 +2298,23 @@ app.get('/api/youtube/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
-      // Add enhanced methods
-      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      // Add cookies if available (but NO PROXIES for search)
+      try {
+        const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+        if (cookiesExist) {
+          searchArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+          console.log('🍪 Using YouTube cookies for search');
+        } else {
+          console.log('⚠️ No YouTube cookies - search may be limited');
+        }
+      } catch (err) {
+        console.log('⚠️ No YouTube cookies found');
+      }
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
@@ -2438,7 +2450,7 @@ app.post('/api/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments
+      // Base search arguments for search (NO PROXIES - they block searches)
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2446,11 +2458,23 @@ app.post('/api/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
-      // Add enhanced methods
-      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      // Add cookies if available (but NO PROXIES for search)
+      try {
+        const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+        if (cookiesExist) {
+          searchArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+          console.log('🍪 Using YouTube cookies for search');
+        } else {
+          console.log('⚠️ No YouTube cookies - search may be limited');
+        }
+      } catch (err) {
+        console.log('⚠️ No YouTube cookies found');
+      }
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
