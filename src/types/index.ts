@@ -19,6 +19,7 @@ export interface Track {
   duration: number;
   imageUrl: string;
   url: string;
+  youtubeId?: string; // Optional YouTube video ID
   downloadStatus: 'pending' | 'downloading' | 'completed' | 'failed';
   downloadProgress: number;
   selected: boolean;
