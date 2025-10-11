@@ -169,8 +169,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               }
             }
             
-            if (!youtubeId) {
-              throw new Error('Invalid video id');
+            // Validate the YouTube ID
+            if (!youtubeId || !isValidYouTubeId(youtubeId)) {
+              throw new Error('Invalid video id: ' + (youtubeId || 'none'));
             }
             
             console.log('✅ [2/5] YouTube ID extracted:', youtubeId);
@@ -373,7 +374,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 },
                 onError: (event: any) => {
                   console.error('❌ YouTube Player Error:', event.data);
-                  toast.error('Player error - try playing manually');
+                  let errorMessage = 'Player error';
+                  
+                  // YouTube error codes:
+                  // 2 - Invalid video ID
+                  // 5 - HTML5 player error
+                  // 100 - Video not found
+                  // 101, 150 - Video not allowed to be played in embedded players
+                  
+                  if (event.data === 2) {
+                    errorMessage = 'Invalid video ID - cannot play this track';
+                  } else if (event.data === 100) {
+                    errorMessage = 'Video not found or removed';
+                  } else if (event.data === 101 || event.data === 150) {
+                    errorMessage = 'Video cannot be played in embedded player';
+                  }
+                  
+                  toast.error(errorMessage);
+                  setIsPlaying(false);
                 }
               }
             });
@@ -472,6 +490,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     return null;
   };
+  
+  // Validate YouTube ID (11 characters, alphanumeric + _ and -)
+  const isValidYouTubeId = (id: string | null | undefined): boolean => {
+    if (!id) return false;
+    // YouTube IDs are typically 11 characters: letters, numbers, - and _
+    const youtubeIdPattern = /^[a-zA-Z0-9_-]{11}$/;
+    return youtubeIdPattern.test(id);
+  };
 
   const playTrack = async (track: Track) => {
     console.log('🎵 playTrack called for:', track.name);
@@ -498,6 +524,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       if (youtubeId && youtubeId.startsWith('search-')) {
         youtubeId = youtubeId.replace('search-', '');
       }
+    }
+    
+    // Validate the YouTube ID before using it
+    if (youtubeId && !isValidYouTubeId(youtubeId)) {
+      console.log('⚠️ Invalid YouTube ID detected:', youtubeId, '- will search on YouTube');
+      youtubeId = null; // Force a search
     }
     
     // If not a YouTube URL (e.g., Spotify), search for it on YouTube
@@ -532,6 +564,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         return;
       }
     }
+
+    // Final validation before playing
+    if (!isValidYouTubeId(youtubeId)) {
+      console.error('❌ Cannot play - invalid YouTube ID:', youtubeId);
+      toast.error('Invalid video ID. Cannot play this track.');
+      return;
+    }
+    
+    console.log('✅ Valid YouTube ID confirmed:', youtubeId);
 
     // Play new track
     setCurrentPlayingTrack(track);
@@ -709,6 +750,28 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             } else if (event.data === (window as any).YT.PlayerState.PAUSED) {
               setIsPlaying(false);
             }
+          },
+          onError: (event: any) => {
+            console.error('❌ YouTube Player Error:', event.data);
+            let errorMessage = 'Player error';
+            
+            // YouTube error codes:
+            // 2 - Invalid video ID
+            // 5 - HTML5 player error
+            // 100 - Video not found
+            // 101, 150 - Video not allowed to be played in embedded players
+            
+            if (event.data === 2) {
+              errorMessage = 'Invalid video ID - cannot play this track';
+            } else if (event.data === 100) {
+              errorMessage = 'Video not found or removed';
+            } else if (event.data === 101 || event.data === 150) {
+              errorMessage = 'Video cannot be played in embedded player';
+            }
+            
+            toast.error(errorMessage);
+            setIsPlaying(false);
+            setCurrentPlayingTrack(null);
           },
         },
       });
