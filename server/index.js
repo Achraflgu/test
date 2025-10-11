@@ -2447,7 +2447,7 @@ app.post('/api/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments
+      // Base search arguments - NO PROXIES for search (they cause failures)
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2455,11 +2455,13 @@ app.post('/api/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android',
+        '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 13) gzip'
       ];
       
-      // Add enhanced methods
-      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      // ⚡ IMPORTANT: Don't use proxies for search - they get blocked and slow down searches
+      // Searches work fine with just the Android client (fast and reliable)
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
