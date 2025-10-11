@@ -2806,7 +2806,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--socket-timeout', '30');
       ytdlpArgs.push('--retries', '10');
       ytdlpArgs.push('--fragment-retries', '10');
-      ytdlpArgs.push('--skip-unavailable-fragments', 'true');
+      ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
     } else {
       console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
       
@@ -2833,7 +2833,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--socket-timeout', '30');
       ytdlpArgs.push('--retries', '10');
       ytdlpArgs.push('--fragment-retries', '10');
-      ytdlpArgs.push('--skip-unavailable-fragments', 'true');
+      ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
       
       // Add metadata args if artist is not "Unknown Artist"
       if (track.artist !== 'Unknown Artist') {
