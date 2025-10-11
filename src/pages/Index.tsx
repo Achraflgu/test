@@ -491,17 +491,6 @@ const Index = () => {
                 </div>
               )}
             </div>
-            
-            {/* Latest Commit Info */}
-            <div className="flex items-center justify-center gap-2 pt-2 border-t border-border/50">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 rounded-lg">
-                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-                <span className="text-xs text-muted-foreground">Latest Commit:</span>
-                <span className="text-xs text-foreground font-mono font-semibold">665c52e</span>
-                <span className="text-xs text-muted-foreground">•</span>
-                <span className="text-xs text-muted-foreground">Oct 10, 2025</span>
-              </div>
-            </div>
           </div>
         </div>
       </footer>
