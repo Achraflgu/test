@@ -411,6 +411,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                                     savedSession.currentTrack.url.startsWith('https://open.spotify.com'));
             
             if (isSpotifyTrack) {
+              // 🔥 FIX: Clear current playing state so clicking play triggers fresh search
+              setCurrentPlayingTrack(savedSession.currentTrack); // Keep track visible
+              setIsPlaying(false); // But mark as not playing
+              
+              // Destroy any broken player
+              if (playerRef.current) {
+                try {
+                  playerRef.current.destroy();
+                } catch (e) {
+                  // Ignore
+                }
+                playerRef.current = null;
+              }
+              
               toast.info('🎵 Spotify Track Loaded', {
                 description: 'Click ▶️ Play to start listening',
                 duration: 4000
@@ -940,7 +954,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   }, [currentPlayingTrack, isPlaying]);
 
   const togglePlayPause = () => {
-    if (!playerRef.current || !currentPlayingTrack) return;
+    if (!currentPlayingTrack) return;
+    
+    // 🔥 FIX: If no player exists (e.g., Spotify track failed restoration), start fresh
+    if (!playerRef.current) {
+      console.log('⚠️ No player exists, starting fresh playback...');
+      playTrack(currentPlayingTrack);
+      return;
+    }
     
     // Verify player has required methods
     if (typeof playerRef.current.pauseVideo !== 'function' || 
