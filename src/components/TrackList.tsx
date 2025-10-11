@@ -48,6 +48,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [currentPlayingTrack, setCurrentPlayingTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [youtubeIdCache, setYoutubeIdCache] = useState<Map<string, string>>(new Map()); // Cache Spotify ID -> YouTube ID
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(100);
   const [isMuted, setIsMuted] = useState(false);
@@ -498,6 +499,97 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     const youtubeIdPattern = /^[a-zA-Z0-9_-]{11}$/;
     return youtubeIdPattern.test(id);
   };
+  
+  // Load YouTube ID cache from localStorage
+  const loadYoutubeCache = (): Map<string, string> => {
+    try {
+      const cached = localStorage.getItem('youtube-id-cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return new Map(Object.entries(parsed));
+      }
+    } catch (e) {
+      console.log('⚠️ Failed to load YouTube cache:', e);
+    }
+    return new Map();
+  };
+  
+  // Save YouTube ID cache to localStorage
+  const saveYoutubeCache = (cache: Map<string, string>) => {
+    try {
+      const obj = Object.fromEntries(cache);
+      localStorage.setItem('youtube-id-cache', JSON.stringify(obj));
+    } catch (e) {
+      console.log('⚠️ Failed to save YouTube cache:', e);
+    }
+  };
+  
+  // Background prefetch YouTube IDs for Spotify tracks
+  const prefetchYoutubeIds = async (tracks: Track[]) => {
+    const cache = loadYoutubeCache();
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    
+    // Find tracks that need YouTube IDs
+    const tracksToFetch = tracks.filter(track => {
+      // Skip if already has valid YouTube ID
+      if (track.youtubeId && isValidYouTubeId(track.youtubeId)) return false;
+      
+      // Skip if in cache
+      if (cache.has(track.id)) return false;
+      
+      // Skip if already has YouTube URL
+      const youtubeId = getYouTubeId(track.url);
+      if (youtubeId && isValidYouTubeId(youtubeId)) {
+        cache.set(track.id, youtubeId);
+        return false;
+      }
+      
+      return true; // Needs fetching
+    });
+    
+    if (tracksToFetch.length === 0) {
+      console.log('✅ All tracks already have YouTube IDs cached');
+      setYoutubeIdCache(cache);
+      return;
+    }
+    
+    console.log(`🔄 Prefetching YouTube IDs for ${tracksToFetch.length} tracks...`);
+    
+    // Fetch in batches to avoid overwhelming the server
+    const batchSize = 3;
+    for (let i = 0; i < tracksToFetch.length; i += batchSize) {
+      const batch = tracksToFetch.slice(i, i + batchSize);
+      
+      await Promise.all(batch.map(async (track) => {
+        try {
+          const searchQuery = `${track.artist} ${track.name}`;
+          const response = await fetch(`${apiUrl}/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=1`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.results && data.results.length > 0) {
+              const youtubeId = getYouTubeId(data.results[0].url);
+              if (youtubeId && isValidYouTubeId(youtubeId)) {
+                cache.set(track.id, youtubeId);
+                console.log(`✅ Cached: ${track.name} -> ${youtubeId}`);
+              }
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ Prefetch failed for ${track.name}`);
+        }
+      }));
+      
+      // Small delay between batches
+      if (i + batchSize < tracksToFetch.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    saveYoutubeCache(cache);
+    setYoutubeIdCache(cache);
+    console.log(`✅ Prefetch complete! Cached ${cache.size} YouTube IDs`);
+  };
 
   const playTrack = async (track: Track) => {
     console.log('🎵 playTrack called for:', track.name);
@@ -528,11 +620,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     // Validate the YouTube ID before using it
     if (youtubeId && !isValidYouTubeId(youtubeId)) {
-      console.log('⚠️ Invalid YouTube ID detected:', youtubeId, '- will search on YouTube');
-      youtubeId = null; // Force a search
+      console.log('⚠️ Invalid YouTube ID detected:', youtubeId, '- will check cache');
+      youtubeId = null; // Force a search or cache lookup
     }
     
-    // If not a YouTube URL (e.g., Spotify), search for it on YouTube
+    // Check cache first for Spotify tracks (instant playback!)
+    if (!youtubeId && youtubeIdCache.has(track.id)) {
+      youtubeId = youtubeIdCache.get(track.id) || null;
+      console.log('⚡ CACHE HIT! Instant playback for:', track.name);
+      toast.success('🎵 Ready to play!', { duration: 1000 });
+    }
+    
+    // If not a YouTube URL and not in cache, search for it on YouTube
     if (!youtubeId) {
       toast.info(`Searching YouTube for: ${track.artist} - ${track.name}`);
       
@@ -553,6 +652,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             toast.error('Could not find a playable version on YouTube');
             return;
           }
+          
+          // Cache the result for next time
+          const newCache = new Map<string, string>(youtubeIdCache);
+          newCache.set(track.id, youtubeId);
+          setYoutubeIdCache(newCache);
+          saveYoutubeCache(newCache);
+          console.log('💾 Cached YouTube ID for:', track.name);
+          
           toast.success('Found on YouTube!');
         } else {
           toast.error('Could not find this track on YouTube');
@@ -1308,6 +1415,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         setIsPlayingAll(false);
       }
     }
+    
+    // Prefetch YouTube IDs in background for faster playback
+    if (initialTracks.length > 0) {
+      // Delay prefetching slightly to not interfere with initial page load
+      setTimeout(() => {
+        prefetchYoutubeIds(initialTracks);
+      }, 1000);
+    }
   }, [initialTracks]);
 
   // Update folder name when playlist name changes
@@ -1316,6 +1431,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setFolderName(playlistName);
     }
   }, [playlistName]);
+  
+  // Load YouTube ID cache on mount
+  useEffect(() => {
+    const cache = loadYoutubeCache();
+    setYoutubeIdCache(cache);
+    console.log(`💾 Loaded ${cache.size} cached YouTube IDs from storage`);
+  }, []);
 
   // Initialize WebSocket connection
   useEffect(() => {
