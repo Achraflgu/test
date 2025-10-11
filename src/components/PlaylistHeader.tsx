@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, Music, User, ExternalLink, Play, RefreshCw, RotateCcw } from "lucide-react";
+import { Clock, Music, User, ExternalLink, Play, RotateCcw } from "lucide-react";
 import { Playlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,33 +12,15 @@ interface PlaylistHeaderProps {
     images: string[];
     urls: string[];
   };
-  onReload?: () => void;
   onReset?: () => void;
   hasActiveTracks?: boolean;
 }
 
-export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload, onReset, hasActiveTracks = false }: PlaylistHeaderProps) => {
+export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActiveTracks = false }: PlaylistHeaderProps) => {
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
   const [selectedPlaylistIndex, setSelectedPlaylistIndex] = useState<number>(0);
-  const [isReloading, setIsReloading] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
-
-  const handleReload = async () => {
-    if (!onReload) return;
-    
-    setIsReloading(true);
-    toast.info('🔄 Reloading playlist...');
-    
-    try {
-      await onReload();
-      toast.success('✅ Playlist reloaded successfully!');
-    } catch (error) {
-      toast.error('❌ Failed to reload playlist');
-    } finally {
-      setIsReloading(false);
-    }
-  };
 
   const handleReset = () => {
     if (!onReset) return;
@@ -238,21 +220,6 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReload, onReset,
                   <span className="text-xs font-bold text-primary uppercase tracking-wider">{contentType}</span>
                 </div>
               </div>
-              
-              {/* Reload Button */}
-              {onReload && (
-                <Button
-                  onClick={handleReload}
-                  disabled={isReloading}
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-3 border-2 border-primary/40 text-primary hover:bg-primary/10 hover:border-primary transition-all rounded-lg hover:scale-105 disabled:opacity-50"
-                  title="Reload playlist"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-1.5 ${isReloading ? 'animate-spin' : ''}`} />
-                  <span className="text-xs font-semibold">Reload</span>
-                </Button>
-              )}
               
               {/* Reset Button */}
               {onReset && (

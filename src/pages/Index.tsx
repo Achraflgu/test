@@ -455,20 +455,6 @@ const Index = () => {
                   images: playlistImages,
                   urls: playlistUrls
                 } : undefined}
-                onReload={async () => {
-                  // Reload the playlist by clearing and re-fetching
-                  setPlaylist(null);
-                  setTracks([]);
-                  setPlaylistNames([]);
-                  setPlaylistImages([]);
-                  setPlaylistUrls([]);
-                  
-                  // Trigger the playlist input to reload
-                  const playlistInput = document.querySelector('[data-load-button]') as HTMLButtonElement;
-                  if (playlistInput) {
-                    playlistInput.click();
-                  }
-                }}
                 onReset={handleResetSession}
                 hasActiveTracks={tracks.length > 0}
               />
