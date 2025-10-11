@@ -10,6 +10,7 @@ import os from 'os';
 import fetch from 'node-fetch';
 import sharp from 'sharp';
 import archiver from 'archiver';
+import { proxyManager } from './proxy-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -220,11 +221,21 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     console.log('⚠️  Cookie check failed - may get blocked on shared IPs');
   }
   
-  // Add ScraperAPI proxy if available (bypasses YouTube blocks)
+  // Add ScraperAPI proxy if available (bypasses YouTube blocks - PAID)
   if (process.env.SCRAPERAPI_KEY) {
     const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
     args.push('--proxy', scraperApiProxy);
     console.log('🌐 Using ScraperAPI proxy to bypass YouTube blocking');
+  }
+  // Otherwise, use free rotating proxies (FREE but less reliable)
+  else if (process.env.USE_FREE_PROXIES === 'true') {
+    const proxy = proxyManager.getProxyForYtdlp();
+    if (proxy) {
+      args.push('--proxy', proxy);
+      console.log(`🌐 Using free proxy: ${proxy}`);
+    } else {
+      console.log('⚠️  No free proxies available, trying without proxy');
+    }
   }
   
   return { userAgent, clientType };
@@ -3300,11 +3311,19 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Build yt-dlp args for spotdl (including proxy if available)
     let ytdlpArgs = '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10';
     
-    // Add ScraperAPI proxy if available
+    // Add ScraperAPI proxy if available (PAID)
     if (process.env.SCRAPERAPI_KEY) {
       const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       ytdlpArgs += ` --proxy ${scraperApiProxy}`;
       console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');
+    }
+    // Otherwise, use free rotating proxies (FREE)
+    else if (process.env.USE_FREE_PROXIES === 'true') {
+      const proxy = proxyManager.getProxyForYtdlp();
+      if (proxy) {
+        ytdlpArgs += ` --proxy ${proxy}`;
+        console.log(`🌐 Free proxy enabled for spotdl: ${proxy}`);
+      }
     }
     
     const spotdlArgs = [
@@ -4100,6 +4119,38 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Proxy status endpoint
+app.get('/api/proxy/status', async (req, res) => {
+  const stats = proxyManager.getStats();
+  const useProxies = process.env.USE_FREE_PROXIES === 'true';
+  const useScraperAPI = !!process.env.SCRAPERAPI_KEY;
+  
+  res.json({
+    enabled: useProxies || useScraperAPI,
+    type: useScraperAPI ? 'ScraperAPI (Paid)' : useProxies ? 'Free Rotating Proxies' : 'None',
+    stats: useProxies ? stats : null
+  });
+});
+
+// Refresh proxy pool manually
+app.post('/api/proxy/refresh', async (req, res) => {
+  if (process.env.USE_FREE_PROXIES !== 'true') {
+    return res.status(400).json({ error: 'Free proxies not enabled' });
+  }
+  
+  try {
+    await proxyManager.fetchProxies();
+    const stats = proxyManager.getStats();
+    res.json({
+      success: true,
+      message: 'Proxy pool refreshed',
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   const spotdlInstalled = await checkSpotdlInstalled();
   
@@ -4152,6 +4203,19 @@ checkAndUpdateVersions().then(async () => {
       console.log('✅ Dependencies installed successfully!');
     } catch (error) {
       console.log('⚠️ Failed to install dependencies:', error.message);
+    }
+  }
+  
+  // Initialize free proxy pool if enabled
+  if (process.env.USE_FREE_PROXIES === 'true') {
+    console.log('\n🌐 Initializing free proxy pool...');
+    try {
+      await proxyManager.fetchProxies();
+      const stats = proxyManager.getStats();
+      console.log(`✅ Proxy pool ready: ${stats.total} proxies loaded`);
+    } catch (error) {
+      console.log('⚠️ Failed to load proxies:', error.message);
+      console.log('Will try to fetch proxies on first use');
     }
   }
   
