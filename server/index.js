@@ -616,7 +616,11 @@ async function fetchVideoFallback(videoId) {
               
               console.log(`📄 Page response status: ${pageResponse.status}`);
               
-              if (pageResponse.ok) {
+              if (pageResponse.status === 429) {
+                console.log(`⚠️  Rate limited (429) - YouTube is blocking requests`);
+                console.log(`💡 Add YOUTUBE_COOKIES to fix this (see ADD-YOUTUBE-COOKIES.md)`);
+                // Don't try to parse HTML on 429
+              } else if (pageResponse.ok) {
                 const html = await pageResponse.text();
                 console.log(`📄 Got HTML page (${html.length} bytes)`);
                 
@@ -689,7 +693,11 @@ async function fetchVideoFallback(videoId) {
               downloadProgress: 0,
               selected: true
             };
-            console.log(`✅ Created track: "${track.name}" by ${track.artist} (${duration}s)`);
+            if (duration > 0) {
+              console.log(`✅ Created track: "${track.name}" by ${track.artist} (${duration}s)`);
+            } else {
+              console.log(`✅ Created track: "${track.name}" by ${track.artist} (duration will load when playing)`);
+            }
             resolve({ track, data: null });
     } catch (err) {
       // Ultimate fallback: Basic track
@@ -2252,9 +2260,9 @@ app.get('/api/youtube/search', async (req, res) => {
   const searchStartTime = Date.now();
   
   try {
-    // Use yt-dlp with --dump-json for MUCH faster results
+    // Use yt-dlp with FAST args (same as playlist - no complex enhancements)
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments
+      // FAST search arguments (like playlist fetch)
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2262,11 +2270,15 @@ app.get('/api/youtube/search', async (req, res) => {
         '--flat-playlist',
         '--no-warnings',
         '--ignore-errors',
-        '--no-playlist'
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android,web',  // Fast method!
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
-      // Add enhanced methods
-      const { userAgent, clientType } = await addYouTubeEnhancements(searchArgs, 0);
+      // Add cookies if available (but don't wait for complex enhancements)
+      if (YOUTUBE_COOKIES) {
+        searchArgs.push('--cookies', YOUTUBE_COOKIES);
+      }
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
