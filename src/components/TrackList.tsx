@@ -146,45 +146,46 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
         
-        // Wait for YouTube API and player to be ready, then load video
-        setTimeout(() => {
-          console.log('🔄 Restoring track:', savedSession.currentTrack.name);
-          const restoredTrack = savedSession.currentTrack;
-          let youtubeId = restoredTrack.youtubeId || restoredTrack.id;
-          
-          if (!youtubeId) {
-            console.error('❌ No YouTube ID found for track');
-            return;
-          }
-          
-          // Remove "search-" prefix if present (from YouTube search results)
-          if (youtubeId.startsWith('search-')) {
-            youtubeId = youtubeId.replace('search-', '');
-            console.log('🔧 Cleaned search prefix from ID');
-          }
-          
-          console.log('📺 Loading video ID:', youtubeId);
-          
-          // Check if YouTube API is loaded
-          if (!(window as any).YT || !(window as any).YT.Player) {
-            console.error('❌ YouTube API not loaded yet');
-            return;
-          }
-          
-          // Destroy existing player if it exists
-          if (playerRef.current) {
-            try {
-              playerRef.current.destroy();
-              console.log('🗑️ Destroyed old player');
-            } catch (err) {
-              console.log('⚠️ Error destroying player:', err);
+        // Professional player restoration with retry logic
+        const restorePlayer = async () => {
+          try {
+            console.log('🎬 [1/5] Starting player restoration...');
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            const restoredTrack = savedSession.currentTrack;
+            let youtubeId = restoredTrack.youtubeId || restoredTrack.id;
+            
+            if (!youtubeId) {
+              throw new Error('No YouTube ID found');
             }
-            playerRef.current = null;
-          }
-          
-          // Wait a moment, then create fresh player
-          setTimeout(() => {
-            console.log('✨ Creating fresh player with video:', youtubeId);
+            
+            // Clean the ID
+            if (youtubeId.startsWith('search-')) {
+              youtubeId = youtubeId.replace('search-', '');
+              console.log('🔧 [2/5] Cleaned ID:', youtubeId);
+            }
+            
+            // Verify YouTube API
+            if (!(window as any).YT || !(window as any).YT.Player) {
+              throw new Error('YouTube API not loaded');
+            }
+            console.log('✅ [2/5] YouTube API verified');
+            
+            // Clean up old player
+            if (playerRef.current) {
+              try {
+                playerRef.current.destroy();
+                console.log('🗑️ [3/5] Old player destroyed');
+              } catch (err) {
+                console.log('⚠️ Old player cleanup skipped');
+              }
+              playerRef.current = null;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Create new player with enhanced error handling
+            console.log('✨ [4/5] Creating player with video:', youtubeId);
             
             playerRef.current = new (window as any).YT.Player('youtube-player', {
               videoId: youtubeId,
@@ -193,63 +194,85 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 controls: 0,
                 modestbranding: 1,
                 rel: 0,
-                showinfo: 0
+                showinfo: 0,
+                enablejsapi: 1,
+                origin: window.location.origin
               },
               events: {
                 onReady: (event: any) => {
-                  console.log('🎬 Player ready!');
+                  console.log('🎬 [5/5] Player ready! Setting up...');
                   
-                  // Set volume
+                  // Apply volume settings
                   event.target.setVolume(volumeRef.current);
                   if (isMutedRef.current) {
                     event.target.mute();
                   }
                   
-                  // Load the video
+                  // Load video
                   event.target.loadVideoById(youtubeId);
                   
-                  // Wait for video to load, then seek and pause
+                  // Wait for video metadata, then seek
                   setTimeout(() => {
                     try {
                       const duration = event.target.getDuration();
-                      console.log('⏱️ Video duration:', duration);
                       
                       if (duration && duration > 0) {
                         setDuration(duration);
+                        console.log('⏱️ Duration loaded:', duration + 's');
                       }
                       
                       // Seek to saved position
-                      event.target.seekTo(savedTime);
+                      if (savedTime > 0) {
+                        event.target.seekTo(savedTime, true);
+                        console.log('⏩ Seeking to:', savedTime + 's');
+                      }
+                      
+                      // Ensure paused state
                       event.target.pauseVideo();
                       
-                      console.log('✅ Player restored at', savedTime, 'seconds, duration:', duration);
+                      console.log('✅ Player restoration complete!', {
+                        track: restoredTrack.name,
+                        time: savedTime + 's',
+                        duration: duration + 's'
+                      });
+                      
+                      toast.success('🎵 Player Ready!', {
+                        description: `${restoredTrack.name.substring(0, 30)}...`,
+                        duration: 2000
+                      });
                     } catch (err) {
-                      console.error('❌ Error seeking:', err);
+                      console.error('❌ Error in final setup:', err);
+                      toast.error('Player loaded but position reset');
                     }
                   }, 1500);
                 },
                 onStateChange: (event: any) => {
                   const playerState = event.data;
-                  console.log('🎵 Player state changed:', playerState);
                   
-                  if (playerState === (window as any).YT.PlayerState.PLAYING) {
+                  // Get duration when state changes
+                  if (playerState === (window as any).YT.PlayerState.PLAYING || 
+                      playerState === (window as any).YT.PlayerState.PAUSED) {
                     const duration = event.target.getDuration();
-                    if (duration && duration > 0) {
+                    if (duration && duration > 0 && duration !== Infinity) {
                       setDuration(duration);
-                      console.log('✅ Got duration from playing state:', duration);
-                    }
-                  } else if (playerState === (window as any).YT.PlayerState.PAUSED) {
-                    const duration = event.target.getDuration();
-                    if (duration && duration > 0) {
-                      setDuration(duration);
-                      console.log('✅ Got duration from paused state:', duration);
                     }
                   }
+                },
+                onError: (event: any) => {
+                  console.error('❌ YouTube Player Error:', event.data);
+                  toast.error('Player error - try playing manually');
                 }
               }
             });
-          }, 500);
-        }, 2000);
+          } catch (err: any) {
+            console.error('❌ Player restoration failed:', err.message);
+            toast.error('Could not restore player', {
+              description: 'Track info saved, click play to start'
+            });
+          }
+        };
+        
+        restorePlayer();
       }
     }
     
