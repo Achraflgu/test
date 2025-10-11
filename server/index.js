@@ -2447,7 +2447,7 @@ app.post('/api/search', async (req, res) => {
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments - NO PROXIES for search (they cause failures)
+      // Base search arguments
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -2460,9 +2460,17 @@ app.post('/api/search', async (req, res) => {
         '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 13) gzip'
       ];
       
-      // ⚡ IMPORTANT: Don't use proxies for search - they get blocked and slow down searches
-      // Searches work fine with just the Android client (fast and reliable)
+      // Add cookies if available (makes searches more reliable)
+      if (process.env.YOUTUBE_COOKIES) {
+        searchArgs.push('--cookies', cookiesFile);
+        console.log('🍪 Using YouTube cookies for search');
+      } else {
+        console.log('⚠️ No YouTube cookies - search may be limited or blocked');
+      }
       
+      // ⚡ IMPORTANT: Don't use proxies for search - they get blocked and slow down searches
+      
+      console.log('🔍 Running yt-dlp search command...');
       const searchProcess = spawn(PYTHON_CMD, searchArgs);
       
       let output = '';
@@ -2474,7 +2482,12 @@ app.post('/api/search', async (req, res) => {
       });
       
       searchProcess.stderr.on('data', (data) => {
-        errorOutput += data.toString();
+        const errText = data.toString();
+        errorOutput += errText;
+        // Log important errors in real-time
+        if (errText.includes('Sign in') || errText.includes('bot') || errText.includes('ERROR')) {
+          console.log('⚠️ Search warning:', errText.trim());
+        }
       });
       
       searchProcess.on('close', (code) => {
@@ -2484,13 +2497,15 @@ app.post('/api/search', async (req, res) => {
         }
         
         if (code !== 0) {
-          console.error('Search error:', errorOutput);
+          console.error('❌ Search failed with exit code:', code);
+          console.error('Error output:', errorOutput);
           reject(new Error('Search failed'));
           return;
         }
         
         // Parse JSON output (one JSON object per line)
         const lines = output.trim().split('\n').filter(line => line.trim());
+        console.log(`📊 Received ${lines.length} lines of output from yt-dlp`);
         const tracks = [];
         
         for (const line of lines) {
@@ -2501,6 +2516,14 @@ app.post('/api/search', async (req, res) => {
             const videoId = data.id || data.url || '';
             const thumbnail = data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
             const duration = data.duration || 0;
+            
+            console.log(`  📝 Parsing result: "${title}" (ID: ${videoId})`);
+            
+            // Skip if no valid data
+            if (!title || !videoId) {
+              console.log('  ⚠️ Skipping - missing title or videoId');
+              continue;
+            }
           
           // Parse title to extract artist and song name - IMPROVED PARSING
           let artist = 'Unknown Artist';
@@ -2625,11 +2648,12 @@ app.post('/api/search', async (req, res) => {
               videoId: videoId
             });
           } catch (parseError) {
-            console.error('Error parsing search result:', parseError.message);
+            console.error('❌ Error parsing search result:', parseError.message);
             continue;
           }
         }
         
+        console.log(`✅ Successfully parsed ${tracks.length} tracks from ${lines.length} lines`);
         resolve(tracks);
       });
       
