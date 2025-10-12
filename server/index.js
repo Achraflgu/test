@@ -3932,7 +3932,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             totalSuccess: tracks.length,
             totalFailed: 0,
             attempts: attempt,
-            message: `🎉 All ${tracks.length} YouTube tracks downloaded!\n⏱️ Completed in ${elapsedTime}`
+            downloadUrl: `/api/download/archive/${downloadId}`,
+            message: `🎉 All ${tracks.length} YouTube tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
           });
           
           shouldContinue = false;
@@ -4606,7 +4607,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                     totalSuccess: successfulTracks,
                     totalFailed: 0,
                     attempts: attempt,
-                    message: `🎉 All ${successfulTracks} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}`
+            downloadUrl: `/api/download/archive/${downloadId}`,
+            message: `🎉 All ${successfulTracks} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
                   });
                   
                   resolve('complete');
@@ -4670,7 +4672,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               totalSuccess: successfulTracks,
               totalFailed: remaining,
               attempts: attempt,
-              message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}`
+            downloadUrl: `/api/download/archive/${downloadId}`,
+            message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
             });
 
             resolve('complete');
@@ -4741,7 +4744,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             totalSuccess,
             totalFailed,
             attempts: attempt,
-            message: `Download completed! Check ${outputFolder} for your files.\n⏱️ Completed in ${elapsedTime}`
+            downloadUrl: `/api/download/archive/${downloadId}`,
+            message: `Download completed! Check ${outputFolder} for your files.\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
           });
 
           resolve('complete');
