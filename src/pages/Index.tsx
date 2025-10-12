@@ -7,7 +7,7 @@ import { DownloadSettings } from "@/components/DownloadSettings";
 import { MusicSearch } from "@/components/MusicSearch";
 import SavedPlaylists, { savePlaylistToHistory } from "@/components/SavedPlaylists";
 import { Playlist, Track, DownloadSettings as DownloadSettingsType } from "@/types";
-import { checkHealth } from "@/services/api";
+import { checkHealth, getCookieStatus, postUserCookies } from "@/services/api";
 import {
   resetTabTitle,
   showDownloadProgress,
@@ -194,27 +194,18 @@ const Index = () => {
         return;
       }
 
-      // Send cookies to server
-      const response = await fetch('/api/user-cookies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ cookies }),
-      });
-
-      const data = await response.json();
+      // Send cookies to server via API helper (uses API_URL)
+      const data = await postUserCookies(cookies);
       
       if (data.ok) {
         toast.success('Cookies collected successfully! Downloads should work better now.');
         setShowCookieHelper(false);
         // Refresh cookie status
-        fetch('/api/cookie-status')
-          .then(res => res.json())
+        getCookieStatus()
           .then(data => setCookieStatus(data))
           .catch(err => console.error('Cookie status check failed:', err));
       } else {
-        toast.error('Failed to store cookies: ' + data.error);
+        toast.error('Failed to store cookies: ' + (data as any).error);
       }
     } catch (error) {
       console.error('Cookie collection failed:', error);
@@ -285,10 +276,9 @@ const Index = () => {
     // Request notification permission
     requestNotificationPermission();
     
-    // Check cookie status
-    fetch('/api/cookie-status')
-      .then(res => res.json())
-      .then(data => {
+    // Check cookie status via API helper (uses API_URL)
+    getCookieStatus()
+      .then((data) => {
         setCookieStatus(data);
         if (!data.userCookies && !data.storedCookies) {
           setShowCookieHelper(true);
