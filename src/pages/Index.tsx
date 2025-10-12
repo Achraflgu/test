@@ -558,6 +558,7 @@ const Index = () => {
             {playlistNames.length > 0 && (
               <PlaylistHeader 
                 playlist={playlist} 
+                tracks={tracks}
                 combinedPlaylists={playlistNames.length > 1 ? {
                   names: playlistNames,
                   images: playlistImages,

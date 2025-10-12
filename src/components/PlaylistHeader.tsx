@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Clock, Music, User, ExternalLink, Play, RotateCcw, Share2 } from "lucide-react";
-import { Playlist } from "@/types";
+import { Playlist, Track } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import SharePlaylistDialog from "./SharePlaylistDialog";
 
 interface PlaylistHeaderProps {
   playlist: Playlist;
+  tracks?: Track[];
   combinedPlaylists?: {
     names: string[];
     images: string[];
@@ -17,7 +18,7 @@ interface PlaylistHeaderProps {
   hasActiveTracks?: boolean;
 }
 
-export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActiveTracks = false }: PlaylistHeaderProps) => {
+export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onReset, hasActiveTracks = false }: PlaylistHeaderProps) => {
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
   const [selectedPlaylistIndex, setSelectedPlaylistIndex] = useState<number>(0);
@@ -703,13 +704,16 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActive
       </Dialog>
 
       {/* Share Playlist Dialog */}
-      <SharePlaylistDialog
-        open={showShareDialog}
-        onOpenChange={setShowShareDialog}
-        playlistId={playlist.id}
-        playlistName={playlist.name}
-        playlistData={playlist}
-      />
+        <SharePlaylistDialog
+          open={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          playlistId={playlist.id}
+          playlistName={playlist.name}
+          playlistData={{
+            ...playlist,
+            tracks: tracks
+          }}
+        />
     </div>
   );
 };
