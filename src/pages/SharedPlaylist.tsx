@@ -301,7 +301,7 @@ const SharedPlaylist = () => {
             <AlertDialogTitle>Load Shared Playlist?</AlertDialogTitle>
             <AlertDialogDescription>
               Loading this shared playlist will replace your current unsaved session. 
-              Choose "Open in New Tab" to load the playlist without saving (like private browsing), 
+              Choose "Preview Mode" to open in a new tab with read-only access (no auto-save), 
               or "Load Here" to replace your current session.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -310,10 +310,10 @@ const SharedPlaylist = () => {
             <Button
               onClick={handleOpenInNewTab}
               variant="outline"
-              className="sm:order-1"
+              className="sm:order-1 border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 hover:border-amber-500"
             >
               <ExternalLink className="w-4 h-4 mr-2" />
-              Open in New Tab
+              🔒 Preview Mode
             </Button>
             <AlertDialogAction
               onClick={handleConfirmLoad}
