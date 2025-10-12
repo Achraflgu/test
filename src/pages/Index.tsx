@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Music2, Download, ListMusic, Sparkles, Zap, Shield, CheckCircle2, Link2, Search, History } from "lucide-react";
+import { Music2, Download, ListMusic, Sparkles, Zap, Shield, CheckCircle2, Link2, Search, History, Cookie } from "lucide-react";
 import { PlaylistInput } from "@/components/PlaylistInput";
 import { PlaylistHeader } from "@/components/PlaylistHeader";
 import { TrackList } from "@/components/TrackList";
@@ -52,6 +52,9 @@ const Index = () => {
   const [detectedSearchText, setDetectedSearchText] = useState<string>('');
   // Saved playlists dialog
   const [showSavedPlaylists, setShowSavedPlaylists] = useState(false);
+  // Cookie collection state
+  const [showCookieHelper, setShowCookieHelper] = useState(false);
+  const [cookieStatus, setCookieStatus] = useState<any>(null);
   // Saved playlists count for live updates
   const [savedPlaylistsCount, setSavedPlaylistsCount] = useState(0);
   // Track active downloads
@@ -180,6 +183,50 @@ const Index = () => {
     }
   };
 
+  // Cookie collection functions
+  const collectUserCookies = async () => {
+    try {
+      // Get cookies from current domain
+      const cookies = document.cookie;
+      
+      if (!cookies) {
+        toast.error('No cookies found. Please visit YouTube first and try again.');
+        return;
+      }
+
+      // Send cookies to server
+      const response = await fetch('/api/user-cookies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cookies }),
+      });
+
+      const data = await response.json();
+      
+      if (data.ok) {
+        toast.success('Cookies collected successfully! Downloads should work better now.');
+        setShowCookieHelper(false);
+        // Refresh cookie status
+        fetch('/api/cookie-status')
+          .then(res => res.json())
+          .then(data => setCookieStatus(data))
+          .catch(err => console.error('Cookie status check failed:', err));
+      } else {
+        toast.error('Failed to store cookies: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Cookie collection failed:', error);
+      toast.error('Failed to collect cookies. Please try again.');
+    }
+  };
+
+  const openYouTubeForCookies = () => {
+    window.open('https://www.youtube.com', '_blank');
+    toast.info('Please visit YouTube, then come back and click "Collect Cookies"');
+  };
+
   // Helper to detect if text is a supported music URL
   const isValidMusicUrl = (text: string): boolean => {
     const urlPatterns = [
@@ -227,7 +274,7 @@ const Index = () => {
     }, 500);
   };
 
-  // Fetch version info and request notification permission on mount
+  // Fetch version info, request notification permission, and check cookie status on mount
   useEffect(() => {
     checkHealth().then((data) => {
       setVersionInfo(data.versions);
@@ -237,6 +284,17 @@ const Index = () => {
     
     // Request notification permission
     requestNotificationPermission();
+    
+    // Check cookie status
+    fetch('/api/cookie-status')
+      .then(res => res.json())
+      .then(data => {
+        setCookieStatus(data);
+        if (!data.userCookies && !data.storedCookies) {
+          setShowCookieHelper(true);
+        }
+      })
+      .catch(err => console.error('Cookie status check failed:', err));
     
     // Auto-scroll to input section on page load (smooth scroll to middle)
     setTimeout(() => {
@@ -277,6 +335,43 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden">
+      {/* Cookie Helper Dialog */}
+      {showCookieHelper && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <Cookie className="w-6 h-6 text-yellow-500" />
+              <h3 className="text-lg font-semibold">Help Improve Downloads</h3>
+            </div>
+            <p className="text-muted-foreground mb-4">
+              YouTube downloads work better with real browser cookies. Help us by sharing your YouTube cookies (they're safe and temporary).
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                onClick={openYouTubeForCookies}
+                variant="outline"
+                className="flex-1"
+              >
+                Visit YouTube First
+              </Button>
+              <Button 
+                onClick={collectUserCookies}
+                className="flex-1"
+              >
+                Collect Cookies
+              </Button>
+            </div>
+            <Button 
+              onClick={() => setShowCookieHelper(false)}
+              variant="ghost"
+              className="w-full mt-2"
+            >
+              Skip for now
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Animated Background Elements */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl animate-bounce-slow" />

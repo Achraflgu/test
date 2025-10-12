@@ -172,16 +172,68 @@ app.delete('/api/youtube-cookies', async (_req, res) => {
   }
 });
 
+// 🔥 NEW: Collect cookies from users visiting the website
+app.post('/api/user-cookies', async (req, res) => {
+  try {
+    const { cookies } = req.body;
+    
+    if (!cookies || typeof cookies !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Invalid cookies format' });
+    }
+    
+    // Store user cookies for YouTube authentication
+    storeUserCookies(cookies);
+    
+    console.log(`🍪 Received user cookies for YouTube authentication`);
+    return res.json({ 
+      ok: true, 
+      message: 'Cookies stored successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error storing user cookies:', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Get cookie status
+app.get('/api/cookie-status', async (_req, res) => {
+  try {
+    const hasUserCookies = userCookies && cookieLastUpdated && (Date.now() - cookieLastUpdated) < COOKIE_EXPIRY;
+    const hasStoredCookies = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+    
+    return res.json({
+      ok: true,
+      userCookies: hasUserCookies,
+      storedCookies: hasStoredCookies,
+      cookieAge: hasUserCookies ? Math.floor((Date.now() - cookieLastUpdated) / 1000 / 60) : null
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Store active downloads
 const activeDownloads = new Map();
 
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// 🔥 BROWSER COOKIE EXTRACTION (MOST EFFECTIVE METHOD)
+// 🔥 REAL USER COOKIE EXTRACTION (MOST EFFECTIVE METHOD)
+// Store cookies from users visiting the website
+let userCookies = null;
+let cookieLastUpdated = null;
+const COOKIE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+
 async function extractBrowserCookies() {
   try {
-    // Try Chrome first (most common)
+    // First try to get cookies from users who visited the website
+    if (userCookies && cookieLastUpdated && (Date.now() - cookieLastUpdated) < COOKIE_EXPIRY) {
+      console.log(`  🍪 Using fresh user cookies (${Math.floor((Date.now() - cookieLastUpdated) / 1000 / 60)} minutes old)`);
+      return userCookies;
+    }
+    
+    // Try local browser cookies (for development)
     const chromePaths = [
       path.join(process.env.USERPROFILE || process.env.HOME, 'AppData/Local/Google/Chrome/User Data/Default/Cookies'),
       path.join(process.env.HOME, '.config/google-chrome/Default/Cookies'),
@@ -236,6 +288,13 @@ async function extractBrowserCookies() {
     console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
     return null;
   }
+}
+
+// Store cookies from users visiting the website
+function storeUserCookies(cookies) {
+  userCookies = cookies;
+  cookieLastUpdated = Date.now();
+  console.log(`  🍪 Stored fresh user cookies for YouTube authentication`);
 }
 
 // 🔥 ADVANCED BOT DETECTION BYPASS UTILITIES
@@ -3633,21 +3692,29 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
       
-      // Try with browser cookies first (most effective)
+      // Try with user cookies first (most effective)
       try {
         const browserCookies = await extractBrowserCookies();
-        if (browserCookies) {
+        if (browserCookies === 'chrome' || browserCookies === 'firefox' || browserCookies === 'edge') {
           ytdlpArgs.push('--cookies-from-browser', browserCookies);
           console.log(`  🍪 Using browser cookies: ${browserCookies}`);
+        } else if (browserCookies && typeof browserCookies === 'string') {
+          // User provided cookies as string
+          const tempCookieFile = path.join(os.tmpdir(), `user_cookies_${Date.now()}.txt`);
+          await fs.writeFile(tempCookieFile, browserCookies);
+          ytdlpArgs.push('--cookies', tempCookieFile);
+          console.log(`  🍪 Using user-provided cookies`);
         } else {
           // Fallback to stored cookies
           const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
           if (cookiesExist) {
             ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
             console.log(`  🍪 Using stored YouTube cookies`);
+          } else {
+            console.log(`  ⚠️ No cookies available - downloads may fail`);
           }
         }
       } catch (err) {
@@ -3693,21 +3760,29 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
       
-      // Try with browser cookies first (most effective)
+      // Try with user cookies first (most effective)
       try {
         const browserCookies = await extractBrowserCookies();
-        if (browserCookies) {
+        if (browserCookies === 'chrome' || browserCookies === 'firefox' || browserCookies === 'edge') {
           ytdlpArgs.push('--cookies-from-browser', browserCookies);
           console.log(`  🍪 Using browser cookies: ${browserCookies}`);
+        } else if (browserCookies && typeof browserCookies === 'string') {
+          // User provided cookies as string
+          const tempCookieFile = path.join(os.tmpdir(), `user_cookies_${Date.now()}.txt`);
+          await fs.writeFile(tempCookieFile, browserCookies);
+          ytdlpArgs.push('--cookies', tempCookieFile);
+          console.log(`  🍪 Using user-provided cookies`);
         } else {
           // Fallback to stored cookies
           const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
           if (cookiesExist) {
             ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
             console.log(`  🍪 Using stored YouTube cookies`);
+          } else {
+            console.log(`  ⚠️ No cookies available - downloads may fail`);
           }
         }
       } catch (err) {
