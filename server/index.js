@@ -1077,19 +1077,16 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
     
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     
-    // Use SAME reliable args as playlist (works without cookies!)
+    // Use EXACT SAME args as playlist (which works perfectly!)
     const ytdlpArgs = [
-      '-m', 'yt_dlp',
-      url,
       '--dump-json',
-      '--no-playlist',
+      '--flat-playlist',
       '--no-warnings',
-      '--ignore-errors',
-      '--extractor-args', 'youtube:player_client=android,web',  // Same as playlist!
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      '--no-check-certificate',
+      url
     ];
     
-    const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
+    const ytdlpProcess = spawn('yt-dlp', ytdlpArgs);
     let output = '';
     let errorOutput = '';
     
