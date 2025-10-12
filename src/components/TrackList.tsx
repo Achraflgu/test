@@ -1833,6 +1833,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     <div className="relative group" data-track-list>
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/5 to-accent/5 rounded-2xl blur-xl opacity-50" />
       <div className="relative bg-card rounded-2xl border border-border shadow-card overflow-hidden">
+        {/* Preview Mode Banner */}
+        {isPrivateMode && (
+          <div className="relative bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 backdrop-blur-sm border-b border-amber-500/30">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
+            <div className="relative flex items-center justify-center gap-3 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-amber-400 blur-md opacity-50 animate-pulse"></div>
+                  <div className="relative bg-gradient-to-br from-amber-400 to-orange-500 p-1.5 rounded-lg">
+                    <Info className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold bg-gradient-to-r from-amber-200 to-orange-200 bg-clip-text text-transparent">
+                    🔒 Preview Mode
+                  </p>
+                  <p className="text-xs text-amber-200/80">
+                    Read-only • Play & Download available • Reorder & Remove disabled
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Modern Header with Gradient */}
         <div className="relative p-6 md:p-8 border-b border-border bg-gradient-to-br from-card via-secondary/10 to-primary/5 overflow-hidden">
           {/* Animated Background Pattern */}
@@ -1949,7 +1974,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             </div>
 
             {/* Action Buttons - Enhanced Responsive Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 ${isPrivateMode ? 'lg:grid-cols-3' : 'lg:grid-cols-5'} gap-2.5`}>
               {/* Play All */}
               <Button
                 onClick={playAllTracks}
@@ -1978,33 +2003,37 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <span className="lg:hidden relative z-10">Save</span>
               </Button>
 
-              {/* Remove Duplicates */}
-              <Button
-                onClick={findDuplicates}
-                disabled={downloading || tracks.length < 2}
-                variant="outline"
-                className="group relative h-11 border-2 border-accent/40 text-accent hover:bg-accent hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                title="Find and remove duplicate tracks"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                <CheckCircle2 className="w-4 h-4 mr-1.5 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Duplicates</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
-              </Button>
+              {/* Remove Duplicates - Hidden in Preview Mode */}
+              {!isPrivateMode && (
+                <Button
+                  onClick={findDuplicates}
+                  disabled={downloading || tracks.length < 2}
+                  variant="outline"
+                  className="group relative h-11 border-2 border-accent/40 text-accent hover:bg-accent hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                  title="Find and remove duplicate tracks"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                  <CheckCircle2 className="w-4 h-4 mr-1.5 relative z-10" />
+                  <span className="hidden xl:inline relative z-10">Duplicates</span>
+                  <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
+                </Button>
+              )}
 
-              {/* Remove Selected */}
-              <Button
-                onClick={removeSelected}
-                disabled={downloading || selectedCount === 0}
-                variant="outline"
-                className="group relative h-11 border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                title="Remove selected tracks from the list"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-destructive/0 via-destructive/20 to-destructive/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                <X className="w-4 h-4 mr-1.5 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Remove</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
-              </Button>
+              {/* Remove Selected - Hidden in Preview Mode */}
+              {!isPrivateMode && (
+                <Button
+                  onClick={removeSelected}
+                  disabled={downloading || selectedCount === 0}
+                  variant="outline"
+                  className="group relative h-11 border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                  title="Remove selected tracks from the list"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-destructive/0 via-destructive/20 to-destructive/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                  <X className="w-4 h-4 mr-1.5 relative z-10" />
+                  <span className="hidden xl:inline relative z-10">Remove</span>
+                  <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
+                </Button>
+              )}
 
               {/* Reset Session - moved from here to PlaylistHeader */}
               
@@ -2116,24 +2145,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               sortedTracks.map((track, index) => (
               <div
                 key={track.id}
-                draggable={!downloading}
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={handleDragEnd}
-                onDragLeave={handleDragLeave}
+                draggable={!downloading && !isPrivateMode}
+                onDragStart={() => !isPrivateMode && handleDragStart(index)}
+                onDragOver={(e) => !isPrivateMode && handleDragOver(e, index)}
+                onDragEnd={!isPrivateMode ? handleDragEnd : undefined}
+                onDragLeave={!isPrivateMode ? handleDragLeave : undefined}
                 className={`relative group/track rounded-xl border-2 backdrop-blur-sm transition-all duration-300 ${
                   track.selected 
                     ? 'bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 border-primary/60 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/35' 
                     : 'bg-gradient-to-r from-card/80 via-card/50 to-card/80 border-border/40 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10'
                 } ${
-                  draggedIndex === index ? 'opacity-50 scale-95 rotate-1' : ''
+                  draggedIndex === index && !isPrivateMode ? 'opacity-50 scale-95 rotate-1' : ''
                 } ${
-                  dragOverIndex === index ? 'border-t-4 border-t-primary scale-[1.02]' : ''
+                  dragOverIndex === index && !isPrivateMode ? 'border-t-4 border-t-primary scale-[1.02]' : ''
                 } ${
                   currentPlayingTrack?.id === track.id 
                     ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-2xl shadow-primary/40 border-primary/70' 
                     : ''
-                } ${!downloading ? 'cursor-move hover:scale-[1.01]' : 'cursor-default'}`}
+                } ${!downloading && !isPrivateMode ? 'cursor-move hover:scale-[1.01]' : 'cursor-default'}`}
               >
                 {/* Animated Border Gradient on Hover */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/0 via-primary/30 to-primary/0 opacity-0 group-hover/track:opacity-100 transition-opacity duration-500 blur-sm -z-10"></div>
@@ -2151,8 +2180,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <div className="flex items-center gap-4 px-4 py-3">
                   {/* Left Section: Controls (Fixed Width) */}
                   <div className="flex items-center gap-2.5 flex-shrink-0 w-[140px]">
-                    {/* Drag Handle */}
-                    {!downloading && (
+                    {/* Drag Handle - Hidden in Preview Mode */}
+                    {!downloading && !isPrivateMode && (
                       <div className="cursor-grab active:cursor-grabbing opacity-0 group-hover/track:opacity-100 transition-opacity">
                         <GripHorizontal className="w-4 h-4 text-muted-foreground hover:text-primary" />
                       </div>
