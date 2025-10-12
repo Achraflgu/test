@@ -99,7 +99,7 @@ const SharedPlaylist = () => {
     const newTab = window.open(homeUrl, '_blank');
     
     if (newTab) {
-      toast.success('Opening in new tab');
+      toast.success('Opening playlist in new tab (no auto-save)');
     } else {
       toast.error('Please allow popups to open in new tab');
     }
@@ -301,7 +301,8 @@ const SharedPlaylist = () => {
             <AlertDialogTitle>Load Shared Playlist?</AlertDialogTitle>
             <AlertDialogDescription>
               Loading this shared playlist will replace your current unsaved session. 
-              You can either load it here or open it in a new tab to keep your current session.
+              Choose "Open in New Tab" to load the playlist without saving (like private browsing), 
+              or "Load Here" to replace your current session.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
