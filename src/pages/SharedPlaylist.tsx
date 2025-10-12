@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Music2, Clock, AlertCircle, Loader2 } from 'lucide-react';
+import { Music2, Clock, AlertCircle, Loader2, Save, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { getSharedPlaylist, SharedPlaylistData } from '@/lib/shareUtils';
 import { fetchShare } from '@/services/api';
 import { savePlaylistToHistory } from '@/components/SavedPlaylists';
@@ -15,6 +25,8 @@ const SharedPlaylist = () => {
   const [loading, setLoading] = useState(true);
   const [sharedData, setSharedData] = useState<SharedPlaylistData | null>(null);
   const [error, setError] = useState<string>('');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     if (!shareId) {
@@ -49,11 +61,42 @@ const SharedPlaylist = () => {
     })();
   }, [shareId, searchParams]);
 
-  const handleLoadPlaylist = async () => {
+  // Load playlist to current tab (will show confirmation if there's unsaved data)
+  const handleLoadPlaylistClick = () => {
+    setShowConfirmDialog(true);
+  };
+
+  // Confirm and load playlist, replacing current session
+  const handleConfirmLoad = () => {
+    if (!sharedData) return;
+
+    setShowConfirmDialog(false);
+    
+    // Navigate to home with the playlist loaded (WITHOUT saving)
+    navigate('/', { 
+      state: { 
+        loadedPlaylist: sharedData.playlistData,
+        fromShare: true 
+      },
+      replace: true
+    });
+    
+    toast.success('Playlist loaded!');
+  };
+
+  // Open in new tab
+  const handleOpenInNewTab = () => {
+    setShowConfirmDialog(false);
+    const currentUrl = window.location.href;
+    window.open(currentUrl, '_blank');
+    toast.success('Opening in new tab');
+  };
+
+  // Save playlist to library
+  const handleSavePlaylist = async () => {
     if (!sharedData) return;
 
     try {
-      // Save to history
       const saved = await savePlaylistToHistory(
         sharedData.playlistName,
         sharedData.playlistData?.url || '',
@@ -65,18 +108,12 @@ const SharedPlaylist = () => {
       );
 
       if (saved) {
-        toast.success('Playlist added to your library!');
-        // Navigate to home with the playlist loaded
-        navigate('/', { 
-          state: { 
-            loadedPlaylist: sharedData.playlistData,
-            fromShare: true 
-          } 
-        });
+        setIsSaved(true);
+        toast.success('Playlist saved to your library!');
       }
     } catch (error) {
-      console.error('Failed to load playlist:', error);
-      toast.error('Failed to load playlist');
+      console.error('Failed to save playlist:', error);
+      toast.error('Failed to save playlist');
     }
   };
 
@@ -185,20 +222,34 @@ const SharedPlaylist = () => {
               </div>
 
               {/* Actions */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  onClick={handleLoadPlaylist}
-                  size="lg"
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                >
-                  <Music2 className="w-5 h-5 mr-2" />
-                  Add to My Library
-                </Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    onClick={handleLoadPlaylistClick}
+                    size="lg"
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  >
+                    <Music2 className="w-5 h-5 mr-2" />
+                    Load Playlist
+                  </Button>
+                  
+                  <Button
+                    onClick={handleSavePlaylist}
+                    size="lg"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={isSaved}
+                  >
+                    <Save className="w-5 h-5 mr-2" />
+                    {isSaved ? 'Saved ✓' : 'Save to Library'}
+                  </Button>
+                </div>
                 
                 <Button
                   onClick={() => navigate('/')}
-                  variant="outline"
+                  variant="ghost"
                   size="lg"
+                  className="w-full"
                 >
                   Go to Home
                 </Button>
@@ -229,6 +280,36 @@ const SharedPlaylist = () => {
           <p>Shared via Track Miner • Free Music Downloader</p>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Load Shared Playlist?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Loading this shared playlist will replace your current unsaved session. 
+              You can either load it here or open it in a new tab to keep your current session.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              onClick={handleOpenInNewTab}
+              variant="outline"
+              className="sm:order-1"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open in New Tab
+            </Button>
+            <AlertDialogAction
+              onClick={handleConfirmLoad}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            >
+              Load Here
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
