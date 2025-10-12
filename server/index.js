@@ -1212,7 +1212,7 @@ async function fetchVideoFallback(videoId) {
                 const html = await pageResponse.text();
                 console.log(`📄 Got HTML page (${html.length} bytes)`);
                 
-                // Try multiple patterns to find duration - ENHANCED PATTERNS
+                // Try multiple patterns to find duration - ENHANCED PATTERNS WITH JAVASCRIPT
                 const patterns = [
                   // Standard YouTube patterns
                   { regex: /"lengthSeconds":"(\d+)"/, name: 'lengthSeconds' },
@@ -1252,6 +1252,28 @@ async function fetchVideoFallback(videoId) {
                   { regex: /"length_seconds":"(\d+)"/, name: 'length_seconds' },
                   { regex: /"video_duration":"(\d+)"/, name: 'video_duration' },
                   { regex: /"playback_duration":"(\d+)"/, name: 'playback_duration' },
+                  
+                  // NEW: JavaScript/JSON patterns for modern YouTube
+                  { regex: /window\.WIZ_global_data.*?"lengthSeconds":"(\d+)"/, name: 'WIZ_global_data lengthSeconds' },
+                  { regex: /"ytInitialData":\{"contents":\{"twoColumnWatchNextResults":\{"results":\{"results":\{"contents":\[.*?"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'ytInitialData lengthSeconds' },
+                  { regex: /"playerResponse":\{"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'playerResponse videoDetails' },
+                  { regex: /"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)"/, name: 'videoDetails direct' },
+                  { regex: /"microformat":\{"playerMicroformatRenderer":\{"lengthSeconds":"(\d+)"/, name: 'microformat direct' },
+                  { regex: /"contents":\{"twoColumnWatchNextResults":\{"results":\{"results":\{"contents":\[.*?"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)"/, name: 'twoColumn direct' },
+                  
+                  // NEW: More specific JavaScript patterns
+                  { regex: /"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)","keywords"/, name: 'videoDetails with keywords' },
+                  { regex: /"playerResponse":\{"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)"/, name: 'playerResponse direct' },
+                  { regex: /"ytInitialPlayerResponse":\{"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)"/, name: 'ytInitialPlayerResponse direct' },
+                  
+                  // NEW: Alternative JavaScript variable patterns
+                  { regex: /var\s+ytInitialPlayerResponse\s*=\s*\{[^}]*"lengthSeconds":"(\d+)"/, name: 'var ytInitialPlayerResponse' },
+                  { regex: /var\s+ytInitialData\s*=\s*\{[^}]*"lengthSeconds":"(\d+)"/, name: 'var ytInitialData' },
+                  { regex: /window\.ytInitialPlayerResponse\s*=\s*\{[^}]*"lengthSeconds":"(\d+)"/, name: 'window ytInitialPlayerResponse' },
+                  
+                  // NEW: Deep nested JSON patterns
+                  { regex: /"contents":\{"twoColumnWatchNextResults":\{"results":\{"results":\{"contents":\[.*?"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)","keywords"/, name: 'deep nested videoDetails' },
+                  { regex: /"playerResponse":\{"videoDetails":\{"videoId":"[^"]*","title":"[^"]*","lengthSeconds":"(\d+)","keywords"/, name: 'deep playerResponse' },
                 ];
                 
                 console.log(`🔍 Trying ${patterns.length} duration extraction patterns...`);
