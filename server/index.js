@@ -1079,14 +1079,17 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
     
     // Use EXACT SAME args as playlist (which works perfectly!)
     const ytdlpArgs = [
-      '--dump-json',
+      '-m', 'yt_dlp',
+      url,
       '--flat-playlist',
+      '--dump-json',
       '--no-warnings',
-      '--no-check-certificate',
-      url
+      '--ignore-errors',
+      '--extractor-args', 'youtube:player_client=android,web',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
     
-    const ytdlpProcess = spawn('yt-dlp', ytdlpArgs);
+    const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
     let output = '';
     let errorOutput = '';
     
