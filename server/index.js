@@ -1114,7 +1114,8 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
   return new Promise(async (resolve) => {
     console.log(`📺 Fetching YouTube video metadata...`);
     
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    // Use playlist-style endpoint so yt-dlp emits playlist-like JSON
+    const url = `https://www.youtube.com/watch_videos?video_ids=${videoId}`;
     
     // Use EXACT SAME args as playlist (which works perfectly!)
     const ytdlpArgs = [
@@ -1159,50 +1160,63 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
     ytdlpProcess.on('close', async (code) => {
       if (code === 0 && output.trim()) {
         try {
-          const data = JSON.parse(output);
-          
+          // With --flat-playlist, yt-dlp may emit multiple JSON lines
+          let parsed;
+          try {
+            parsed = JSON.parse(output);
+          } catch {
+            const lines = output.trim().split('\n');
+            const entries = lines.map(line => {
+              try { return JSON.parse(line); } catch { return null; }
+            }).filter(Boolean);
+            parsed = entries.find(e => e && e._type !== 'playlist' && e.id === videoId)
+              || entries.find(e => e && e._type !== 'playlist')
+              || entries[0];
+          }
+
+          if (!parsed) {
+            console.error('Failed to parse YouTube data: empty');
+            return resolve(null);
+          }
+
           // Extract duration from multiple possible fields
           let duration = 0;
-          if (data.duration) {
-            duration = Math.floor(data.duration);
-          } else if (data.duration_string) {
-            // Parse duration string like "4:06" to seconds
-            const parts = data.duration_string.split(':').map(Number);
+          if (parsed.duration) {
+            duration = Math.floor(parsed.duration);
+          } else if (parsed.duration_string) {
+            const parts = parsed.duration_string.split(':').map(Number);
             if (parts.length === 2) {
-              duration = parts[0] * 60 + parts[1]; // MM:SS
+              duration = parts[0] * 60 + parts[1];
             } else if (parts.length === 3) {
-              duration = parts[0] * 3600 + parts[1] * 60 + parts[2]; // HH:MM:SS
+              duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
             }
           }
-          
+
           const track = {
-            id: data.id || videoId,
-            name: data.title || 'Unknown',
-            artist: data.uploader || data.channel || data.uploader_id || 'YouTube',
-            album: data.album || 'YouTube',
-            duration: duration,
-            imageUrl: data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            id: parsed.id || videoId,
+            name: parsed.title || 'Unknown',
+            artist: parsed.uploader || parsed.channel || parsed.uploader_id || 'YouTube',
+            album: parsed.playlist_title || parsed.album || 'YouTube',
+            duration,
+            imageUrl: parsed.thumbnail || (parsed.thumbnails && parsed.thumbnails[0] && parsed.thumbnails[0].url) || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             url: `https://www.youtube.com/watch?v=${videoId}`,
             downloadStatus: 'pending',
             downloadProgress: 0,
             selected: true
           };
-          
-          // No fallback needed - playlist logic should work!
+
           if (duration === 0) {
-            console.log(`⚠️  Duration not found in yt-dlp data, but track is still playable`);
+            console.log('⚠️  Duration missing in yt-dlp data; proceeding');
           }
-          
+
           console.log(`✅ YouTube video fetched: "${track.name}" by ${track.artist} (${track.duration}s)`);
-          resolve({ track, data });
+          resolve({ track, data: parsed });
         } catch (e) {
           console.error('Failed to parse YouTube data:', e.message);
-          // No fallback - return null if playlist logic fails
           resolve(null);
         }
       } else {
         console.error(`yt-dlp failed:`, errorOutput);
-        // No fallback - return null if playlist logic fails
         resolve(null);
       }
     });
