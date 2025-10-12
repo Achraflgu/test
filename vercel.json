@@ -8,6 +8,10 @@
     {
       "source": "/api/(.*)",
       "destination": "http://localhost:3001/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
