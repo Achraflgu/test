@@ -60,6 +60,8 @@ const Index = () => {
   // Track active downloads
   const [isDownloading, setIsDownloading] = useState(false);
   const [activeDownloadId, setActiveDownloadId] = useState<string>('');
+  // Private mode flag (for shared playlists opened in new tab - no auto-save)
+  const [isPrivateMode, setIsPrivateMode] = useState(false);
   
   // Restore track list and playlist info on mount
   useEffect(() => {
@@ -178,6 +180,9 @@ const Index = () => {
           const playlistData = JSON.parse(sharedData);
           console.log('📥 Loading shared playlist in new tab (no auto-save)...', playlistData);
           
+          // Enable private mode (no auto-save to localStorage)
+          setIsPrivateMode(true);
+          
           // Set playlist data
           if (playlistData.tracks && playlistData.tracks.length > 0) {
             setTracks(playlistData.tracks);
@@ -209,8 +214,8 @@ const Index = () => {
           sessionStorage.removeItem(loadSharedKey);
           window.history.replaceState({}, document.title, window.location.pathname);
           
-          toast.success('Shared playlist loaded (not saved to library)', {
-            description: 'Click "Save Playlist" if you want to keep it'
+          toast.success('🔒 Private Mode: Playlist loaded (not saved)', {
+            description: 'Click "Save Playlist" to keep it permanently'
           });
           
           // Scroll to track list
@@ -636,6 +641,7 @@ const Index = () => {
               playlistUrl={playlist.url}
               playlistName={playlist.name}
               playlistImages={playlistImages.length > 0 ? playlistImages : [playlist.imageUrl]}
+              isPrivateMode={isPrivateMode}
               onTracksUpdate={(updatedTracks) => {
                 setTracks(updatedTracks);
                 // Update playlist metadata

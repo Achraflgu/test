@@ -24,11 +24,12 @@ interface TrackListProps {
   playlistUrl?: string;
   playlistName?: string;
   playlistImages?: string[];
+  isPrivateMode?: boolean;
   onTracksUpdate?: (tracks: Track[]) => void;
   onDownloadingChange?: (isDownloading: boolean, downloadId?: string) => void;
 }
 
-export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], onTracksUpdate, onDownloadingChange }: TrackListProps) => {
+export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], isPrivateMode = false, onTracksUpdate, onDownloadingChange }: TrackListProps) => {
   const [tracks, setTracks] = useState(initialTracks);
   const [downloading, setDownloading] = useState(false);
   const [showDuplicatesDialog, setShowDuplicatesDialog] = useState(false);
@@ -502,9 +503,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     savePlayerSettings(settings);
   }, [volume, isMuted, isShuffled, repeatMode, isPlayerMinimized]);
 
-  // Save track list whenever it changes
+  // Save track list whenever it changes (skip if in private mode)
   useEffect(() => {
-    if (tracks.length > 0) {
+    if (tracks.length > 0 && !isPrivateMode) {
       const trackList = {
         tracks,
         playlistUrl,
@@ -513,8 +514,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         timestamp: Date.now()
       };
       saveCurrentTrackList(trackList);
+      console.log('💾 Auto-saved tracklist to localStorage');
+    } else if (isPrivateMode) {
+      console.log('🔒 Private mode: Skipping auto-save to localStorage');
     }
-  }, [tracks, playlistUrl, playlistName, playlistImages]);
+  }, [tracks, playlistUrl, playlistName, playlistImages, isPrivateMode]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
