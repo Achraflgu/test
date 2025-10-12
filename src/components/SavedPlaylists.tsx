@@ -19,10 +19,12 @@ import {
   X,
   Image as ImageIcon,
   Download,
-  Upload
+  Upload,
+  Share2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { exportPlaylists, importPlaylists } from '@/lib/playlistStorage';
+import SharePlaylistDialog from './SharePlaylistDialog';
 
 interface SavedPlaylist {
   id: string;
@@ -73,6 +75,9 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
   // Import mode state
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
+  
+  // Share mode state
+  const [sharingPlaylist, setSharingPlaylist] = useState<SavedPlaylist | null>(null);
 
   // Refresh playlists when dialog opens
   useEffect(() => {
@@ -579,6 +584,19 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
                             variant="outline"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setSharingPlaylist(playlist);
+                            }}
+                            className="text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                            title="Share this playlist"
+                          >
+                            <Share2 className="w-3 h-3" />
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               deletePlaylist(playlist.id);
                             }}
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -663,6 +681,17 @@ export default function SavedPlaylists({ open, onOpenChange, onLoadPlaylist }: P
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Share Playlist Dialog */}
+      {sharingPlaylist && (
+        <SharePlaylistDialog
+          open={!!sharingPlaylist}
+          onOpenChange={(open) => !open && setSharingPlaylist(null)}
+          playlistId={sharingPlaylist.id}
+          playlistName={sharingPlaylist.name}
+          playlistData={sharingPlaylist}
+        />
+      )}
     </Dialog>
   );
 }

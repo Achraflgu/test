@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Clock, Music, User, ExternalLink, Play, RotateCcw } from "lucide-react";
+import { Clock, Music, User, ExternalLink, Play, RotateCcw, Share2 } from "lucide-react";
 import { Playlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import SharePlaylistDialog from "./SharePlaylistDialog";
 
 interface PlaylistHeaderProps {
   playlist: Playlist;
@@ -21,6 +22,7 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActive
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
   const [selectedPlaylistIndex, setSelectedPlaylistIndex] = useState<number>(0);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   const handleReset = () => {
     if (!onReset) return;
@@ -221,20 +223,35 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActive
                 </div>
               </div>
               
-              {/* Reset Button */}
-              {onReset && (
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                {/* Share Button */}
                 <Button
-                  onClick={() => setShowResetDialog(true)}
-                  disabled={!hasActiveTracks}
+                  onClick={() => setShowShareDialog(true)}
                   variant="outline"
                   size="sm"
-                  className="h-9 px-3 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 hover:border-orange-500 transition-all rounded-lg hover:scale-105 disabled:opacity-50"
-                  title="Reset session (clear playlist and player)"
+                  className="h-9 px-3 border-2 border-blue-500/40 text-blue-500 hover:bg-blue-500/10 hover:border-blue-500 transition-all rounded-lg hover:scale-105"
+                  title="Share this playlist"
                 >
-                  <RotateCcw className="w-4 h-4 mr-1.5" />
-                  <span className="text-xs font-semibold">Reset</span>
+                  <Share2 className="w-4 h-4 mr-1.5" />
+                  <span className="text-xs font-semibold">Share</span>
                 </Button>
-              )}
+                
+                {/* Reset Button */}
+                {onReset && (
+                  <Button
+                    onClick={() => setShowResetDialog(true)}
+                    disabled={!hasActiveTracks}
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 hover:border-orange-500 transition-all rounded-lg hover:scale-105 disabled:opacity-50"
+                    title="Reset session (clear playlist and player)"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-1.5" />
+                    <span className="text-xs font-semibold">Reset</span>
+                  </Button>
+                )}
+              </div>
             </div>
             
             <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight hover-scale">
@@ -684,6 +701,15 @@ export const PlaylistHeader = ({ playlist, combinedPlaylists, onReset, hasActive
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Share Playlist Dialog */}
+      <SharePlaylistDialog
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+        playlistId={playlist.id}
+        playlistName={playlist.name}
+        playlistData={playlist}
+      />
     </div>
   );
 };
