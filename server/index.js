@@ -1089,6 +1089,22 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
     
+    // Add cookies if available (like search does)
+    try {
+      const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+      if (cookiesExist) {
+        ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+        console.log('🍪 Using YouTube cookies for single video');
+      } else {
+        console.log('⚠️ No YouTube cookies - single video may be limited');
+      }
+    } catch (err) {
+      console.log('⚠️ No YouTube cookies found for single video');
+    }
+    
+    // Add enhanced bypass methods (like downloads do)
+    await addYouTubeEnhancements(ytdlpArgs, attempt);
+    
     const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs);
     let output = '';
     let errorOutput = '';
