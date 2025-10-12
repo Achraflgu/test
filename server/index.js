@@ -249,46 +249,50 @@ async function addAdvancedBotBypass(args, strategy, attempt) {
   const sessionStart = now - Math.floor(Math.random() * 3600000); // 0-1 hour ago
   const lastActivity = now - Math.floor(Math.random() * 300000);  // 0-5 min ago
   
-  // 🔒 SECURE COOKIE APPROACH: Write cookies to temporary file instead of headers
+  // Optional: fake cookies (disabled by default). Enable with USE_FAKE_COOKIES=true
   const fakeCookies = [
     'VISITOR_INFO1_LIVE=dglKiOiODhg; YSC=TSH0MAVYRhw; GPS=1; PREF=f4=4000000',
     'VISITOR_INFO1_LIVE=H7jKpLmNqRs; YSC=9XyZ4bCnMkL; GPS=1; PREF=f6=40000000', 
     'VISITOR_INFO1_LIVE=QwE3rTyU8oP; YSC=AsDf5GhJkL2; GPS=1; PREF=f2=80000000'
   ];
   
-  try {
-    // Create temporary cookies file (more secure than headers)
-    const tempCookieFile = path.join(os.tmpdir(), `youtube_cookies_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
-    const selectedCookies = fakeCookies[attempt % fakeCookies.length];
-    
-    // Write cookies in Netscape format
-    const cookieContent = `# Netscape HTTP Cookie File
+  if (process.env.USE_FAKE_COOKIES === 'true') {
+    try {
+      // Create temporary cookies file (more secure than headers)
+      const tempCookieFile = path.join(os.tmpdir(), `youtube_cookies_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
+      const selectedCookies = fakeCookies[attempt % fakeCookies.length];
+      
+      // Write cookies in Netscape format
+      const cookieContent = `# Netscape HTTP Cookie File
 # This is a generated file! Do not edit.
 
 youtube.com	TRUE	/	FALSE	${Math.floor(Date.now() / 1000) + 3600}	VISITOR_INFO1_LIVE	dglKiOiODhg
 youtube.com	TRUE	/	FALSE	${Math.floor(Date.now() / 1000) + 3600}	YSC	TSH0MAVYRhw
 youtube.com	TRUE	/	FALSE	${Math.floor(Date.now() / 1000) + 3600}	GPS	1
 youtube.com	TRUE	/	FALSE	${Math.floor(Date.now() / 1000) + 3600}	PREF	f4=4000000`;
-    
-    await fs.writeFile(tempCookieFile, cookieContent);
-    
-    // Use --cookies instead of --add-header Cookie: (more secure)
-    args.push('--cookies', tempCookieFile);
-    
-    // Schedule cleanup of temp file after 1 hour
-    setTimeout(async () => {
-      try {
-        await fs.unlink(tempCookieFile);
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-    }, 3600000);
-    
-    console.log('   🍪 Secure cookie file created');
-  } catch (cookieError) {
-    console.log('   ⚠️ Cookie file creation failed, using fallback method');
-    // Fallback to header method if file creation fails
-    args.push('--add-header', `Cookie:${fakeCookies[attempt % fakeCookies.length]}`);
+      
+      await fs.writeFile(tempCookieFile, cookieContent);
+      
+      // Use --cookies instead of --add-header Cookie: (more secure)
+      args.push('--cookies', tempCookieFile);
+      
+      // Schedule cleanup of temp file after 1 hour
+      setTimeout(async () => {
+        try {
+          await fs.unlink(tempCookieFile);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }, 3600000);
+      
+      console.log('   🍪 Secure cookie file created');
+    } catch (cookieError) {
+      console.log('   ⚠️ Cookie file creation failed, using fallback method');
+      // Fallback to header method if file creation fails
+      args.push('--add-header', `Cookie:${fakeCookies[attempt % fakeCookies.length]}`);
+    }
+  } else {
+    console.log('   🍪 Fake cookies disabled');
   }
   
   // Session continuity headers
@@ -4037,8 +4041,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         message: '🎯 YouTube-only download - using yt-dlp...'
       });
       
-      // Use yt-dlp fallback which handles YouTube URLs properly (first attempt)
-      const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, {}, settings, 0);
+      // Use yt-dlp fallback with outer attempt index to rotate strategies per retry
+      const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, {}, settings, Math.max(0, attempt - 1));
       
       // Check results
       try {
