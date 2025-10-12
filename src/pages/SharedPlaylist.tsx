@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Music2, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 const SharedPlaylist = () => {
   const { shareId } = useParams<{ shareId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sharedData, setSharedData] = useState<SharedPlaylistData | null>(null);
@@ -21,8 +22,11 @@ const SharedPlaylist = () => {
       return;
     }
 
-    // Load shared playlist data
-    const data = getSharedPlaylist(shareId);
+    // Get URL encoded data
+    const urlData = searchParams.get('data');
+    
+    // Load shared playlist data (try URL data first, fallback to localStorage)
+    const data = getSharedPlaylist(shareId, urlData || undefined);
     
     if (!data) {
       setError('This share link has expired or does not exist');
@@ -32,7 +36,7 @@ const SharedPlaylist = () => {
 
     setSharedData(data);
     setLoading(false);
-  }, [shareId]);
+  }, [shareId, searchParams]);
 
   const handleLoadPlaylist = async () => {
     if (!sharedData) return;

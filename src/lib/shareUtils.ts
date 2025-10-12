@@ -36,6 +36,19 @@ const getExpiryTimestamp = (expiry?: '1h' | '1d' | '1w'): number | undefined => 
   return now + durations[expiry];
 };
 
+// Compress and encode data for URL
+const compressData = (data: any): string => {
+  try {
+    const jsonString = JSON.stringify(data);
+    // Base64 encode
+    const encoded = btoa(encodeURIComponent(jsonString));
+    return encoded;
+  } catch (error) {
+    console.error('Failed to compress data:', error);
+    return '';
+  }
+};
+
 // Generate a shareable link
 export const generateShareableLink = async (options: ShareLinkOptions): Promise<string> => {
   const { playlistId, playlistName, playlistData, expiry } = options;
@@ -54,7 +67,7 @@ export const generateShareableLink = async (options: ShareLinkOptions): Promise<
     expiresAt: getExpiryTimestamp(expiry)
   };
   
-  // Store in localStorage
+  // Store in localStorage (for local reference)
   try {
     const stored = localStorage.getItem(SHARE_STORAGE_KEY);
     const shares: SharedPlaylistData[] = stored ? JSON.parse(stored) : [];
@@ -73,13 +86,45 @@ export const generateShareableLink = async (options: ShareLinkOptions): Promise<
     console.error('Failed to store share data:', error);
   }
   
-  // Generate shareable URL
+  // Encode data in URL for universal sharing
+  const encodedData = compressData(sharedData);
+  
+  // Generate shareable URL with data embedded
   const baseUrl = window.location.origin;
-  return `${baseUrl}/share/${shareId}`;
+  return `${baseUrl}/share/${shareId}?data=${encodedData}`;
 };
 
-// Get shared playlist by share ID
-export const getSharedPlaylist = (shareId: string): SharedPlaylistData | null => {
+// Decompress and decode data from URL
+const decompressData = (encoded: string): any => {
+  try {
+    // Base64 decode
+    const decoded = decodeURIComponent(atob(encoded));
+    return JSON.parse(decoded);
+  } catch (error) {
+    console.error('Failed to decompress data:', error);
+    return null;
+  }
+};
+
+// Get shared playlist by share ID and optional URL data
+export const getSharedPlaylist = (shareId: string, urlData?: string): SharedPlaylistData | null => {
+  // First try to get from URL data (universal sharing)
+  if (urlData) {
+    try {
+      const data = decompressData(urlData);
+      if (data) {
+        // Check if expired
+        if (data.expiresAt && data.expiresAt < Date.now()) {
+          return null; // Expired
+        }
+        return data;
+      }
+    } catch (error) {
+      console.error('Failed to decode URL data:', error);
+    }
+  }
+  
+  // Fallback to localStorage (for backwards compatibility)
   try {
     const stored = localStorage.getItem(SHARE_STORAGE_KEY);
     if (!stored) return null;
