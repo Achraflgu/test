@@ -23,28 +23,30 @@ const SharedPlaylist = () => {
       return;
     }
 
-    // Try server first for short links
-    let data: any = null;
-    try {
-      data = await fetchShare(shareId);
-    } catch {
-      // ignore
-    }
+    (async () => {
+      // Try server first for short links
+      let data: any = null;
+      try {
+        data = await fetchShare(shareId);
+      } catch {
+        // ignore
+      }
 
-    // Fallback to URL encoded data/localStorage
-    if (!data) {
-      const urlData = searchParams.get('data');
-      data = getSharedPlaylist(shareId, urlData || undefined);
-    }
-    
-    if (!data) {
-      setError('This share link has expired or does not exist');
+      // Fallback to URL encoded data/localStorage
+      if (!data) {
+        const urlData = searchParams.get('data');
+        data = getSharedPlaylist(shareId, urlData || undefined);
+      }
+      
+      if (!data) {
+        setError('This share link has expired or does not exist');
+        setLoading(false);
+        return;
+      }
+
+      setSharedData(data);
       setLoading(false);
-      return;
-    }
-
-    setSharedData(data);
-    setLoading(false);
+    })();
   }, [shareId, searchParams]);
 
   const handleLoadPlaylist = async () => {
