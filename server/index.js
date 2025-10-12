@@ -178,6 +178,66 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
+// 🔥 BROWSER COOKIE EXTRACTION (MOST EFFECTIVE METHOD)
+async function extractBrowserCookies() {
+  try {
+    // Try Chrome first (most common)
+    const chromePaths = [
+      path.join(process.env.USERPROFILE || process.env.HOME, 'AppData/Local/Google/Chrome/User Data/Default/Cookies'),
+      path.join(process.env.HOME, '.config/google-chrome/Default/Cookies'),
+      path.join(process.env.HOME, '.config/google-chrome-beta/Default/Cookies'),
+      path.join(process.env.HOME, '.config/google-chrome-unstable/Default/Cookies')
+    ];
+    
+    for (const cookiePath of chromePaths) {
+      try {
+        const exists = await fs.access(cookiePath).then(() => true).catch(() => false);
+        if (exists) {
+          console.log(`  🍪 Found Chrome cookies at: ${cookiePath}`);
+          return 'chrome';
+        }
+      } catch {}
+    }
+    
+    // Try Firefox
+    const firefoxPaths = [
+      path.join(process.env.APPDATA || process.env.HOME, 'Mozilla/Firefox/Profiles'),
+      path.join(process.env.HOME, '.mozilla/firefox')
+    ];
+    
+    for (const firefoxPath of firefoxPaths) {
+      try {
+        const exists = await fs.access(firefoxPath).then(() => true).catch(() => false);
+        if (exists) {
+          console.log(`  🍪 Found Firefox cookies at: ${firefoxPath}`);
+          return 'firefox';
+        }
+      } catch {}
+    }
+    
+    // Try Edge
+    const edgePaths = [
+      path.join(process.env.USERPROFILE || process.env.HOME, 'AppData/Local/Microsoft/Edge/User Data/Default/Cookies'),
+      path.join(process.env.HOME, '.config/microsoft-edge/Default/Cookies')
+    ];
+    
+    for (const edgePath of edgePaths) {
+      try {
+        const exists = await fs.access(edgePath).then(() => true).catch(() => false);
+        if (exists) {
+          console.log(`  🍪 Found Edge cookies at: ${edgePath}`);
+          return 'edge';
+        }
+      } catch {}
+    }
+    
+    return null;
+  } catch (err) {
+    console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
+    return null;
+  }
+}
+
 // 🔥 ADVANCED BOT DETECTION BYPASS UTILITIES
 async function addAdvancedBotBypass(args, strategy, attempt) {
   console.log(`   🤖 Adding advanced bot bypass methods for ${strategy}...`);
@@ -310,14 +370,16 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     ]
   };
   
-  // 🎮 EXPANDED CLIENT TYPES (30+ variants)
+  // 🎮 EXPANDED CLIENT TYPES (30+ variants) - IMPROVED FOR BOT DETECTION
   const clientTypes = {
     newpipe: ['android_testsuite', 'android_vr', 'android_producer', 'android_creator', 'android_unplugged', 'android_music', 'android_embedded'],
     youtube_music: ['youtube_music', 'youtube_music_premium', 'music_embedded'],
     ios_clients: ['ios', 'ios_music', 'ios_creator', 'ios_embedded'],
     tv_clients: ['tv', 'tv_embedded', 'tv_kids', 'mediaconnect'],
     web_clients: ['web', 'web_embedded', 'web_music', 'web_creator', 'web_safari'],
-    mixed: ['android,web_embedded', 'ios,web_embedded', 'tv,android']
+    mixed: ['android,web_embedded', 'ios,web_embedded', 'tv,android'],
+    // NEW: More effective clients for bot bypass
+    effective: ['web_embedded', 'android_embedded', 'ios_embedded', 'tv_embedded']
   };
   
   // 🌍 GEO-SPOOFING HEADERS (Different countries)
@@ -397,7 +459,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   if (strategy === 0) {
     console.log('🤖 Strategy: Advanced Bot Detection Bypass');
     
-    const client = clientTypes.newpipe[attempt % clientTypes.newpipe.length];
+    const client = clientTypes.effective[attempt % clientTypes.effective.length];
     const userAgent = userAgents.android[0];
     
     args.push('--user-agent', userAgent);
@@ -440,61 +502,41 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     return { userAgent, clientType: client, strategy: 'Anti-Bot' };
   }
   
-  // ===== STRATEGY 2: Session Hijacking + Token Rotation (2-3) =====
+  // ===== STRATEGY 2: Browser Cookie + Effective Client (2-3) =====
   if (strategy === 1) {
-    console.log('🎫 Strategy: Session Hijacking + Token Rotation');
+    console.log('🍪 Strategy: Browser Cookie + Effective Client');
     
-    const client = clientTypes.youtube_music[attempt % clientTypes.youtube_music.length];
-    const userAgent = userAgents.android[attempt % userAgents.android.length];
+    const client = clientTypes.effective[attempt % clientTypes.effective.length];
+    const userAgent = userAgents.desktop[attempt % userAgents.desktop.length];
     
     args.push('--user-agent', userAgent);
     args.push('--extractor-args', `youtube:player_client=${client}`);
-    args.push('--extractor-args', 'youtube:player_skip=configs');
+    args.push('--extractor-args', 'youtube:player_skip=webpage,configs');
     args.push('--no-check-certificate');
     args.push('--format', 'bestaudio/best');
     
-    // 🔥 SESSION HIJACKING METHODS
-    // Method 1: Fake Session Tokens (rotating every attempt)
-    const sessionTokens = [
-      'QUFFLUhqbEd4X1FkdmFwN3BoYW5rSTV2dGhzM0RvZGNMZ3xBQ3Jtc0tuMFFGMjc2',
-      'QUFFLUhqbTQ4X1NrX1pkNkE4Y0hCQ0xvUlFWcWVoaGx1MlJEdDNEZ0xHQ3hsZXc',
-      'QUFFLUhqbUlNVkNuZGc0QVJhbVV4YWF4TE1OTFZMd1FFQTRNM0hGN0pSNnpqV3c'
-    ];
-    const sessionToken = sessionTokens[attempt % sessionTokens.length];
-    args.push('--add-header', `Authorization:Bearer ${sessionToken}`);
+    // 🔥 BROWSER COOKIE STRATEGY (MOST EFFECTIVE)
+    // This strategy relies on real browser cookies for authentication
+    // No fake tokens or headers - just real browser cookies + effective client
     
-    // Method 2: Secure authentication cookies (handled by addAdvancedBotBypass)
-    // Note: Authentication cookies are now securely handled via temporary files
+    // Minimal but effective headers
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+    args.push('--add-header', 'Accept-Language:en-US,en;q=0.5');
+    args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
+    args.push('--add-header', 'DNT:1');
+    args.push('--add-header', 'Connection:keep-alive');
+    args.push('--add-header', 'Upgrade-Insecure-Requests:1');
     
-    // Method 3: Client Identification Spoofing
-    args.push('--add-header', 'X-Goog-AuthUser:0');
-    args.push('--add-header', 'X-Goog-PageId:none');
-    args.push('--add-header', 'X-Origin:https://music.youtube.com');
+    // Real browser fingerprinting (less aggressive)
+    args.push('--add-header', 'Sec-Fetch-Dest:document');
+    args.push('--add-header', 'Sec-Fetch-Mode:navigate');
+    args.push('--add-header', 'Sec-Fetch-Site:none');
+    args.push('--add-header', 'Sec-Fetch-User:?1');
     
-    // Method 4: Device Registration Bypass
-    args.push('--add-header', 'X-YouTube-Device:cbr=Chrome&cbrver=121.0.0.0&ceng=WebKit&cengver=537.36');
-    args.push('--add-header', 'X-YouTube-Bootstrap-Logged-In:true');
-    
-    // Method 5: API Key Rotation
-    const apiKeys = [
-      'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
-      'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30',
-      'AIzaSyDK3iBpDP9nHVTk2qL73FLJICfOC3c1Ue4'
-    ];
-    args.push('--add-header', `X-Goog-Api-Key:${apiKeys[attempt % apiKeys.length]}`);
-    
-    // YouTube Music-specific headers
-    args.push('--add-header', 'Origin:https://music.youtube.com');
-    args.push('--referer', 'https://music.youtube.com/');
-    
-    // Add advanced bot bypass methods
-    addAdvancedBotBypass(args, 'SessionHijack', attempt);
-    
-    addFreeProxy();
-    
-    console.log(`   🎫 Session hijack client: ${client}`);
-    console.log('   🔥 Fake tokens, auth cookies, API keys enabled');
-    return { userAgent, clientType: client, strategy: 'SessionHijack' };
+    // Skip fake cookies and proxies - rely on real browser cookies
+    console.log(`   🍪 Browser cookie strategy client: ${client}`);
+    console.log('   🔥 Real browser cookies + effective client (no fake methods)');
+    return { userAgent, clientType: client, strategy: 'BrowserCookie' };
   }
   
   // ===== STRATEGY 3: JavaScript Execution + CAPTCHA Bypass (4-5) =====
@@ -3591,6 +3633,27 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
+      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
+      console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
+      
+      // Try with browser cookies first (most effective)
+      try {
+        const browserCookies = await extractBrowserCookies();
+        if (browserCookies) {
+          ytdlpArgs.push('--cookies-from-browser', browserCookies);
+          console.log(`  🍪 Using browser cookies: ${browserCookies}`);
+        } else {
+          // Fallback to stored cookies
+          const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+          if (cookiesExist) {
+            ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+            console.log(`  🍪 Using stored YouTube cookies`);
+          }
+        }
+      } catch (err) {
+        console.log(`  ⚠️ Cookie extraction failed: ${err.message}`);
+      }
+      
       // Add enhanced methods with strategy cycling based on attempt number
       await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
       
@@ -3630,9 +3693,26 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // 🔥 CRITICAL FIX: Use NEW advanced bot bypass strategies for search-based downloads
+      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
-      console.log(`🎯 Using advanced bot bypass strategies for search-based download...`);
+      
+      // Try with browser cookies first (most effective)
+      try {
+        const browserCookies = await extractBrowserCookies();
+        if (browserCookies) {
+          ytdlpArgs.push('--cookies-from-browser', browserCookies);
+          console.log(`  🍪 Using browser cookies: ${browserCookies}`);
+        } else {
+          // Fallback to stored cookies
+          const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+          if (cookiesExist) {
+            ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+            console.log(`  🍪 Using stored YouTube cookies`);
+          }
+        }
+      } catch (err) {
+        console.log(`  ⚠️ Cookie extraction failed: ${err.message}`);
+      }
       
       // Apply the new bot bypass strategies to search-based downloads
       const enhancementResult = await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
