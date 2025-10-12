@@ -18,11 +18,15 @@ COPY server/package*.json ./
 # Install Node.js dependencies
 RUN npm install --production
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir spotdl yt-dlp
+# Install Python dependencies in virtual environment
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir spotdl yt-dlp
 
 # Copy application code from server directory
 COPY server/ .
+
+# Set PATH to include virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Expose port
 EXPOSE 3001
