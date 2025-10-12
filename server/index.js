@@ -1130,38 +1130,29 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             selected: true
           };
           
+          // No fallback needed - playlist logic should work!
           if (duration === 0) {
-            console.log(`⚠️  Duration not found in yt-dlp data, trying fallback...`);
-            // If no duration, enhance with fallback
-            const fallbackResult = await fetchVideoFallback(videoId);
-            if (fallbackResult && fallbackResult.track && fallbackResult.track.duration > 0) {
-              track.duration = fallbackResult.track.duration;
-              console.log(`✅ Got duration from fallback: ${track.duration}s`);
-            }
+            console.log(`⚠️  Duration not found in yt-dlp data, but track is still playable`);
           }
           
           console.log(`✅ YouTube video fetched: "${track.name}" by ${track.artist} (${track.duration}s)`);
           resolve({ track, data });
         } catch (e) {
           console.error('Failed to parse YouTube data:', e.message);
-          // Fall back to oEmbed
-          console.log(`🔄 Falling back to oEmbed...`);
-          const fallbackResult = await fetchVideoFallback(videoId);
-          resolve(fallbackResult);
+          // No fallback - return null if playlist logic fails
+          resolve(null);
         }
       } else {
         console.error(`yt-dlp failed:`, errorOutput);
-        // Fall back to oEmbed immediately (no retries)
-        console.log(`🔄 Falling back to oEmbed...`);
-        const fallbackResult = await fetchVideoFallback(videoId);
-        resolve(fallbackResult);
+        // No fallback - return null if playlist logic fails
+        resolve(null);
       }
     });
     
     ytdlpProcess.on('error', (err) => {
       console.error('yt-dlp process error:', err.message);
-      // Fall back to oEmbed
-      fetchVideoFallback(videoId).then(resolve);
+      // No fallback - return null if playlist logic fails
+      resolve(null);
     });
   });
 }
