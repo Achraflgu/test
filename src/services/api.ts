@@ -213,5 +213,29 @@ export const searchMusic = async (query: string, limit: number = 10): Promise<Se
   return response.json();
 };
 
+// Create short share on server
+export const createShare = async (payload: { playlistId?: string; playlistName: string; playlistData: any; expiry?: '1h'|'1d'|'1w' }): Promise<{ shareId: string; expiresAt: number }> => {
+  const response = await fetch(`${API_URL}/api/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create share');
+  }
+  return response.json();
+};
+
+// Fetch share payload from server
+export const fetchShare = async (shareId: string): Promise<any> => {
+  const response = await fetch(`${API_URL}/api/share/${shareId}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch share');
+  }
+  return response.json();
+};
+
 // Cookie helpers removed – operating cookie-less
 

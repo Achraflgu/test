@@ -4,6 +4,7 @@ import { Music2, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getSharedPlaylist, SharedPlaylistData } from '@/lib/shareUtils';
+import { fetchShare } from '@/services/api';
 import { savePlaylistToHistory } from '@/components/SavedPlaylists';
 import { toast } from 'sonner';
 
@@ -22,11 +23,19 @@ const SharedPlaylist = () => {
       return;
     }
 
-    // Get URL encoded data
-    const urlData = searchParams.get('data');
-    
-    // Load shared playlist data (try URL data first, fallback to localStorage)
-    const data = getSharedPlaylist(shareId, urlData || undefined);
+    // Try server first for short links
+    let data: any = null;
+    try {
+      data = await fetchShare(shareId);
+    } catch {
+      // ignore
+    }
+
+    // Fallback to URL encoded data/localStorage
+    if (!data) {
+      const urlData = searchParams.get('data');
+      data = getSharedPlaylist(shareId, urlData || undefined);
+    }
     
     if (!data) {
       setError('This share link has expired or does not exist');

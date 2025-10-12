@@ -53,10 +53,24 @@ const compressData = (data: any): string => {
 export const generateShareableLink = async (options: ShareLinkOptions): Promise<string> => {
   const { playlistId, playlistName, playlistData, expiry } = options;
   
-  // Generate unique share ID
+  // Prefer server-side short link if available
+  try {
+    const res = await fetch(`${(window as any).API_URL || (import.meta as any).env?.VITE_API_URL || ''}/api/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId, playlistName, playlistData, expiry: expiry || '1d' })
+    });
+    if (res.ok) {
+      const { shareId } = await res.json();
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/share/${shareId}`;
+    }
+  } catch (e) {
+    console.warn('Server share failed, falling back to URL-embedded data');
+  }
+
+  // Fallback: local + URL embedded
   const shareId = generateId();
-  
-  // Create shared playlist data
   const sharedData: SharedPlaylistData = {
     id: generateId(),
     shareId,
@@ -66,30 +80,13 @@ export const generateShareableLink = async (options: ShareLinkOptions): Promise<
     createdAt: Date.now(),
     expiresAt: getExpiryTimestamp(expiry)
   };
-  
-  // Store in localStorage (for local reference)
   try {
     const stored = localStorage.getItem(SHARE_STORAGE_KEY);
     const shares: SharedPlaylistData[] = stored ? JSON.parse(stored) : [];
-    
-    // Clean up expired shares
-    const activeShares = shares.filter(share => {
-      if (!share.expiresAt) return true;
-      return share.expiresAt > Date.now();
-    });
-    
-    // Add new share
-    activeShares.push(sharedData);
-    
-    localStorage.setItem(SHARE_STORAGE_KEY, JSON.stringify(activeShares));
-  } catch (error) {
-    console.error('Failed to store share data:', error);
-  }
-  
-  // Encode data in URL for universal sharing
+    shares.push(sharedData);
+    localStorage.setItem(SHARE_STORAGE_KEY, JSON.stringify(shares));
+  } catch {}
   const encodedData = compressData(sharedData);
-  
-  // Generate shareable URL with data embedded
   const baseUrl = window.location.origin;
   return `${baseUrl}/share/${shareId}?data=${encodedData}`;
 };

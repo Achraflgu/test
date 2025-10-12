@@ -120,6 +120,55 @@ const YOUTUBE_COOKIES_PATH = process.env.YOUTUBE_COOKIES
   ? '/tmp/youtube_cookies.txt' 
   : path.join(__dirname, 'youtube_cookies.txt');
 
+// === Short Share Links (in-memory) ===
+const sharedPlaylists = new Map(); // key: shareId, value: { data, expiresAt }
+const generateShortId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Create share
+app.post('/api/share', async (req, res) => {
+  try {
+    const { playlistId, playlistName, playlistData, expiry = '1d' } = req.body || {};
+    if (!playlistName || !playlistData) {
+      return res.status(400).json({ error: 'playlistName and playlistData are required' });
+    }
+    const durations = { '1h': 3600_000, '1d': 86_400_000, '1w': 604_800_000 };
+    const ttl = durations[expiry] ?? durations['1d'];
+    const shareId = generateShortId();
+    const expiresAt = Date.now() + ttl;
+
+    sharedPlaylists.set(shareId, {
+      data: { playlistId, playlistName, playlistData, createdAt: Date.now(), expiresAt },
+      expiresAt
+    });
+
+    // Cleanup expired
+    for (const [id, entry] of sharedPlaylists.entries()) {
+      if (entry.expiresAt && entry.expiresAt < Date.now()) sharedPlaylists.delete(id);
+    }
+
+    return res.json({ shareId, expiresAt });
+  } catch (e) {
+    console.error('Create share failed:', e);
+    return res.status(500).json({ error: 'Failed to create share' });
+  }
+});
+
+// Fetch share
+app.get('/api/share/:id', async (req, res) => {
+  try {
+    const entry = sharedPlaylists.get(req.params.id);
+    if (!entry) return res.status(404).json({ error: 'Share not found' });
+    if (entry.expiresAt && entry.expiresAt < Date.now()) {
+      sharedPlaylists.delete(req.params.id);
+      return res.status(410).json({ error: 'Share expired' });
+    }
+    return res.json(entry.data);
+  } catch (e) {
+    console.error('Fetch share failed:', e);
+    return res.status(500).json({ error: 'Failed to fetch share' });
+  }
+});
+
 // Setup YouTube cookies if provided via environment variable
 if (process.env.YOUTUBE_COOKIES) {
   try {
