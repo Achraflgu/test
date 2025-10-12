@@ -213,34 +213,5 @@ export const searchMusic = async (query: string, limit: number = 10): Promise<Se
   return response.json();
 };
 
-// Cookie helpers
-export interface CookieStatus {
-  ok: boolean;
-  userCookies: boolean;
-  storedCookies: boolean;
-  cookieAge: number | null;
-}
-
-export const getCookieStatus = async (): Promise<CookieStatus> => {
-  const response = await fetch(`${API_URL}/api/cookie-status`);
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || 'Failed to get cookie status');
-  }
-  return response.json();
-};
-
-export const postUserCookies = async (cookies: string): Promise<{ ok: boolean; message: string; timestamp: string }> => {
-  const response = await fetch(`${API_URL}/api/user-cookies`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookies })
-  });
-  if (!response.ok) {
-    let err: any;
-    try { err = await response.json(); } catch { err = { error: await response.text() }; }
-    throw new Error(err.error || 'Failed to store user cookies');
-  }
-  return response.json();
-};
+// Cookie helpers removed – operating cookie-less
 

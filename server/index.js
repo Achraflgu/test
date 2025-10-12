@@ -172,46 +172,7 @@ app.delete('/api/youtube-cookies', async (_req, res) => {
   }
 });
 
-// 🔥 NEW: Collect cookies from users visiting the website
-app.post('/api/user-cookies', async (req, res) => {
-  try {
-    const { cookies } = req.body;
-    
-    if (!cookies || typeof cookies !== 'string') {
-      return res.status(400).json({ ok: false, error: 'Invalid cookies format' });
-    }
-    
-    // Store user cookies for YouTube authentication
-    storeUserCookies(cookies);
-    
-    console.log(`🍪 Received user cookies for YouTube authentication`);
-    return res.json({ 
-      ok: true, 
-      message: 'Cookies stored successfully',
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    console.error('Error storing user cookies:', err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// Get cookie status
-app.get('/api/cookie-status', async (_req, res) => {
-  try {
-    const hasUserCookies = userCookies && cookieLastUpdated && (Date.now() - cookieLastUpdated) < COOKIE_EXPIRY;
-    const hasStoredCookies = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-    
-    return res.json({
-      ok: true,
-      userCookies: hasUserCookies,
-      storedCookies: hasStoredCookies,
-      cookieAge: hasUserCookies ? Math.floor((Date.now() - cookieLastUpdated) / 1000 / 60) : null
-    });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
+// NOTE: User cookie collection endpoints removed – we operate cookie-less by default
 
 // Store active downloads
 const activeDownloads = new Map();
@@ -219,20 +180,9 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// 🔥 REAL USER COOKIE EXTRACTION (MOST EFFECTIVE METHOD)
-// Store cookies from users visiting the website
-let userCookies = null;
-let cookieLastUpdated = null;
-const COOKIE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
-
+// Optional: local browser cookie detection for development environments only
 async function extractBrowserCookies() {
   try {
-    // First try to get cookies from users who visited the website
-    if (userCookies && cookieLastUpdated && (Date.now() - cookieLastUpdated) < COOKIE_EXPIRY) {
-      console.log(`  🍪 Using fresh user cookies (${Math.floor((Date.now() - cookieLastUpdated) / 1000 / 60)} minutes old)`);
-      return userCookies;
-    }
-    
     // Try local browser cookies (for development)
     const chromePaths = [
       path.join(process.env.USERPROFILE || process.env.HOME, 'AppData/Local/Google/Chrome/User Data/Default/Cookies'),
@@ -288,13 +238,6 @@ async function extractBrowserCookies() {
     console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
     return null;
   }
-}
-
-// Store cookies from users visiting the website
-function storeUserCookies(cookies) {
-  userCookies = cookies;
-  cookieLastUpdated = Date.now();
-  console.log(`  🍪 Stored fresh user cookies for YouTube authentication`);
 }
 
 // 🔥 ADVANCED BOT DETECTION BYPASS UTILITIES
@@ -561,11 +504,11 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     return { userAgent, clientType: client, strategy: 'Anti-Bot' };
   }
   
-  // ===== STRATEGY 2: Browser Cookie + Effective Client (2-3) =====
+  // ===== STRATEGY 2: Desktop Web Embedded + Light Headers (2-3) =====
   if (strategy === 1) {
-    console.log('🍪 Strategy: Browser Cookie + Effective Client');
+    console.log('🖥️ Strategy: Desktop Web Embedded + Light Headers');
     
-    const client = clientTypes.effective[attempt % clientTypes.effective.length];
+    const client = 'web_embedded';
     const userAgent = userAgents.desktop[attempt % userAgents.desktop.length];
     
     args.push('--user-agent', userAgent);
@@ -574,28 +517,23 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--no-check-certificate');
     args.push('--format', 'bestaudio/best');
     
-    // 🔥 BROWSER COOKIE STRATEGY (MOST EFFECTIVE)
-    // This strategy relies on real browser cookies for authentication
-    // No fake tokens or headers - just real browser cookies + effective client
-    
-    // Minimal but effective headers
+    // Minimal but effective headers (no cookies)
     args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
     args.push('--add-header', 'Accept-Language:en-US,en;q=0.5');
     args.push('--add-header', 'Accept-Encoding:gzip, deflate, br');
     args.push('--add-header', 'DNT:1');
     args.push('--add-header', 'Connection:keep-alive');
     args.push('--add-header', 'Upgrade-Insecure-Requests:1');
-    
-    // Real browser fingerprinting (less aggressive)
     args.push('--add-header', 'Sec-Fetch-Dest:document');
     args.push('--add-header', 'Sec-Fetch-Mode:navigate');
     args.push('--add-header', 'Sec-Fetch-Site:none');
     args.push('--add-header', 'Sec-Fetch-User:?1');
     
-    // Skip fake cookies and proxies - rely on real browser cookies
-    console.log(`   🍪 Browser cookie strategy client: ${client}`);
-    console.log('   🔥 Real browser cookies + effective client (no fake methods)');
-    return { userAgent, clientType: client, strategy: 'BrowserCookie' };
+    addFreeProxy();
+    
+    console.log(`   🖥️ Web embedded client: ${client}`);
+    console.log('   ✅ Light desktop headers only (no cookies)');
+    return { userAgent, clientType: client, strategy: 'WebEmbeddedLight' };
   }
   
   // ===== STRATEGY 3: JavaScript Execution + CAPTCHA Bypass (4-5) =====
@@ -3695,31 +3633,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
       
-      // Try with user cookies first (most effective)
-      try {
-        const browserCookies = await extractBrowserCookies();
-        if (browserCookies === 'chrome' || browserCookies === 'firefox' || browserCookies === 'edge') {
-          ytdlpArgs.push('--cookies-from-browser', browserCookies);
-          console.log(`  🍪 Using browser cookies: ${browserCookies}`);
-        } else if (browserCookies && typeof browserCookies === 'string') {
-          // User provided cookies as string
-          const tempCookieFile = path.join(os.tmpdir(), `user_cookies_${Date.now()}.txt`);
-          await fs.writeFile(tempCookieFile, browserCookies);
-          ytdlpArgs.push('--cookies', tempCookieFile);
-          console.log(`  🍪 Using user-provided cookies`);
-        } else {
-          // Fallback to stored cookies
-          const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-          if (cookiesExist) {
-            ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
-            console.log(`  🍪 Using stored YouTube cookies`);
-          } else {
-            console.log(`  ⚠️ No cookies available - downloads may fail`);
-          }
-        }
-      } catch (err) {
-        console.log(`  ⚠️ Cookie extraction failed: ${err.message}`);
-      }
+      // Cookie-less: no cookie extraction. Rely on enhanced strategies and proxies.
       
       // Add enhanced methods with strategy cycling based on attempt number
       await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
@@ -3763,31 +3677,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
       
-      // Try with user cookies first (most effective)
-      try {
-        const browserCookies = await extractBrowserCookies();
-        if (browserCookies === 'chrome' || browserCookies === 'firefox' || browserCookies === 'edge') {
-          ytdlpArgs.push('--cookies-from-browser', browserCookies);
-          console.log(`  🍪 Using browser cookies: ${browserCookies}`);
-        } else if (browserCookies && typeof browserCookies === 'string') {
-          // User provided cookies as string
-          const tempCookieFile = path.join(os.tmpdir(), `user_cookies_${Date.now()}.txt`);
-          await fs.writeFile(tempCookieFile, browserCookies);
-          ytdlpArgs.push('--cookies', tempCookieFile);
-          console.log(`  🍪 Using user-provided cookies`);
-        } else {
-          // Fallback to stored cookies
-          const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-          if (cookiesExist) {
-            ytdlpArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
-            console.log(`  🍪 Using stored YouTube cookies`);
-          } else {
-            console.log(`  ⚠️ No cookies available - downloads may fail`);
-          }
-        }
-      } catch (err) {
-        console.log(`  ⚠️ Cookie extraction failed: ${err.message}`);
-      }
+      // Cookie-less: no cookie extraction. Rely on enhanced strategies and proxies.
       
       // Apply the new bot bypass strategies to search-based downloads
       const enhancementResult = await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
