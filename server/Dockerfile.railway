@@ -1,11 +1,13 @@
 # Simplified Dockerfile for Railway
 FROM node:18-alpine
 
-# Install only essential packages
+# Install essential packages and Python tools
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    ffmpeg
+    ffmpeg \
+    curl \
+    wget
 
 # Set working directory
 WORKDIR /app
@@ -15,6 +17,9 @@ COPY server/package*.json ./
 
 # Install Node.js dependencies
 RUN npm install --production
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir spotdl yt-dlp
 
 # Copy application code from server directory
 COPY server/ .
