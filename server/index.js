@@ -3442,6 +3442,77 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   console.log(`Found ${failedTracks.length} failed tracks to retry with yt-dlp`);
   
   let successCount = 0;
+
+  // Helper: find best YouTube match for a track using yt-dlp JSON search (no proxies)
+  const findBestYouTubeMatch = async (track) => {
+    try {
+      const searchQuery = `${track.artist} ${track.name}`.trim();
+      const args = [
+        '-m', 'yt_dlp',
+        `ytsearch10:${searchQuery}`,
+        '--dump-json',
+        '--flat-playlist',
+        '--no-warnings',
+        '--ignore-errors',
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      ];
+
+      // Add cookies if available
+      try {
+        const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+        if (cookiesExist) {
+          args.push('--cookies', YOUTUBE_COOKIES_PATH);
+        }
+      } catch {}
+
+      const proc = spawn(PYTHON_CMD, args);
+      let output = '';
+      proc.stdout.on('data', d => (output += d.toString()));
+      await new Promise((resolve) => proc.on('close', () => resolve()));
+      if (!output.trim()) return null;
+
+      const entries = output.trim().split('\n').map(line => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(Boolean);
+      if (entries.length === 0) return null;
+
+      const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+      const wantedArtist = normalize(track.artist);
+      const wantedTitle = normalize(track.name);
+      const wantedDur = Number(track.duration || 0);
+
+      let best = null; let bestScore = -1;
+      for (const e of entries) {
+        const eTitle = normalize(e.title || '');
+        const eUploader = normalize(e.uploader || e.channel || '');
+        const eDur = Number(e.duration || 0);
+
+        let score = 0;
+        // artist match
+        if (wantedArtist && (eTitle.includes(wantedArtist) || eUploader.includes(wantedArtist))) score += 3;
+        // title words match
+        const words = wantedTitle.split(' ').filter(w => w.length > 2);
+        const hits = words.filter(w => eTitle.includes(w)).length;
+        score += Math.min(hits, 4);
+        // duration closeness
+        if (wantedDur > 0 && eDur > 0) {
+          const diff = Math.abs(eDur - wantedDur);
+          if (diff <= 2) score += 4; else if (diff <= 5) score += 3; else if (diff <= 10) score += 2; else if (diff <= 20) score += 1;
+        }
+        // prefer official uploads
+        if (eUploader && (eUploader.includes('official') || eUploader.includes(wantedArtist))) score += 1;
+
+        if (score > bestScore) { bestScore = score; best = e; }
+      }
+
+      if (!best || !best.id) return null;
+      return `https://www.youtube.com/watch?v=${best.id}`;
+    } catch {
+      return null;
+    }
+  };
   
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
@@ -3483,6 +3554,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         console.log(`  ✅ Using YouTube link from spotdl error: ${youtubeLink}`);
       } else {
         console.log(`  ⚠️  No YouTube link found in spotdl errors either`);
+        // Try finding best match via yt-dlp search (no proxies)
+        const found = await findBestYouTubeMatch(track);
+        if (found) {
+          youtubeLink = found;
+          console.log(`  ✅ Best YouTube match found: ${youtubeLink}`);
+        }
       }
     }
     
