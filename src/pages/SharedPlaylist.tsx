@@ -84,12 +84,25 @@ const SharedPlaylist = () => {
     toast.success('Playlist loaded!');
   };
 
-  // Open in new tab
+  // Open in new tab - loads the playlist in home page
   const handleOpenInNewTab = () => {
+    if (!sharedData) return;
+    
     setShowConfirmDialog(false);
-    const currentUrl = window.location.href;
-    window.open(currentUrl, '_blank');
-    toast.success('Opening in new tab');
+    
+    // Store playlist data in sessionStorage with a unique temp key
+    const tempKey = `temp-shared-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    sessionStorage.setItem(tempKey, JSON.stringify(sharedData.playlistData));
+    
+    // Open home page with query param pointing to the temp key
+    const homeUrl = `${window.location.origin}/?loadShared=${tempKey}`;
+    const newTab = window.open(homeUrl, '_blank');
+    
+    if (newTab) {
+      toast.success('Opening in new tab');
+    } else {
+      toast.error('Please allow popups to open in new tab');
+    }
   };
 
   // Save playlist to library

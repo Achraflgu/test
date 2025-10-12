@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { Music2, Download, ListMusic, Sparkles, Zap, Shield, CheckCircle2, Link2, Search, History } from "lucide-react";
 import { PlaylistInput } from "@/components/PlaylistInput";
 import { PlaylistHeader } from "@/components/PlaylistHeader";
@@ -32,6 +32,7 @@ import {
 
 const Index = () => {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [settings, setSettings] = useState<DownloadSettingsType>({
@@ -165,6 +166,67 @@ const Index = () => {
       }, 500);
     }
   }, [location]);
+
+  // Handle shared playlist opened in new tab (via query param)
+  useEffect(() => {
+    const loadSharedKey = searchParams.get('loadShared');
+    if (loadSharedKey) {
+      try {
+        // Get data from sessionStorage
+        const dataStr = sessionStorage.getItem(loadSharedKey);
+        if (dataStr) {
+          const sharedPlaylist = JSON.parse(dataStr);
+          console.log('📥 Loading shared playlist from new tab...', sharedPlaylist);
+          
+          // Set playlist data
+          if (sharedPlaylist.tracks && sharedPlaylist.tracks.length > 0) {
+            setTracks(sharedPlaylist.tracks);
+          }
+          
+          const loadedPlaylist: Playlist = {
+            id: sharedPlaylist.id || 'shared',
+            name: sharedPlaylist.name || 'Shared Playlist',
+            description: sharedPlaylist.description || `Shared playlist with ${sharedPlaylist.tracks?.length || 0} tracks`,
+            owner: sharedPlaylist.owner || 'Shared',
+            totalTracks: sharedPlaylist.tracks?.length || 0,
+            totalDuration: sharedPlaylist.tracks?.reduce((sum: number, t: any) => sum + (t.duration || 0), 0) || 0,
+            imageUrl: sharedPlaylist.imageUrl || '/placeholder.svg',
+            url: sharedPlaylist.url || ''
+          };
+          setPlaylist(loadedPlaylist);
+          
+          if (sharedPlaylist.name) {
+            setPlaylistNames([sharedPlaylist.name]);
+          }
+          if (sharedPlaylist.imageUrl) {
+            setPlaylistImages([sharedPlaylist.imageUrl]);
+          }
+          if (sharedPlaylist.url) {
+            setPlaylistUrls([sharedPlaylist.url]);
+          }
+          
+          // Clean up sessionStorage
+          sessionStorage.removeItem(loadSharedKey);
+          
+          // Clean up URL
+          window.history.replaceState({}, document.title, '/');
+          
+          toast.success('Shared playlist loaded in new tab!');
+          
+          // Scroll to track list
+          setTimeout(() => {
+            const trackListSection = document.querySelector('[data-track-list]');
+            if (trackListSection) {
+              trackListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Failed to load shared playlist from new tab:', error);
+        toast.error('Failed to load shared playlist');
+      }
+    }
+  }, [searchParams]);
 
   // Update saved playlists count
   useEffect(() => {
