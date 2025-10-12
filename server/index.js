@@ -606,7 +606,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     const client = clientTypes.tv_clients[attempt % clientTypes.tv_clients.length];
     const userAgent = userAgents.tv[attempt % userAgents.tv.length];
     
-    args.push('--user-agent', userAgent);
+  args.push('--user-agent', userAgent);
     args.push('--extractor-args', `youtube:player_client=${client}`);
     args.push('--extractor-args', 'youtube:player_skip=webpage');
     args.push('--no-check-certificate');
@@ -1221,7 +1221,7 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             console.error('Failed to parse YouTube data: empty');
             return resolve(null);
           }
-
+          
           // Extract duration from multiple possible fields
           let duration = 0;
           if (parsed.duration) {
@@ -1234,7 +1234,7 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
               duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
             }
           }
-
+          
           const track = {
             id: parsed.id || videoId,
             name: parsed.title || 'Unknown',
@@ -1247,11 +1247,11 @@ async function fetchYouTubeVideo(videoId, attempt = 0) {
             downloadProgress: 0,
             selected: true
           };
-
+          
           if (duration === 0) {
             console.log('⚠️  Duration missing in yt-dlp data; proceeding');
           }
-
+          
           console.log(`✅ YouTube video fetched: "${track.name}" by ${track.artist} (${track.duration}s)`);
           resolve({ track, data: parsed });
         } catch (e) {
@@ -3465,7 +3465,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   };
   
   const failedTracks = tracks.filter(track => {
-    const expectedFilename = `${track.artist} - ${track.name}.mp3`;
+        const expectedFilename = track.artist === 'Unknown Artist' 
+          ? `${track.name}.mp3`
+          : `${track.artist} - ${track.name}.mp3`;
     const exists = musicFiles.some(file => {
       const fileNormalized = normalizeString(file.toLowerCase());
       const artistNormalized = normalizeString(track.artist.toLowerCase().trim());
@@ -3489,7 +3491,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   // Helper: find best YouTube match for a track using yt-dlp JSON search (no proxies)
   const findBestYouTubeMatch = async (track) => {
     try {
-      const searchQuery = `${track.artist} ${track.name}`.trim();
+      // Build search query - skip "Unknown Artist" to improve search results
+      const searchQuery = track.artist === 'Unknown Artist' 
+        ? track.name.trim()
+        : `${track.artist} ${track.name}`.trim();
       const args = [
         '-m', 'yt_dlp',
         `ytsearch10:${searchQuery}`,
@@ -3559,15 +3564,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
-    const searchQuery = `${track.artist} ${track.name}`;
-    console.log(`\n🔄 Trying yt-dlp for: ${searchQuery}`);
+    // Build search query - skip "Unknown Artist" to improve search results
+    const searchQuery = track.artist === 'Unknown Artist' 
+      ? track.name
+      : `${track.artist} ${track.name}`;
+    console.log(`\n🔄 Trying yt-dlp for: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
     console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     socket.emit('download:status', {
       downloadId,
       status: 'downloading',
-      message: `🔄 yt-dlp fallback: ${track.artist} - ${track.name}`
+      message: `🔄 yt-dlp fallback: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
     });
     
     // Sanitize filename to avoid issues
@@ -3772,10 +3780,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               
               socket.emit('download:progress', {
                 downloadId,
-                trackName: `${track.artist} - ${track.name}`,
+                trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
                 status: 'completed',
                 progress: 100,
-                message: `✅ Downloaded via yt-dlp: ${track.artist} - ${track.name}`
+                message: `✅ Downloaded via yt-dlp: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
               });
               
               resolve('success');
@@ -3822,7 +3830,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         socket.emit('download:status', {
           downloadId,
           status: 'downloading',
-          message: `🔍 Retrying with search: ${track.artist} - ${track.name}`
+          message: `🔍 Retrying with search: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
         });
         
         const searchArgs = [
@@ -3867,10 +3875,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               
               socket.emit('download:progress', {
                 downloadId,
-                trackName: `${track.artist} - ${track.name}`,
+                trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
                 status: 'completed',
                 progress: 100,
-                message: `✅ Downloaded via yt-dlp search: ${track.artist} - ${track.name}`
+                message: `✅ Downloaded via yt-dlp search: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
               });
             } else {
               console.log(`❌ yt-dlp SEARCH FAILED: ${searchQuery}`);
