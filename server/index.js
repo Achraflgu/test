@@ -4950,13 +4950,17 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A'); // RFC5987
     const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
     
-    // Set response headers
+    // Set response headers for optimal streaming
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', contentDisposition);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Transfer-Encoding', 'chunked');
     
-    // Create archive
+    // Create archive with optimized compression for music files
     const archive = archiver('zip', {
-      zlib: { level: 9 } // Maximum compression
+      zlib: { level: 1 }, // Fast compression (MP3s are already compressed)
+      forceLocalTime: true, // Better compatibility
+      forceZip64: false // Use standard ZIP format
     });
     
     // Pipe archive to response
@@ -4966,8 +4970,13 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     });
     archive.pipe(res);
     
-    // Add all files from the output folder
+    // Add all files from the output folder with optimized settings
     archive.directory(outputFolder, false);
+    
+    // Add progress monitoring for better user experience
+    archive.on('progress', (progress) => {
+      console.log(`📦 ZIP Progress: ${progress.entries.processed} files processed`);
+    });
     
     // Finalize the archive
     await archive.finalize();
