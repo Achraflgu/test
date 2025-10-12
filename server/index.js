@@ -4800,9 +4800,14 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     const folderName = path.basename(outputFolder);
     const zipFileName = `${folderName}.zip`;
     
+    // Build a safe Content-Disposition header
+    const asciiName = zipFileName.replace(/[^\x20-\x7E]/g, '_'); // ASCII-only fallback
+    const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A'); // RFC5987
+    const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+    
     // Set response headers
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+    res.setHeader('Content-Disposition', contentDisposition);
     
     // Create archive
     const archive = archiver('zip', {
@@ -4810,6 +4815,10 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     });
     
     // Pipe archive to response
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      try { res.status(500).end('Archive error'); } catch {}
+    });
     archive.pipe(res);
     
     // Add all files from the output folder
