@@ -3503,7 +3503,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--embed-thumbnail',
         '--embed-metadata',
         '--add-metadata',
-        '--parse-metadata', 'title:%(artist)s - %(title)s',
+        // Parse artist/title from video title if it matches "Artist - Title"
+        '--metadata-from-title', '%(artist)s - %(title)s',
         '--output', outputPath,
         '--no-playlist',
         '--no-part',  // Don't use .part files
@@ -3522,6 +3523,16 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
       ytdlpArgs.push('--http-chunk-size', '1M'); // smaller chunks reduce proxy timeouts
+
+      // Force metadata tags from known track fields (overrides unknowns)
+      const safeArtist = (track.artist || '').replace(/"/g, '\\"');
+      const safeTitle = (track.name || '').replace(/"/g, '\\"');
+      const safeAlbum = (track.album || '').replace(/"/g, '\\"');
+      let ffArgs = `FFmpegMetadata:-metadata artist=\"${safeArtist}\" -metadata title=\"${safeTitle}\"`;
+      if (safeAlbum && safeAlbum !== 'YouTube') {
+        ffArgs += ` -metadata album=\"${safeAlbum}\"`;
+      }
+      ytdlpArgs.push('--postprocessor-args', ffArgs);
     } else {
       console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
       
@@ -3535,6 +3546,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--embed-thumbnail',
         '--embed-metadata',
         '--add-metadata',
+        '--metadata-from-title', '%(artist)s - %(title)s',
         '--no-part',  // Don't use .part files
         '--force-overwrites',  // Overwrite incomplete files
         '--no-warnings',
@@ -3565,16 +3577,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--skip-unavailable-fragments');
       ytdlpArgs.push('--http-chunk-size', '1M');
       
-      // Add metadata args if artist is not "Unknown Artist"
-      if (track.artist !== 'Unknown Artist') {
-        ytdlpArgs.push('--parse-metadata', `artist:${track.artist}`);
+      // Force metadata tags from known track fields (overrides unknowns)
+      const safeArtist2 = (track.artist || '').replace(/"/g, '\\"');
+      const safeTitle2 = (track.name || '').replace(/"/g, '\\"');
+      const safeAlbum2 = (track.album || '').replace(/"/g, '\\"');
+      let ffArgs2 = `FFmpegMetadata:-metadata artist=\"${safeArtist2}\" -metadata title=\"${safeTitle2}\"`;
+      if (safeAlbum2 && safeAlbum2 !== 'YouTube') {
+        ffArgs2 += ` -metadata album=\"${safeAlbum2}\"`;
       }
-      
-      ytdlpArgs.push('--parse-metadata', `title:${track.name}`);
-      
-      if (track.album && track.album !== 'YouTube') {
-        ytdlpArgs.push('--parse-metadata', `album:${track.album}`);
-      }
+      ytdlpArgs.push('--postprocessor-args', ffArgs2);
       
       // Add output path and no-playlist at the end
       ytdlpArgs.push('--output', outputPath);
