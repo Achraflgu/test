@@ -45,6 +45,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [showFailedTracksDialog, setShowFailedTracksDialog] = useState(false);
   const [failedTracks, setFailedTracks] = useState<Track[]>([]);
   
+  // Download tray state
+  const [recentDownloads, setRecentDownloads] = useState<Array<{ id: string; name: string; url: string; time: number }>>([]);
+  const [showDownloadTray, setShowDownloadTray] = useState(true);
+
+  const getFolderName = (folderPath: string) => {
+    const parts = (folderPath || '').split(/[\\\/]/);
+    return parts[parts.length - 1] || 'Download';
+  };
+  
   // Audio player state
   const [currentPlayingTrack, setCurrentPlayingTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1634,14 +1643,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
-            toast.success(data.message, {
-              duration: 30000, // 30 seconds
+            // Auto-start download in a new tab immediately
+            window.open(fullDownloadUrl, '_blank');
+            
+            // Add to tray
+            setRecentDownloads(prev => [{ id: data.downloadId, name: getFolderName(data.outputFolder), url: fullDownloadUrl, time: Date.now() }, ...prev].slice(0, 5));
+            
+            // Persistent richer toast with retry/open actions
+            toast.success(`${getFolderName(data.outputFolder)} is ready`, {
+              description: 'Your ZIP is prepared. You can re-download anytime from the tray.',
+              duration: 60000,
               action: {
-                label: '📥 Download ZIP',
-                onClick: () => {
-                  window.open(fullDownloadUrl, '_blank');
-                  toast.success('Download started!');
-                },
+                label: 'Open ZIP',
+                onClick: () => window.open(fullDownloadUrl, '_blank'),
               },
             });
           } else {
@@ -1832,8 +1846,35 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <div className="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-500"></div>
                   <div className="relative p-3 bg-gradient-to-br from-primary/20 to-accent/20 rounded-xl backdrop-blur-sm">
                     <Music2 className="w-6 h-6 text-primary" />
-                  </div>
+        </div>
+      </div>
+
+      {/* Bottom-left Download Tray */}
+      {showDownloadTray && recentDownloads.length > 0 && (
+        <div className="fixed bottom-4 left-4 z-50 w-72 max-w-[85vw] bg-card/95 backdrop-blur border border-border rounded-xl shadow-xl">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Download className="w-4 h-4" /> Downloads
+            </div>
+            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowDownloadTray(false)}>Hide</button>
+          </div>
+          <div className="max-h-64 overflow-auto p-2">
+            {recentDownloads.map(d => (
+              <div key={d.id} className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-secondary/50">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{d.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{new Date(d.time).toLocaleTimeString()}</div>
                 </div>
+                <div className="flex items-center gap-1">
+                  <Button size="xs" variant="ghost" className="text-xs" onClick={() => window.open(d.url, '_blank')}>
+                    Open
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
