@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Music2, Download, ListMusic, Sparkles, Zap, Shield, CheckCircle2, Link2, Search, History } from "lucide-react";
 import { PlaylistInput } from "@/components/PlaylistInput";
 import { PlaylistHeader } from "@/components/PlaylistHeader";
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const Index = () => {
+  const location = useLocation();
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [settings, setSettings] = useState<DownloadSettingsType>({
@@ -116,6 +118,53 @@ const Index = () => {
       }, 800);
     }
   }, []); // Only run on mount
+
+  // Handle shared playlist from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.fromShare && state?.loadedPlaylist) {
+      const sharedPlaylist = state.loadedPlaylist;
+      console.log('📥 Loading shared playlist...', sharedPlaylist);
+      
+      // Set playlist data
+      if (sharedPlaylist.tracks && sharedPlaylist.tracks.length > 0) {
+        setTracks(sharedPlaylist.tracks);
+      }
+      
+      const loadedPlaylist: Playlist = {
+        id: sharedPlaylist.id || 'shared',
+        name: sharedPlaylist.name || 'Shared Playlist',
+        description: sharedPlaylist.description || `Shared playlist with ${sharedPlaylist.tracks?.length || 0} tracks`,
+        owner: sharedPlaylist.owner || 'Shared',
+        totalTracks: sharedPlaylist.tracks?.length || 0,
+        totalDuration: sharedPlaylist.tracks?.reduce((sum: number, t: any) => sum + (t.duration || 0), 0) || 0,
+        imageUrl: sharedPlaylist.imageUrl || '/placeholder.svg',
+        url: sharedPlaylist.url || ''
+      };
+      setPlaylist(loadedPlaylist);
+      
+      if (sharedPlaylist.name) {
+        setPlaylistNames([sharedPlaylist.name]);
+      }
+      if (sharedPlaylist.imageUrl) {
+        setPlaylistImages([sharedPlaylist.imageUrl]);
+      }
+      if (sharedPlaylist.url) {
+        setPlaylistUrls([sharedPlaylist.url]);
+      }
+      
+      // Clear navigation state
+      window.history.replaceState({}, document.title);
+      
+      // Scroll to track list
+      setTimeout(() => {
+        const trackListSection = document.querySelector('[data-track-list]');
+        if (trackListSection) {
+          trackListSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500);
+    }
+  }, [location]);
 
   // Update saved playlists count
   useEffect(() => {

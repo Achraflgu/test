@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Link2, 
   Copy, 
@@ -12,8 +11,7 @@ import {
   Send, 
   Facebook, 
   Share2,
-  Clock,
-  Infinity
+  Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateShareableLink, ShareLinkOptions } from '@/lib/shareUtils';
@@ -35,15 +33,14 @@ export default function SharePlaylistDialog({
 }: SharePlaylistDialogProps) {
   const [shareLink, setShareLink] = useState<string>('');
   const [copied, setCopied] = useState(false);
-  const [expiry, setExpiry] = useState<'1h' | '1d' | '1w' | 'never'>('never');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Generate link when dialog opens
+  // Generate link when dialog opens (always 24 hours expiry)
   useEffect(() => {
     if (open && playlistId) {
       generateLink();
     }
-  }, [open, playlistId, expiry]);
+  }, [open, playlistId]);
 
   const generateLink = async () => {
     setIsGenerating(true);
@@ -52,7 +49,7 @@ export default function SharePlaylistDialog({
         playlistId,
         playlistName,
         playlistData,
-        expiry: expiry === 'never' ? undefined : expiry
+        expiry: '1d' // Always 24 hours
       };
       
       const link = await generateShareableLink(options);
@@ -108,33 +105,10 @@ export default function SharePlaylistDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Expiry Options */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              Link Expiry
-            </Label>
-            <RadioGroup value={expiry} onValueChange={(value: any) => setExpiry(value)}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="1h" id="1h" />
-                <Label htmlFor="1h" className="cursor-pointer">1 Hour</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="1d" id="1d" />
-                <Label htmlFor="1d" className="cursor-pointer">1 Day</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="1w" id="1w" />
-                <Label htmlFor="1w" className="cursor-pointer">1 Week</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="never" id="never" />
-                <Label htmlFor="never" className="cursor-pointer flex items-center gap-1">
-                  <Infinity className="w-4 h-4" />
-                  No Expiry
-                </Label>
-              </div>
-            </RadioGroup>
+          {/* Expiry Info */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+            <Clock className="w-4 h-4" />
+            <span>Link expires in 24 hours</span>
           </div>
 
           {/* Generated Link */}
