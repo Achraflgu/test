@@ -133,6 +133,45 @@ if (process.env.YOUTUBE_COOKIES) {
   }
 }
 
+// === YouTube Cookies Management Endpoints ===
+// Upload/replace cookies (expects raw cookies.txt content)
+app.post('/api/youtube-cookies', async (req, res) => {
+  try {
+    const { cookies } = req.body || {};
+    if (!cookies || typeof cookies !== 'string' || cookies.trim().length < 10) {
+      return res.status(400).json({ ok: false, error: 'cookies (text) required' });
+    }
+    await fs.writeFile(YOUTUBE_COOKIES_PATH, cookies, { encoding: 'utf-8' });
+    return res.json({ ok: true, path: YOUTUBE_COOKIES_PATH });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Check if cookies exist
+app.get('/api/youtube-cookies', async (_req, res) => {
+  try {
+    const exists = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+    if (!exists) return res.json({ ok: true, exists: false });
+    const stat = await fs.stat(YOUTUBE_COOKIES_PATH);
+    return res.json({ ok: true, exists: true, size: stat.size, mtime: stat.mtime });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Delete cookies
+app.delete('/api/youtube-cookies', async (_req, res) => {
+  try {
+    const exists = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+    if (!exists) return res.json({ ok: true, deleted: false });
+    await fs.unlink(YOUTUBE_COOKIES_PATH);
+    return res.json({ ok: true, deleted: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Store active downloads
 const activeDownloads = new Map();
 
