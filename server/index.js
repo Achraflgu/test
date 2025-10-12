@@ -1212,15 +1212,46 @@ async function fetchVideoFallback(videoId) {
                 const html = await pageResponse.text();
                 console.log(`📄 Got HTML page (${html.length} bytes)`);
                 
-                // Try multiple patterns to find duration
+                // Try multiple patterns to find duration - ENHANCED PATTERNS
                 const patterns = [
+                  // Standard YouTube patterns
                   { regex: /"lengthSeconds":"(\d+)"/, name: 'lengthSeconds' },
                   { regex: /"duration":"PT(\d+)M(\d+)S"/, name: 'PT format (M:S)' },
                   { regex: /"duration":"PT(\d+)M"/, name: 'PT format (M only)' },
+                  { regex: /"duration":"PT(\d+)S"/, name: 'PT format (S only)' },
                   { regex: /"approxDurationMs":"(\d+)"/, name: 'approxDurationMs' },
                   { regex: /lengthSeconds&quot;:&quot;(\d+)/, name: 'lengthSeconds (HTML encoded)' },
                   { regex: /"length":"(\d+)"/, name: 'length field' },
                   { regex: /\"lengthText\":\{\"simpleText\":\"(\d+):(\d+)\"/, name: 'lengthText' },
+                  
+                  // New YouTube patterns (2024+)
+                  { regex: /"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'videoDetails lengthSeconds' },
+                  { regex: /"microformat":\{"playerMicroformatRenderer":\{"lengthSeconds":"(\d+)"/, name: 'microformat lengthSeconds' },
+                  { regex: /"playerOverlays":\{"playerOverlayRenderer":\{"videoDetails":\{"playerVideoDetailsRenderer":\{"lengthSeconds":"(\d+)"/, name: 'playerOverlays lengthSeconds' },
+                  { regex: /"contents":\{"twoColumnWatchNextResults":\{"results":\{"results":\{"contents":\[.*?"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'twoColumn lengthSeconds' },
+                  
+                  // Alternative duration formats
+                  { regex: /"duration_seconds":"(\d+)"/, name: 'duration_seconds' },
+                  { regex: /"video_length":"(\d+)"/, name: 'video_length' },
+                  { regex: /"time":"(\d+)"/, name: 'time field' },
+                  
+                  // JSON-LD structured data
+                  { regex: /"duration":"PT(\d+)M(\d+)S"/, name: 'JSON-LD PT format' },
+                  { regex: /"duration":"PT(\d+)M"/, name: 'JSON-LD PT minutes' },
+                  { regex: /"duration":"PT(\d+)S"/, name: 'JSON-LD PT seconds' },
+                  
+                  // HTML5 video duration
+                  { regex: /<video[^>]*data-duration="(\d+)"/, name: 'HTML5 data-duration' },
+                  { regex: /<video[^>]*duration="(\d+)"/, name: 'HTML5 duration' },
+                  
+                  // YouTube player API patterns
+                  { regex: /"ytInitialPlayerResponse":\{"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'ytInitialPlayerResponse' },
+                  { regex: /"playerResponse":\{"videoDetails":\{"lengthSeconds":"(\d+)"/, name: 'playerResponse' },
+                  
+                  // Fallback patterns for different YouTube layouts
+                  { regex: /"length_seconds":"(\d+)"/, name: 'length_seconds' },
+                  { regex: /"video_duration":"(\d+)"/, name: 'video_duration' },
+                  { regex: /"playback_duration":"(\d+)"/, name: 'playback_duration' },
                 ];
                 
                 console.log(`🔍 Trying ${patterns.length} duration extraction patterns...`);
