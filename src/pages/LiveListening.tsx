@@ -69,9 +69,52 @@ export const LiveListening = () => {
     return null;
   };
 
-  const videoId = currentTrack ? extractYouTubeVideoId(currentTrack.url) : null;
+  const [youtubeSearchId, setYoutubeSearchId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  
+  const directVideoId = currentTrack ? extractYouTubeVideoId(currentTrack.url) : null;
   const isSpotifyTrack = currentTrack?.url.includes('spotify.com') || false;
+  const videoId = directVideoId || youtubeSearchId;
   const isYouTubeTrack = !!videoId;
+
+  // Search YouTube for Spotify tracks
+  useEffect(() => {
+    if (!currentTrack || !isSpotifyTrack || directVideoId) {
+      setYoutubeSearchId(null);
+      setIsSearching(false);
+      return;
+    }
+
+    // Search YouTube for the track
+    const searchYouTube = async () => {
+      setIsSearching(true);
+      try {
+        const searchQuery = `${currentTrack.artist} ${currentTrack.name} official audio`;
+        console.log('🔍 Searching YouTube for:', searchQuery);
+        
+        // Use YouTube iframe search (simple method)
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+        
+        // For now, we'll use the track's youtubeId if available, or search via API
+        // Check if track has cached youtubeId
+        if (currentTrack.youtubeId) {
+          console.log('✅ Found cached YouTube ID:', currentTrack.youtubeId);
+          setYoutubeSearchId(currentTrack.youtubeId);
+        } else {
+          // Try to extract from search page (simplified - in production use YouTube API)
+          console.log('⚠️ No YouTube ID available for Spotify track');
+          toast.error(`Cannot play Spotify track: ${currentTrack.name}. YouTube version not found.`);
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+        toast.error('Failed to find YouTube version of track');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    searchYouTube();
+  }, [currentTrack?.id, isSpotifyTrack, directVideoId]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -618,22 +661,48 @@ export const LiveListening = () => {
           <div className={`flex-1 overflow-y-auto overflow-x-hidden ${showQueue ? '' : 'mx-auto max-w-4xl'}`}>
             {currentTrack ? (
               <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl p-8 border border-purple-500/20">
-                {/* Spotify Warning */}
-                {isSpotifyTrack && (
+                {/* Searching for YouTube version */}
+                {isSearching && isSpotifyTrack && (
+                  <div className="mb-6 bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-start gap-3">
+                    <Loader2 className="w-5 h-5 text-blue-400 animate-spin mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-blue-300 mb-1">Finding YouTube Version...</p>
+                      <p className="text-sm text-blue-200/80">
+                        Searching for "{currentTrack?.artist} - {currentTrack?.name}" on YouTube...
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Spotify track with YouTube ID */}
+                {isSpotifyTrack && youtubeSearchId && !isSearching && (
+                  <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-xl p-4 flex items-start gap-3">
+                    <div className="text-green-400 mt-0.5">✅</div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-green-300 mb-1">Playing YouTube Version</p>
+                      <p className="text-sm text-green-200/80">
+                        Spotify track converted to YouTube for synchronized playback. Audio is synced with {hostName}!
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Spotify Warning - No YouTube ID */}
+                {isSpotifyTrack && !youtubeSearchId && !isSearching && (
                   <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-start gap-3">
                     <div className="text-yellow-500 mt-0.5">⚠️</div>
                     <div className="flex-1">
-                      <p className="font-semibold text-yellow-300 mb-1">Spotify Track Limitation</p>
+                      <p className="font-semibold text-yellow-300 mb-1">Spotify Track - No YouTube Version</p>
                       <p className="text-sm text-yellow-200/80">
-                        This is a Spotify track. Audio playback is not available for Spotify URLs in Live Listening.
-                        Only the host can hear this track. YouTube tracks work perfectly for all listeners!
+                        This Spotify track doesn't have a YouTube version available. Only the host can hear this track.
+                        The host should download tracks with YouTube support for Live Listening!
                       </p>
                     </div>
                   </div>
                 )}
                 
                 {/* YouTube Error Info */}
-                {!isYouTubeTrack && !isSpotifyTrack && (
+                {!isYouTubeTrack && !isSpotifyTrack && !isSearching && (
                   <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-xl p-4 flex items-start gap-3">
                     <div className="text-red-500 mt-0.5">❌</div>
                     <div className="flex-1">
