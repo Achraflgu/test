@@ -501,21 +501,18 @@ export const LiveListening = () => {
         
         if (isTrackChange) {
           console.log('🎵 Track changed to:', data.currentTrack?.name);
+          // RESET everything on track change
           setCurrentTrack(data.currentTrack);
           setDuration(data.currentTrack?.duration || 0);
-          setCurrentTime(data.currentTime || 0);
-        } else if (data.currentTrack) {
-          // Same track, prefer player's known duration when ready to avoid flicker
-          let newDuration = data.currentTrack.duration || duration;
-          try {
-            if (playerRef.current?.getDuration && isPlayerReady) {
-              const playerDur = playerRef.current.getDuration();
-              if (playerDur && playerDur > 0) newDuration = playerDur;
-            }
-          } catch {}
-          if (Math.abs(newDuration - duration) > 1) {
-            console.log('📏 Duration updated:', newDuration);
-            setDuration(newDuration);
+          setCurrentTime(0); // Always reset to 0 on track change, host will send correct time next
+          desiredTimeRef.current = null; // Clear any pending sync
+          
+          // Player will reinitialize via useEffect when videoId changes
+        } else {
+          // Same track - update duration if provided
+          if (data.currentTrack?.duration && Math.abs(data.currentTrack.duration - duration) > 1) {
+            console.log('📏 Duration updated:', data.currentTrack.duration);
+            setDuration(data.currentTrack.duration);
           }
         }
         
@@ -526,49 +523,49 @@ export const LiveListening = () => {
         }
         setIsPlaying(data.isPlaying);
         
-        // Immediately reflect host time in UI, then seek player if needed
-        if (!isTrackChange) {
-          setCurrentTime(data.currentTime);
-          desiredTimeRef.current = data.currentTime; // keep target until we converge
-        }
-
-        // AGGRESSIVE time sync: always force seek to host time when updated (except track change)
-        if (!isTrackChange) {
-          if (playerRef.current && isPlayerReady) {
-            try {
-              const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
-              const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
-              
-              console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
-              
-              // Always seek if any difference (no threshold) to force exact sync
-              if (timeDiff > 0.05) {
-                console.log('🔄 FORCE SEEKING to', data.currentTime);
-                playerRef.current.seekTo(data.currentTime, true);
-                // Double-check after a brief delay
-                setTimeout(() => {
-                  try {
-                    if (playerRef.current) {
-                      playerRef.current.seekTo(data.currentTime, true);
-                    }
-                  } catch {}
-                }, 100);
-              }
-            } catch (err) {
-              console.error('Seek error:', err);
-            }
-          } else {
-            // Player not ready yet: perform delayed seeks until it works
-            for (let i = 0; i < 3; i++) {
-              setTimeout(() => {
-                try {
-                  if (playerRef.current?.seekTo) {
-                    playerRef.current.seekTo(data.currentTime, true);
-                    console.log(`🔄 Delayed seek attempt ${i + 1} to`, data.currentTime);
-                  }
-                } catch {}
-              }, 200 * (i + 1));
-            }
+        // ALWAYS update time and seek - even on track change (to sync start position)
+        console.log('⏱️ Setting time to:', data.currentTime);
+        setCurrentTime(data.currentTime);
+        desiredTimeRef.current = data.currentTime; // Target time for convergence
+        
+        // FORCE SEEK to exact host time (works for both track change and time updates)
+        if (playerRef.current && isPlayerReady) {
+          try {
+            const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
+            const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
+            
+            console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
+            
+            // ALWAYS seek unconditionally to force exact sync (track change or time update)
+            console.log('🔄 FORCE SEEKING to', data.currentTime);
+            playerRef.current.seekTo(data.currentTime, true);
+            
+            // Triple-check with multiple delayed seeks to ensure it sticks
+            setTimeout(() => {
+              try {
+                if (playerRef.current) playerRef.current.seekTo(data.currentTime, true);
+              } catch {}
+            }, 100);
+            setTimeout(() => {
+              try {
+                if (playerRef.current) playerRef.current.seekTo(data.currentTime, true);
+              } catch {}
+            }, 250);
+          } catch (err) {
+            console.error('Seek error:', err);
+          }
+        } else {
+          // Player not ready: perform aggressive delayed seeks
+          console.log('⏳ Player not ready, scheduling delayed seeks to', data.currentTime);
+          for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+              try {
+                if (playerRef.current?.seekTo) {
+                  playerRef.current.seekTo(data.currentTime, true);
+                  console.log(`🔄 Delayed seek attempt ${i + 1} to`, data.currentTime);
+                }
+              } catch {}
+            }, 150 * (i + 1));
           }
         }
 
