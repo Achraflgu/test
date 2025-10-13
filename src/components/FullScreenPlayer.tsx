@@ -620,7 +620,6 @@ export const FullScreenPlayer = ({
             <button
               onClick={() => {
                 setBackgroundMode('video');
-                toast.success('Video background enabled');
                 setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
@@ -637,7 +636,6 @@ export const FullScreenPlayer = ({
             <button
               onClick={() => {
                 setBackgroundMode('artwork');
-                toast.success('Artwork background enabled');
                 setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
@@ -654,7 +652,6 @@ export const FullScreenPlayer = ({
             <button
               onClick={() => {
                 setBackgroundMode('visualizer');
-                toast.success('Visualizer background enabled');
                 setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
@@ -729,12 +726,11 @@ export const FullScreenPlayer = ({
           {queueState === 'open' && (
             <div className="overflow-y-auto max-h-[calc(100vh-16rem)] p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent">
               {queue.map((queueTrack, index) => (
-                <div
-                  key={`${queueTrack.id}-${index}`}
-                  onClick={() => {
-                    onPlayTrack?.(queueTrack);
-                    toast.success(`Now playing: ${queueTrack.name}`);
-                  }}
+                 <div
+                   key={`${queueTrack.id}-${index}`}
+                   onClick={() => {
+                     onPlayTrack?.(queueTrack);
+                   }}
                   className={`group flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
                     queueTrack.id === track.id
                       ? 'bg-primary/20 border-2 border-primary/40 shadow-lg shadow-primary/20'
@@ -806,15 +802,14 @@ export const FullScreenPlayer = ({
                 
                 {/* Next 2 Tracks */}
                 {queue.slice(0, 2).map((queueTrack, index) => (
-                  <div
-                    key={`mini-${queueTrack.id}-${index}`}
-                    className="w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                    title={queueTrack.name}
-                    onClick={() => {
-                      onPlayTrack?.(queueTrack);
-                      toast.success(`Playing: ${queueTrack.name}`);
-                    }}
-                  >
+                   <div
+                     key={`mini-${queueTrack.id}-${index}`}
+                     className="w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                     title={queueTrack.name}
+                     onClick={() => {
+                       onPlayTrack?.(queueTrack);
+                     }}
+                   >
                     <img
                       src={queueTrack.imageUrl}
                       alt=""
