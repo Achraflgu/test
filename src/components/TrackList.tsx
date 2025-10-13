@@ -431,7 +431,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 },
                 onError: async (event: any) => {
                   console.error('❌ YouTube Player Error:', event.data);
-                  console.log('📍 Track in error handler:', track ? track.name : 'undefined');
+                  console.log('📍 Track in error handler:', currentPlayingTrackRef.current ? currentPlayingTrackRef.current.name : 'undefined');
                   
                   let errorMessage = 'Player error';
                   
@@ -448,8 +448,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   } else if (event.data === 101 || event.data === 150) {
                     errorMessage = 'Video embedding restricted';
                     
-                    // Get the track from saved session
-                    const currentTrack = track || savedSession?.currentTrack;
+                    // Get the track from ref
+                    const currentTrack = currentPlayingTrackRef.current;
                     
                     // Try to find alternative version
                     if (currentTrack) {
@@ -867,6 +867,95 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     if (playerRef.current && playerRef.current.loadVideoById && typeof playerRef.current.loadVideoById === 'function') {
       try {
         console.log('📺 Using existing player, loading video:', youtubeId);
+        
+        // 🔥 CRITICAL: Re-attach error handler with fresh references for loadVideoById
+        if (playerRef.current.addEventListener) {
+          // Remove old listener first (if possible)
+          try {
+            playerRef.current.removeEventListener('onError');
+          } catch (e) {
+            // Ignore if not supported
+          }
+          
+          // Add fresh error handler with current refs
+          playerRef.current.addEventListener('onError', async (event: any) => {
+            console.error('❌ YouTube Player Error (loadVideoById):', event.data);
+            console.log('📍 Track in error handler:', currentPlayingTrackRef.current ? currentPlayingTrackRef.current.name : 'undefined');
+            
+            if (event.data === 101 || event.data === 150) {
+              const currentTrack = currentPlayingTrackRef.current;
+              const currentYoutubeId = currentYoutubeIdRef.current;
+
+              if (currentTrack && currentYoutubeId) {
+                // Mark current id as blocked for this track
+                const blockedForTrack = blockedYoutubeIdCacheRef.current.get(currentTrack.id) || new Set<string>();
+                blockedForTrack.add(currentYoutubeId);
+                blockedYoutubeIdCacheRef.current.set(currentTrack.id, blockedForTrack);
+                console.log('⛔ Marked blocked YT id for', currentTrack.name, currentYoutubeId);
+                
+                // Remove blocked id from cache so it is not reused
+                if (youtubeIdCache.has(currentTrack.id)) {
+                  const newCache = new Map<string, string>(youtubeIdCache);
+                  newCache.delete(currentTrack.id);
+                  setYoutubeIdCache(newCache);
+                  saveYoutubeCache(newCache);
+                  console.log('🗑️ Removed blocked YT id from cache for', currentTrack.name);
+                }
+
+                console.log('🔄 Attempting auto-search for alternative version...');
+                toast.info('🔄 Searching for alternative playable version...');
+                try {
+                  const searchQuery = `${currentTrack.artist} ${currentTrack.name} audio`;
+                  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                  console.log('🔍 Searching:', searchQuery);
+                  const response = await fetch(`${apiUrl}/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=3`);
+                  
+                  if (response.ok) {
+                    const data = await response.json();
+                    console.log('📦 Search results:', data.results?.length || 0);
+                    
+                    let foundAlternative = false;
+                    for (const result of data.results || []) {
+                      const altYoutubeId = getYouTubeId(result.url);
+                      console.log('🧪 Testing alternative:', altYoutubeId);
+                      if (altYoutubeId && isValidYouTubeId(altYoutubeId) && !blockedForTrack.has(altYoutubeId)) {
+                        console.log('✅ Found valid alternative:', altYoutubeId);
+                        
+                        const newCache = new Map<string, string>(youtubeIdCache);
+                        newCache.set(currentTrack.id, altYoutubeId);
+                        setYoutubeIdCache(newCache);
+                        saveYoutubeCache(newCache);
+                        
+                        playTrack({ ...currentTrack, youtubeId: altYoutubeId });
+                        toast.success('✅ Found alternative version!');
+                        foundAlternative = true;
+                        return;
+                      }
+                    }
+                    if (!foundAlternative) {
+                      console.log('❌ No unblocked alternative found after search.');
+                      toast.error('No playable version available. Skipping to next track.');
+                      playNext(); // Skip to next track
+                    }
+                  } else {
+                    console.error('❌ Search API failed:', response.status);
+                    toast.error('Search for alternatives failed. Skipping to next track.');
+                    playNext(); // Skip to next track
+                  }
+                } catch (err) {
+                  console.error('❌ Alternative search failed:', err);
+                  toast.error('Alternative search failed. Skipping to next track.');
+                  playNext(); // Skip to next track
+                }
+              } else {
+                console.error('❌ No track info available for alternative search');
+                toast.error('Cannot find track info for alternative search. Skipping to next track.');
+                playNext(); // Skip to next track
+              }
+            }
+          });
+        }
+        
         playerRef.current.loadVideoById(youtubeId);
         // Set volume after a short delay to ensure it's applied after video loads
         setTimeout(() => {
@@ -2163,7 +2252,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <div className="text-[10px] text-muted-foreground">{new Date(d.time).toLocaleTimeString()}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button size="xs" variant="ghost" className="text-xs" onClick={() => window.open(d.url, '_blank')}>
+                  <Button size="sm" variant="ghost" className="text-xs" onClick={() => window.open(d.url, '_blank')}>
                     Open
                   </Button>
                 </div>
