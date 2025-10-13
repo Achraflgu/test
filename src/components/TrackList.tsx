@@ -63,6 +63,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [youtubeIdCache, setYoutubeIdCache] = useState<Map<string, string>>(new Map()); // Cache Spotify ID -> YouTube ID
+  const blockedYoutubeIdCacheRef = useRef<Map<string, Set<string>>>(new Map()); // track.id -> Set of blocked YT IDs
+  const currentYoutubeIdRef = useRef<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(100);
   const [isMuted, setIsMuted] = useState(false);
@@ -464,10 +466,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                           console.log('📦 Search results:', data.results?.length || 0);
                           
                           // Try each result until we find one that works
+                          const blockedForTrack = blockedYoutubeIdCacheRef.current.get(currentTrack.id) || new Set<string>();
                           for (const result of data.results || []) {
                             const altYoutubeId = getYouTubeId(result.url);
                             console.log('🧪 Testing alternative:', altYoutubeId);
-                            if (altYoutubeId && isValidYouTubeId(altYoutubeId)) {
+                            if (altYoutubeId && isValidYouTubeId(altYoutubeId) && !blockedForTrack.has(altYoutubeId)) {
                               console.log('✅ Found valid alternative:', altYoutubeId);
                               
                               // Update cache with new ID
@@ -824,6 +827,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     
     console.log('✅ Valid YouTube ID confirmed:', youtubeId);
+    currentYoutubeIdRef.current = youtubeId || null;
 
     // Play new track - Update track object with youtubeId for FullScreenPlayer
     const trackWithYoutubeId = { ...track, youtubeId };
@@ -1068,10 +1072,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     console.log('📦 Search results:', data.results?.length || 0);
                     
                     // Try each result until we find one that works
+                    const blockedForTrack = blockedYoutubeIdCacheRef.current.get(track.id) || new Set<string>();
                     for (const result of data.results || []) {
                       const altYoutubeId = getYouTubeId(result.url);
                       console.log('🧪 Testing alternative:', altYoutubeId);
-                      if (altYoutubeId && isValidYouTubeId(altYoutubeId)) {
+                      if (altYoutubeId && isValidYouTubeId(altYoutubeId) && !blockedForTrack.has(altYoutubeId)) {
                         console.log('✅ Found valid alternative:', altYoutubeId);
                         
                         // Update cache with new ID
