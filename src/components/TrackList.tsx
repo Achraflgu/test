@@ -429,6 +429,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 },
                 onError: async (event: any) => {
                   console.error('❌ YouTube Player Error:', event.data);
+                  console.log('📍 Track in error handler:', track ? track.name : 'undefined');
+                  
                   let errorMessage = 'Player error';
                   
                   // YouTube error codes:
@@ -444,40 +446,51 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   } else if (event.data === 101 || event.data === 150) {
                     errorMessage = 'Video embedding restricted';
                     
+                    // Get the track from saved session
+                    const currentTrack = track || savedSession?.currentTrack;
+                    
                     // Try to find alternative version
-                    if (track) {
+                    if (currentTrack) {
+                      console.log('🔄 Attempting auto-search for alternative version...');
                       toast.info('🔄 Searching for alternative playable version...');
                       try {
-                        const searchQuery = `${track.artist} ${track.name} audio`;
+                        const searchQuery = `${currentTrack.artist} ${currentTrack.name} audio`;
                         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                        console.log('🔍 Searching:', searchQuery);
                         const response = await fetch(`${apiUrl}/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=3`);
                         
                         if (response.ok) {
                           const data = await response.json();
+                          console.log('📦 Search results:', data.results?.length || 0);
                           
                           // Try each result until we find one that works
                           for (const result of data.results || []) {
                             const altYoutubeId = getYouTubeId(result.url);
+                            console.log('🧪 Testing alternative:', altYoutubeId);
                             if (altYoutubeId && isValidYouTubeId(altYoutubeId)) {
-                              console.log('🔄 Found alternative:', altYoutubeId);
+                              console.log('✅ Found valid alternative:', altYoutubeId);
                               
                               // Update cache with new ID
                               const newCache = new Map<string, string>(youtubeIdCache);
-                              newCache.set(track.id, altYoutubeId);
+                              newCache.set(currentTrack.id, altYoutubeId);
                               setYoutubeIdCache(newCache);
                               saveYoutubeCache(newCache);
                               
                               // Retry with new ID
-                              playTrack({ ...track, youtubeId: altYoutubeId });
+                              playTrack({ ...currentTrack, youtubeId: altYoutubeId });
                               toast.success('✅ Found alternative version!');
                               return;
                             }
                           }
+                        } else {
+                          console.error('❌ Search API failed:', response.status);
                         }
                       } catch (err) {
-                        console.error('Alternative search failed:', err);
+                        console.error('❌ Alternative search failed:', err);
                       }
                       toast.error('No playable version available for this track');
+                    } else {
+                      console.error('❌ No track info available for alternative search');
                     }
                   }
                   
@@ -1023,6 +1036,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           },
           onError: async (event: any) => {
             console.error('❌ YouTube Player Error:', event.data);
+            console.log('📍 Track in new player error handler:', track ? track.name : 'undefined');
+            
             let errorMessage = 'Player error';
             
             // YouTube error codes:
@@ -1038,22 +1053,26 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             } else if (event.data === 101 || event.data === 150) {
               errorMessage = 'Video embedding restricted';
               
-              // Try to find alternative version
+              // Try to find alternative version - use track from closure
               if (track) {
+                console.log('🔄 Attempting auto-search for alternative version...');
                 toast.info('🔄 Searching for alternative playable version...');
                 try {
                   const searchQuery = `${track.artist} ${track.name} audio`;
                   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                  console.log('🔍 Searching:', searchQuery);
                   const response = await fetch(`${apiUrl}/api/youtube/search?query=${encodeURIComponent(searchQuery)}&limit=3`);
                   
                   if (response.ok) {
                     const data = await response.json();
+                    console.log('📦 Search results:', data.results?.length || 0);
                     
                     // Try each result until we find one that works
                     for (const result of data.results || []) {
                       const altYoutubeId = getYouTubeId(result.url);
+                      console.log('🧪 Testing alternative:', altYoutubeId);
                       if (altYoutubeId && isValidYouTubeId(altYoutubeId)) {
-                        console.log('🔄 Found alternative:', altYoutubeId);
+                        console.log('✅ Found valid alternative:', altYoutubeId);
                         
                         // Update cache with new ID
                         const newCache = new Map<string, string>(youtubeIdCache);
@@ -1067,11 +1086,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                         return;
                       }
                     }
+                  } else {
+                    console.error('❌ Search API failed:', response.status);
                   }
                 } catch (err) {
-                  console.error('Alternative search failed:', err);
+                  console.error('❌ Alternative search failed:', err);
                 }
                 toast.error('No playable version available for this track');
+              } else {
+                console.error('❌ No track info available for alternative search');
               }
             }
             
