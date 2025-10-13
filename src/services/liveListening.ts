@@ -85,7 +85,7 @@ export class LiveListeningService {
 
   // ========== HOST METHODS ==========
 
-  public createRoom(hostName: string, currentTrack: Track | null, currentTime: number, isPlaying: boolean) {
+  public createRoom(hostName: string, currentTrack: Track | null, currentTime: number, isPlaying: boolean, queue: Track[] = []) {
     if (!this.socket) {
       console.error('❌ Socket not initialized');
       return;
@@ -96,10 +96,11 @@ export class LiveListeningService {
       currentTrack,
       currentTime,
       isPlaying,
+      queue,
     });
   }
 
-  public updatePlaybackState(currentTrack: Track | null, currentTime: number, isPlaying: boolean) {
+  public updatePlaybackState(currentTrack: Track | null, currentTime: number, isPlaying: boolean, queue: Track[] = []) {
     if (!this.socket || !this.currentRoomId || !this.isHost) {
       console.error('❌ Not authorized to update playback state');
       return;
@@ -110,6 +111,7 @@ export class LiveListeningService {
       currentTrack,
       currentTime,
       isPlaying,
+      queue,
     });
   }
 

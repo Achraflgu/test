@@ -5138,7 +5138,7 @@ io.on('connection', (socket) => {
   console.log('🔌 Client connected:', socket.id);
 
   // ========== HOST CREATES A LIVE ROOM ==========
-  socket.on('create-live-room', ({ hostName, currentTrack, currentTime, isPlaying }) => {
+  socket.on('create-live-room', ({ hostName, currentTrack, currentTime, isPlaying, queue }) => {
     const roomId = generateRoomId();
     
     liveRooms.set(roomId, {
@@ -5148,6 +5148,7 @@ io.on('connection', (socket) => {
       currentTrack: currentTrack || null,
       currentTime: currentTime || 0,
       isPlaying: isPlaying || false,
+      queue: queue || [],
       createdAt: Date.now(),
     });
 
@@ -5191,6 +5192,7 @@ io.on('connection', (socket) => {
       currentTrack: room.currentTrack,
       currentTime: room.currentTime,
       isPlaying: room.isPlaying,
+      queue: room.queue || [],
       listenerCount: room.listeners.length,
     });
 
@@ -5207,7 +5209,7 @@ io.on('connection', (socket) => {
   });
 
   // ========== HOST UPDATES PLAYBACK STATE ==========
-  socket.on('update-playback-state', ({ roomId, currentTrack, currentTime, isPlaying }) => {
+  socket.on('update-playback-state', ({ roomId, currentTrack, currentTime, isPlaying, queue }) => {
     const room = liveRooms.get(roomId);
 
     if (!room || room.hostSocketId !== socket.id) {
@@ -5219,12 +5221,14 @@ io.on('connection', (socket) => {
     if (currentTrack !== undefined) room.currentTrack = currentTrack;
     if (currentTime !== undefined) room.currentTime = currentTime;
     if (isPlaying !== undefined) room.isPlaying = isPlaying;
+    if (queue !== undefined) room.queue = queue;
 
     // Broadcast to all listeners
     socket.to(roomId).emit('playback-state-updated', {
       currentTrack: room.currentTrack,
       currentTime: room.currentTime,
       isPlaying: room.isPlaying,
+      queue: room.queue || [],
     });
 
     console.log(`🎵 Playback updated in room ${roomId}: ${isPlaying ? 'Playing' : 'Paused'}`);

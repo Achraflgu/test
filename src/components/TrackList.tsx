@@ -1214,12 +1214,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // ========== 🎧 LIVE LISTENING FUNCTIONS ==========
 
   const handleStartLiveSession = (hostName: string) => {
-    // Create live room
+    // Create live room with current queue
     liveListeningService.createRoom(
       hostName,
       currentPlayingTrack,
       currentTime,
-      isPlaying
+      isPlaying,
+      playlistQueue
     );
 
     // Setup event listeners
@@ -1263,7 +1264,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       liveListeningService.updatePlaybackState(
         currentPlayingTrack,
         currentTime,
-        isPlaying
+        isPlaying,
+        playlistQueue
       );
     }
   }, [currentPlayingTrack?.id, isPlaying, isLiveHost, liveRoomId]);
@@ -1276,12 +1278,30 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       liveListeningService.updatePlaybackState(
         currentPlayingTrack,
         currentTime,
-        isPlaying
+        isPlaying,
+        playlistQueue
       );
     }, 5000);
 
     return () => clearInterval(syncInterval);
   }, [isLiveHost, liveRoomId, isPlaying, currentPlayingTrack, currentTime]);
+
+  // Prevent host from closing/reloading during live session
+  useEffect(() => {
+    if (!isLiveHost || !liveRoomId) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // Chrome requires returnValue to be set
+      return 'You have an active Live Listening session. If you leave, the session will end for all listeners. Are you sure you want to leave?';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isLiveHost, liveRoomId]);
 
   // Drag and drop handlers
   const handleDragStart = (index: number) => {
@@ -3221,11 +3241,21 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       {currentPlayingTrack && (
         <div 
           data-music-player
-          className={`fixed z-[100] bg-gradient-to-r from-card/98 to-secondary/98 backdrop-blur-xl border border-border shadow-2xl transition-all duration-300 ${
+          className={`fixed z-[100] bg-gradient-to-r from-card/98 to-secondary/98 backdrop-blur-xl border transition-all duration-300 ${
+            isLiveHost ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'border-border shadow-2xl'
+          } ${
             playerPosition === 'bottom' ? 'bottom-0 left-0 right-0 rounded-t-xl' :
             playerPosition === 'bottom-left' ? 'bottom-4 left-4 w-96 rounded-xl' :
             'bottom-4 right-4 w-96 rounded-xl'
           }`}>
+          
+          {/* Live Broadcasting Banner */}
+          {isLiveHost && (
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gradient-to-r from-green-600 to-green-500 text-white px-4 py-1 rounded-t-lg flex items-center gap-2 shadow-lg animate-pulse">
+              <Radio className="w-3 h-3" />
+              <span className="text-xs font-bold uppercase tracking-wider">LIVE · {liveListenerCount} Listening</span>
+            </div>
+          )}
           <div className="container mx-auto px-4 py-3">
             {/* Minimized View */}
             {isPlayerMinimized ? (
