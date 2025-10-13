@@ -172,21 +172,21 @@ export const FullScreenPlayer = ({
     <div 
       className="fixed inset-0 z-[100] animate-in fade-in duration-500"
       style={{
-        background: `linear-gradient(135deg, ${dominantColor}15 0%, ${dominantColor}30 50%, ${dominantColor}15 100%)`
+        background: `linear-gradient(135deg, ${dominantColor}05 0%, ${dominantColor}08 50%, ${dominantColor}05 100%)`
       }}
     >
       {/* Background Layer */}
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
-          /* YouTube Video Background - Subtle */
+          /* YouTube Video Background - Enhanced Visibility */
           <div className="absolute inset-0">
             <iframe
               src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
-              className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-[0.05]"
+              className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-40"
               allow="autoplay"
               title="Background Video"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/95 via-black/90 to-black/95" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
           </div>
         ) : backgroundMode === 'artwork' ? (
           /* Album Artwork Background */
