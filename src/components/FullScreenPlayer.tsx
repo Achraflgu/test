@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Heart, ChevronDown, List, FileText, Info as InfoIcon, Settings, Maximize2, Video, Image as ImageIcon, Activity } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Heart, ChevronDown, List, FileText, Info as InfoIcon, Settings, Maximize2, Video, Image as ImageIcon, Activity, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Track } from '@/types';
 import { toast } from 'sonner';
@@ -60,6 +60,7 @@ export const FullScreenPlayer = ({
   const [showVisualizer, setShowVisualizer] = useState(true);
   const [dominantColor, setDominantColor] = useState('#6366f1');
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const [queueMinimized, setQueueMinimized] = useState(false);
 
   // Extract YouTube video ID
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -152,14 +153,15 @@ export const FullScreenPlayer = ({
       {/* Background Layer */}
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
-          /* YouTube Video Background */
+          /* YouTube Video Background - Enhanced Visibility */
           <div className="absolute inset-0">
             <iframe
-              src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1`}
-              className="absolute inset-0 w-full h-full object-cover scale-150 blur-md opacity-20"
+              src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
+              className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-40"
               allow="autoplay"
+              title="Background Video"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
           </div>
         ) : backgroundMode === 'artwork' ? (
           /* Album Artwork Background */
@@ -356,16 +358,6 @@ export const FullScreenPlayer = ({
               </Button>
             )}
 
-            {/* Queue */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarTab(sidebarTab === 'queue' ? null : 'queue')}
-              className={`h-9 w-9 ${sidebarTab === 'queue' ? 'text-primary bg-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              <List className="w-5 h-5" />
-            </Button>
-
             {/* Info */}
             <Button
               variant="ghost"
@@ -533,6 +525,140 @@ export const FullScreenPlayer = ({
               </label>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Auto-Display Minimizable Queue (Right Side) */}
+      {queue.length > 0 && (
+        <div 
+          className={`fixed top-20 right-4 transition-all duration-300 ${
+            queueMinimized ? 'w-12' : 'w-80 md:w-96'
+          } max-h-[calc(100vh-10rem)] bg-background/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden z-50`}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/10 to-accent/10">
+            {!queueMinimized && (
+              <>
+                <div className="flex items-center gap-2">
+                  <List className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold text-lg">Up Next</h3>
+                  <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                    {queue.length}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setQueueMinimized(true)}
+                  className="h-8 w-8 hover:bg-primary/20"
+                  title="Minimize"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            {queueMinimized && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setQueueMinimized(false)}
+                className="h-8 w-8 hover:bg-primary/20 mx-auto"
+                title="Show queue"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Queue Content */}
+          {!queueMinimized && (
+            <div className="overflow-y-auto max-h-[calc(100vh-16rem)] p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent">
+              {queue.map((queueTrack, index) => (
+                <div
+                  key={`${queueTrack.id}-${index}`}
+                  onClick={() => {
+                    onPlayTrack?.(queueTrack);
+                    toast.success(`Now playing: ${queueTrack.name}`);
+                  }}
+                  className={`group flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
+                    queueTrack.id === track.id
+                      ? 'bg-primary/20 border-2 border-primary/40 shadow-lg shadow-primary/20'
+                      : 'bg-secondary/30 hover:bg-secondary/60 border-2 border-transparent hover:border-primary/20'
+                  }`}
+                >
+                  {/* Track Number */}
+                  <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    queueTrack.id === track.id 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'
+                  }`}>
+                    {index + 1}
+                  </div>
+
+                  {/* Album Art */}
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={queueTrack.imageUrl}
+                      alt={queueTrack.name}
+                      className="w-12 h-12 rounded-lg object-cover shadow-md"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/placeholder.svg';
+                      }}
+                    />
+                    {queueTrack.id === track.id && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                        <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Track Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold text-sm truncate ${
+                      queueTrack.id === track.id ? 'text-primary' : 'text-foreground'
+                    }`}>
+                      {queueTrack.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {queueTrack.artist}
+                    </p>
+                  </div>
+
+                  {/* Duration */}
+                  <div className="flex-shrink-0 text-xs text-muted-foreground font-mono">
+                    {formatTime(queueTrack.duration)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Minimized Queue Indicator */}
+          {queueMinimized && queue.length > 0 && (
+            <div className="p-2">
+              <div className="flex flex-col gap-1">
+                {queue.slice(0, 3).map((queueTrack, index) => (
+                  <div
+                    key={`mini-${queueTrack.id}-${index}`}
+                    className={`w-8 h-8 rounded-lg overflow-hidden ${
+                      queueTrack.id === track.id ? 'ring-2 ring-primary' : 'opacity-60'
+                    }`}
+                  >
+                    <img
+                      src={queueTrack.imageUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+                {queue.length > 3 && (
+                  <div className="w-8 h-6 flex items-center justify-center text-[10px] font-bold text-muted-foreground bg-secondary/50 rounded">
+                    +{queue.length - 3}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
