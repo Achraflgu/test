@@ -89,44 +89,46 @@ export const LiveListening = () => {
     console.log('📋 Live Listening Queue updated:', queue.length, 'tracks');
   }, [queue.length]);
 
-  // Search YouTube for Spotify tracks - WITH REAL API SEARCH
+  // Search YouTube for Spotify tracks - WITH PROPER RESET
   useEffect(() => {
-    if (!currentTrack || !isSpotifyTrack || directVideoId) {
+    // Reset youtubeSearchId when track changes or is not Spotify
+    if (!currentTrack) {
       setYoutubeSearchId(null);
       setIsSearching(false);
       return;
     }
 
-    // Search YouTube for the track
-    const searchYouTube = async () => {
+    // If it's a YouTube track, clear search ID
+    if (directVideoId || !isSpotifyTrack) {
+      setYoutubeSearchId(null);
+      setIsSearching(false);
+      return;
+    }
+
+    // For Spotify tracks, check for cached youtubeId
+    const checkYouTubeId = async () => {
       setIsSearching(true);
+      
       try {
-        // Check if track has cached youtubeId first
         if (currentTrack.youtubeId) {
           console.log('✅ Found cached YouTube ID:', currentTrack.youtubeId);
           setYoutubeSearchId(currentTrack.youtubeId);
-          setIsSearching(false);
-          return;
+        } else {
+          console.log('⚠️ No cached YouTube ID for Spotify track:', currentTrack.name);
+          console.log('💡 Tip: This track needs a YouTube version. Playing may not work.');
+          // CRITICAL: Set to null so it doesn't use previous track's ID
+          setYoutubeSearchId(null);
         }
-
-        // For Spotify tracks without youtubeId, show info message
-        console.log('⚠️ No cached YouTube ID for Spotify track:', currentTrack.name);
-        console.log('💡 Tip: This track needs a YouTube version. Playing may not work.');
-        
-        // Don't show error toast - too intrusive
-        // Just log and set null so player knows to skip
-        setYoutubeSearchId(null);
       } catch (err) {
-        console.error('❌ YouTube search error:', err);
-        toast.error(`Failed to search YouTube: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        console.error('❌ Error checking YouTube ID:', err);
         setYoutubeSearchId(null);
       } finally {
         setIsSearching(false);
       }
     };
 
-    searchYouTube();
-  }, [currentTrack?.id, isSpotifyTrack, directVideoId]);
+    checkYouTubeId();
+  }, [currentTrack?.id, isSpotifyTrack, directVideoId, currentTrack?.youtubeId]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -140,7 +142,20 @@ export const LiveListening = () => {
 
   // Initialize main YouTube player (for audio)
   useEffect(() => {
-    if (!videoId || !isListener) return;
+    if (!videoId || !isListener) {
+      // Cleanup player if no videoId (e.g., Spotify without youtubeId)
+      if (playerRef.current?.destroy) {
+        try {
+          console.log('🗑️ Destroying player - no valid videoId');
+          playerRef.current.destroy();
+          playerRef.current = null;
+          setIsPlayerReady(false);
+        } catch (err) {
+          console.error('Cleanup error:', err);
+        }
+      }
+      return;
+    }
 
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) return;
