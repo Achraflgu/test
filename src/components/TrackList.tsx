@@ -453,6 +453,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     
                     // Try to find alternative version
                     if (currentTrack) {
+                      // Remove blocked id from cache so it is not reused
+                      if (youtubeIdCache.has(currentTrack.id)) {
+                        const newCache = new Map<string, string>(youtubeIdCache);
+                        newCache.delete(currentTrack.id);
+                        setYoutubeIdCache(newCache);
+                        saveYoutubeCache(newCache);
+                        console.log('🗑️ Removed blocked YT id from cache for', currentTrack.name);
+                      }
+
                       console.log('🔄 Attempting auto-search for alternative version...');
                       toast.info('🔄 Searching for alternative playable version...');
                       try {
@@ -1059,6 +1068,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               
               // Try to find alternative version - use track from closure
               if (track) {
+                // Remove blocked id from cache so it is not reused
+                if (youtubeIdCache.has(track.id)) {
+                  const newCache = new Map<string, string>(youtubeIdCache);
+                  newCache.delete(track.id);
+                  setYoutubeIdCache(newCache);
+                  saveYoutubeCache(newCache);
+                  console.log('🗑️ Removed blocked YT id from cache for', track.name);
+                }
                 console.log('🔄 Attempting auto-search for alternative version...');
                 toast.info('🔄 Searching for alternative playable version...');
                 try {
