@@ -523,7 +523,7 @@ export const LiveListening = () => {
           setCurrentTime(data.currentTime);
         }
 
-        // Sync time only if not track change and player is ready
+        // Sync time with player even if paused; if not ready, queue a delayed seek
         if (playerRef.current && isPlayerReady && !isTrackChange) {
           try {
             const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
@@ -531,8 +531,8 @@ export const LiveListening = () => {
             
             console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
             
-            // Sync if difference is significant
-            if (timeDiff > 2) {
+            // Always seek to host time to reflect immediate change while paused/playing
+            if (timeDiff > 0.2) {
               console.log('🔄 Seeking to', data.currentTime);
               playerRef.current.seekTo(data.currentTime, true);
             }
@@ -541,6 +541,15 @@ export const LiveListening = () => {
             console.error('Seek error:', err);
             // UI already updated above
           }
+        } else if (!isTrackChange) {
+          // Player not ready yet: perform a delayed seek when ready
+          setTimeout(() => {
+            try {
+              if (playerRef.current?.seekTo) {
+                playerRef.current.seekTo(data.currentTime, true);
+              }
+            } catch {}
+          }, 300);
         }
 
         if (data.queue) {
