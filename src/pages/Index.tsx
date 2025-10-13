@@ -68,7 +68,12 @@ const Index = () => {
     const savedTrackList = loadCurrentTrackList();
     if (savedTrackList && savedTrackList.tracks.length > 0) {
       console.log('📥 Restoring playlist from localStorage...', savedTrackList);
-      setTracks(savedTrackList.tracks);
+      // Deselect all tracks on load
+      const deselectedTracks = savedTrackList.tracks.map(track => ({
+        ...track,
+        selected: false
+      }));
+      setTracks(deselectedTracks);
       
       // Restore playlist info if available
       if (savedTrackList.playlistName) {
@@ -128,9 +133,13 @@ const Index = () => {
       const sharedPlaylist = state.loadedPlaylist;
       console.log('📥 Loading shared playlist...', sharedPlaylist);
       
-      // Set playlist data
+      // Set playlist data with all deselected
       if (sharedPlaylist.tracks && sharedPlaylist.tracks.length > 0) {
-        setTracks(sharedPlaylist.tracks);
+        const deselectedTracks = sharedPlaylist.tracks.map((track: any) => ({
+          ...track,
+          selected: false
+        }));
+        setTracks(deselectedTracks);
       }
       
       const loadedPlaylist: Playlist = {
@@ -183,9 +192,13 @@ const Index = () => {
           // Enable private mode (no auto-save to localStorage)
           setIsPrivateMode(true);
           
-          // Set playlist data
+          // Set playlist data with all deselected
           if (playlistData.tracks && playlistData.tracks.length > 0) {
-            setTracks(playlistData.tracks);
+            const deselectedTracks = playlistData.tracks.map((track: any) => ({
+              ...track,
+              selected: false
+            }));
+            setTracks(deselectedTracks);
           }
           
           const loadedPlaylist: Playlist = {
@@ -792,8 +805,12 @@ const Index = () => {
               totalDuration: savedPlaylist.tracks.reduce((sum, t) => sum + (t.duration || 0), 0)
             });
             
-            // Restore tracks
-            setTracks(savedPlaylist.tracks);
+            // Restore tracks with all deselected
+            const deselectedTracks = savedPlaylist.tracks.map(track => ({
+              ...track,
+              selected: false
+            }));
+            setTracks(deselectedTracks);
             
             // Reset playlist tracking
             setPlaylistNames([savedPlaylist.name]);
