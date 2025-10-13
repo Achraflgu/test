@@ -167,7 +167,7 @@ export class LiveListeningService {
     this.onRoomJoinedCallback = callback;
   }
 
-  public onPlaybackUpdated(callback: (data: { currentTrack: Track; currentTime: number; isPlaying: boolean }) => void) {
+  public onPlaybackUpdated(callback: (data: { currentTrack: Track; currentTime: number; isPlaying: boolean; queue?: Track[] }) => void) {
     this.onPlaybackUpdatedCallback = callback;
   }
 

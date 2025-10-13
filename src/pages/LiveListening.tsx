@@ -483,7 +483,7 @@ export const LiveListening = () => {
       });
 
       // Playback updated
-      liveListeningService.onPlaybackUpdated((data) => {
+      liveListeningService.onPlaybackUpdated((data: { currentTrack: Track; currentTime: number; isPlaying: boolean; queue?: Track[] }) => {
         console.log('🔄 Playback updated:', data);
         
         setIsSyncing(true);

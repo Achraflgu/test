@@ -1122,6 +1122,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       try {
         playerRef.current.seekTo(time, true);
         setCurrentTime(time);
+        // If hosting a live session, immediately propagate seek (even when paused)
+        if (isLiveHost && liveRoomId) {
+          try {
+            liveListeningService.updatePlaybackState(
+              currentPlayingTrack,
+              time,
+              isPlaying,
+              playlistQueue
+            );
+          } catch {}
+        }
       } catch (error) {
         console.error('Error seeking:', error);
       }
@@ -1268,7 +1279,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         playlistQueue
       );
     }
-  }, [currentPlayingTrack?.id, isPlaying, isLiveHost, liveRoomId]);
+  }, [currentPlayingTrack?.id, isPlaying, currentTime, isLiveHost, liveRoomId]);
 
   // Periodic sync for time updates (every 5 seconds)
   useEffect(() => {
