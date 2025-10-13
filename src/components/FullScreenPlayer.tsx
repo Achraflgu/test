@@ -30,6 +30,7 @@ interface FullScreenPlayerProps {
 
 type SidebarTab = 'queue' | 'lyrics' | 'info' | null;
 type BackgroundMode = 'video' | 'artwork' | 'visualizer';
+type QueueState = 'open' | 'minimized' | 'closed';
 
 export const FullScreenPlayer = ({
   track,
@@ -60,7 +61,8 @@ export const FullScreenPlayer = ({
   const [showVisualizer, setShowVisualizer] = useState(true);
   const [dominantColor, setDominantColor] = useState('#6366f1');
   const progressBarRef = useRef<HTMLDivElement>(null);
-  const [queueMinimized, setQueueMinimized] = useState(false);
+  const [queueState, setQueueState] = useState<QueueState>('open');
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   // Extract YouTube video ID
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -100,11 +102,34 @@ export const FullScreenPlayer = ({
   // Handle ESC key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (showSettings) {
+          setShowSettings(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, showSettings]);
+
+  // Handle click outside settings to close
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    
+    if (showSettings) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSettings]);
 
   // Extract dominant color from album art (simplified)
   useEffect(() => {
@@ -153,15 +178,15 @@ export const FullScreenPlayer = ({
       {/* Background Layer */}
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
-          /* YouTube Video Background - Enhanced Visibility */
+          /* YouTube Video Background - Subtle */
           <div className="absolute inset-0">
             <iframe
               src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
-              className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-40"
+              className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-[0.05]"
               allow="autoplay"
               title="Background Video"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/95 via-black/90 to-black/95" />
           </div>
         ) : backgroundMode === 'artwork' ? (
           /* Album Artwork Background */
@@ -358,6 +383,28 @@ export const FullScreenPlayer = ({
               </Button>
             )}
 
+            {/* Queue Toggle (3 states) */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (queueState === 'open') {
+                  setQueueState('minimized');
+                  toast.info('Queue minimized');
+                } else if (queueState === 'minimized') {
+                  setQueueState('closed');
+                  toast.info('Queue closed');
+                } else {
+                  setQueueState('open');
+                  toast.info('Queue opened');
+                }
+              }}
+              className={`h-9 w-9 ${queueState !== 'closed' ? 'text-primary bg-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Toggle queue (3 states)"
+            >
+              <List className="w-5 h-5" />
+            </Button>
+
             {/* Info */}
             <Button
               variant="ghost"
@@ -462,7 +509,10 @@ export const FullScreenPlayer = ({
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="absolute top-20 right-4 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl animate-in slide-in-from-top duration-300 p-4">
+        <div 
+          ref={settingsRef}
+          className="absolute top-20 right-4 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl animate-in slide-in-from-top duration-300 p-4 z-50"
+        >
           <h3 className="text-lg font-bold mb-4">Display Settings</h3>
           <div className="space-y-3">
             <button
@@ -529,15 +579,15 @@ export const FullScreenPlayer = ({
       )}
 
       {/* Auto-Display Minimizable Queue (Right Side) */}
-      {queue.length > 0 && (
+      {queue.length > 0 && queueState !== 'closed' && (
         <div 
           className={`fixed top-20 right-4 transition-all duration-300 ${
-            queueMinimized ? 'w-12' : 'w-80 md:w-96'
+            queueState === 'minimized' ? 'w-12' : 'w-80 md:w-96'
           } max-h-[calc(100vh-10rem)] bg-background/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden z-50`}
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/10 to-accent/10">
-            {!queueMinimized && (
+            {queueState === 'open' && (
               <>
                 <div className="flex items-center gap-2">
                   <List className="w-5 h-5 text-primary" />
@@ -549,7 +599,10 @@ export const FullScreenPlayer = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setQueueMinimized(true)}
+                  onClick={() => {
+                    setQueueState('minimized');
+                    toast.info('Queue minimized');
+                  }}
                   className="h-8 w-8 hover:bg-primary/20"
                   title="Minimize"
                 >
@@ -557,11 +610,14 @@ export const FullScreenPlayer = ({
                 </Button>
               </>
             )}
-            {queueMinimized && (
+            {queueState === 'minimized' && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setQueueMinimized(false)}
+                onClick={() => {
+                  setQueueState('open');
+                  toast.info('Queue opened');
+                }}
                 className="h-8 w-8 hover:bg-primary/20 mx-auto"
                 title="Show queue"
               >
@@ -571,7 +627,7 @@ export const FullScreenPlayer = ({
           </div>
 
           {/* Queue Content */}
-          {!queueMinimized && (
+          {queueState === 'open' && (
             <div className="overflow-y-auto max-h-[calc(100vh-16rem)] p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent">
               {queue.map((queueTrack, index) => (
                 <div
@@ -633,16 +689,32 @@ export const FullScreenPlayer = ({
             </div>
           )}
 
-          {/* Minimized Queue Indicator */}
-          {queueMinimized && queue.length > 0 && (
+          {/* Minimized Queue Indicator - Show: Current Playing + Next 2 */}
+          {queueState === 'minimized' && queue.length > 0 && (
             <div className="p-2">
               <div className="flex flex-col gap-1">
-                {queue.slice(0, 3).map((queueTrack, index) => (
+                {/* Current Playing Track (First) */}
+                <div className="w-8 h-8 rounded-lg overflow-hidden ring-2 ring-primary shadow-lg relative group cursor-pointer" title={track.name}>
+                  <img
+                    src={track.imageUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                  </div>
+                </div>
+                
+                {/* Next 2 Tracks */}
+                {queue.slice(0, 2).map((queueTrack, index) => (
                   <div
                     key={`mini-${queueTrack.id}-${index}`}
-                    className={`w-8 h-8 rounded-lg overflow-hidden ${
-                      queueTrack.id === track.id ? 'ring-2 ring-primary' : 'opacity-60'
-                    }`}
+                    className="w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                    title={queueTrack.name}
+                    onClick={() => {
+                      onPlayTrack?.(queueTrack);
+                      toast.success(`Playing: ${queueTrack.name}`);
+                    }}
                   >
                     <img
                       src={queueTrack.imageUrl}
@@ -651,9 +723,11 @@ export const FullScreenPlayer = ({
                     />
                   </div>
                 ))}
-                {queue.length > 3 && (
-                  <div className="w-8 h-6 flex items-center justify-center text-[10px] font-bold text-muted-foreground bg-secondary/50 rounded">
-                    +{queue.length - 3}
+                
+                {/* Remaining Count */}
+                {queue.length > 2 && (
+                  <div className="w-8 h-6 flex items-center justify-center text-[10px] font-bold text-muted-foreground bg-secondary/70 rounded mt-1">
+                    +{queue.length - 2}
                   </div>
                 )}
               </div>
