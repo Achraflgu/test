@@ -137,4 +137,9 @@ All colors MUST be HSL.
   .hover\:scrollbar-thumb-primary\/40:hover {
     scrollbar-color: hsl(var(--primary) / 0.4) transparent;
   }
+
+  /* Hide toast notifications when fullscreen is active */
+  body.fullscreen-active [data-sonner-toaster] {
+    display: none !important;
+  }
 }

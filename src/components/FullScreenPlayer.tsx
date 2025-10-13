@@ -113,27 +113,47 @@ export const FullScreenPlayer = ({
   // Initialize YouTube player for background video
   useEffect(() => {
     if (backgroundMode !== 'video' || !videoId) {
-      videoPlayerRef.current = null;
+      if (videoPlayerRef.current?.destroy) {
+        try {
+          videoPlayerRef.current.destroy();
+          videoPlayerRef.current = null;
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
       setIsVideoReady(false);
       return;
+    }
+
+    // Clean up old player before creating new one
+    if (videoPlayerRef.current?.destroy) {
+      try {
+        videoPlayerRef.current.destroy();
+        videoPlayerRef.current = null;
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
 
     const initPlayer = () => {
       if (window.YT && window.YT.Player) {
         try {
-          videoPlayerRef.current = new window.YT.Player('bg-video-player', {
-            events: {
-              onReady: (event: any) => {
-                setIsVideoReady(true);
-                event.target.mute();
-                if (isPlaying) {
-                  event.target.playVideo();
-                } else {
-                  event.target.pauseVideo();
-                }
+          // Small delay to ensure iframe is ready
+          setTimeout(() => {
+            videoPlayerRef.current = new window.YT.Player('bg-video-player', {
+              events: {
+                onReady: (event: any) => {
+                  setIsVideoReady(true);
+                  event.target.mute();
+                  if (isPlaying) {
+                    event.target.playVideo();
+                  } else {
+                    event.target.pauseVideo();
+                  }
+                },
               },
-            },
-          });
+            });
+          }, 100);
         } catch (err) {
           console.log('YouTube player init error:', err);
         }
@@ -150,12 +170,13 @@ export const FullScreenPlayer = ({
       if (videoPlayerRef.current?.destroy) {
         try {
           videoPlayerRef.current.destroy();
+          videoPlayerRef.current = null;
         } catch (err) {
           // Ignore cleanup errors
         }
       }
     };
-  }, [backgroundMode, videoId]);
+  }, [backgroundMode, videoId, track.id]);
 
   // Sync video play/pause with music
   useEffect(() => {
@@ -249,7 +270,7 @@ export const FullScreenPlayer = ({
     setDominantColor(colors[Math.floor(Math.random() * colors.length)]);
   }, [track.id]);
 
-  // Prevent body scroll when fullscreen is open
+  // Prevent body scroll and hide toasts when fullscreen is open
   useEffect(() => {
     // Save original overflow style
     const originalOverflow = document.body.style.overflow;
@@ -257,9 +278,13 @@ export const FullScreenPlayer = ({
     // Disable scrolling
     document.body.style.overflow = 'hidden';
     
+    // Add class to body to hide toasts
+    document.body.classList.add('fullscreen-active');
+    
     // Restore on unmount
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.classList.remove('fullscreen-active');
     };
   }, []);
 
@@ -591,7 +616,10 @@ export const FullScreenPlayer = ({
                   queue.map((queueTrack, index) => (
                     <div
                       key={`${queueTrack.id}-${index}`}
-                      onClick={() => onPlayTrack?.(queueTrack)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayTrack?.(queueTrack);
+                      }}
                       className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
                         queueTrack.id === track.id
                           ? 'bg-primary/20 border border-primary/30'
