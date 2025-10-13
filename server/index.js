@@ -5117,12 +5117,198 @@ app.post('/api/update-dependencies', async (req, res) => {
   }
 });
 
+// ============================================================
+// 🎧 LIVE LISTENING FEATURE - Real-time synchronized playback
+// ============================================================
+
+// Store active live rooms
+// Structure: { roomId: { hostSocketId, hostName, listeners: [{ socketId, userName }], currentTrack, currentTime, isPlaying, createdAt } }
+const liveRooms = new Map();
+
+// Track which socket is in which room (for cleanup on disconnect)
+const socketToRoom = new Map();
+
+// Generate unique room ID
+function generateRoomId() {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+}
+
 // WebSocket connection
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('🔌 Client connected:', socket.id);
 
+  // ========== HOST CREATES A LIVE ROOM ==========
+  socket.on('create-live-room', ({ hostName, currentTrack, currentTime, isPlaying }) => {
+    const roomId = generateRoomId();
+    
+    liveRooms.set(roomId, {
+      hostSocketId: socket.id,
+      hostName: hostName || 'Host',
+      listeners: [],
+      currentTrack: currentTrack || null,
+      currentTime: currentTime || 0,
+      isPlaying: isPlaying || false,
+      createdAt: Date.now(),
+    });
+
+    socketToRoom.set(socket.id, { roomId, role: 'host' });
+    socket.join(roomId);
+
+    console.log(`🎧 Room created: ${roomId} by ${hostName || 'Host'}`);
+    
+    socket.emit('room-created', {
+      roomId,
+      room: liveRooms.get(roomId),
+    });
+  });
+
+  // ========== LISTENER JOINS A LIVE ROOM ==========
+  socket.on('join-live-room', ({ roomId, userName }) => {
+    const room = liveRooms.get(roomId);
+
+    if (!room) {
+      socket.emit('room-error', { message: 'Room not found or has ended.' });
+      return;
+    }
+
+    // Add listener to room
+    const listener = {
+      socketId: socket.id,
+      userName: userName || 'Listener',
+      joinedAt: Date.now(),
+    };
+
+    room.listeners.push(listener);
+    socketToRoom.set(socket.id, { roomId, role: 'listener' });
+    socket.join(roomId);
+
+    console.log(`👥 ${userName || 'Listener'} joined room: ${roomId}`);
+
+    // Send current room state to the new listener
+    socket.emit('room-joined', {
+      roomId,
+      hostName: room.hostName,
+      currentTrack: room.currentTrack,
+      currentTime: room.currentTime,
+      isPlaying: room.isPlaying,
+      listenerCount: room.listeners.length,
+    });
+
+    // Notify host and other listeners about new listener count
+    io.to(roomId).emit('listener-count-updated', {
+      listenerCount: room.listeners.length,
+    });
+
+    // Notify host specifically about new listener
+    io.to(room.hostSocketId).emit('listener-joined', {
+      userName: listener.userName,
+      listenerCount: room.listeners.length,
+    });
+  });
+
+  // ========== HOST UPDATES PLAYBACK STATE ==========
+  socket.on('update-playback-state', ({ roomId, currentTrack, currentTime, isPlaying }) => {
+    const room = liveRooms.get(roomId);
+
+    if (!room || room.hostSocketId !== socket.id) {
+      socket.emit('room-error', { message: 'You are not the host of this room.' });
+      return;
+    }
+
+    // Update room state
+    if (currentTrack !== undefined) room.currentTrack = currentTrack;
+    if (currentTime !== undefined) room.currentTime = currentTime;
+    if (isPlaying !== undefined) room.isPlaying = isPlaying;
+
+    // Broadcast to all listeners
+    socket.to(roomId).emit('playback-state-updated', {
+      currentTrack: room.currentTrack,
+      currentTime: room.currentTime,
+      isPlaying: room.isPlaying,
+    });
+
+    console.log(`🎵 Playback updated in room ${roomId}: ${isPlaying ? 'Playing' : 'Paused'}`);
+  });
+
+  // ========== HOST ENDS THE LIVE SESSION ==========
+  socket.on('end-live-room', ({ roomId }) => {
+    const room = liveRooms.get(roomId);
+
+    if (!room || room.hostSocketId !== socket.id) {
+      socket.emit('room-error', { message: 'You are not the host of this room.' });
+      return;
+    }
+
+    // Notify all listeners that the session has ended
+    io.to(roomId).emit('room-ended', {
+      message: 'The host has ended the Live Listening session.',
+    });
+
+    // Clean up room
+    room.listeners.forEach((listener) => {
+      socketToRoom.delete(listener.socketId);
+    });
+    socketToRoom.delete(socket.id);
+    liveRooms.delete(roomId);
+
+    console.log(`🛑 Room ended: ${roomId}`);
+  });
+
+  // ========== LISTENER LEAVES ROOM ==========
+  socket.on('leave-live-room', ({ roomId }) => {
+    const room = liveRooms.get(roomId);
+    if (!room) return;
+
+    // Remove listener from room
+    room.listeners = room.listeners.filter((l) => l.socketId !== socket.id);
+    socketToRoom.delete(socket.id);
+    socket.leave(roomId);
+
+    // Notify remaining listeners and host
+    io.to(roomId).emit('listener-count-updated', {
+      listenerCount: room.listeners.length,
+    });
+
+    console.log(`👋 Listener left room: ${roomId}. Remaining: ${room.listeners.length}`);
+  });
+
+  // ========== HANDLE DISCONNECT ==========
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log('🔌 Client disconnected:', socket.id);
+
+    const roomInfo = socketToRoom.get(socket.id);
+    if (!roomInfo) return;
+
+    const { roomId, role } = roomInfo;
+    const room = liveRooms.get(roomId);
+
+    if (!room) return;
+
+    if (role === 'host') {
+      // Host disconnected - end the room
+      io.to(roomId).emit('room-ended', {
+        message: 'The host has ended the Live Listening session.',
+      });
+
+      // Clean up
+      room.listeners.forEach((listener) => {
+        socketToRoom.delete(listener.socketId);
+      });
+      liveRooms.delete(roomId);
+
+      console.log(`🛑 Room ended (host disconnected): ${roomId}`);
+    } else {
+      // Listener disconnected
+      room.listeners = room.listeners.filter((l) => l.socketId !== socket.id);
+      socketToRoom.delete(socket.id);
+
+      // Notify remaining participants
+      io.to(roomId).emit('listener-count-updated', {
+        listenerCount: room.listeners.length,
+      });
+
+      console.log(`👋 Listener disconnected from room: ${roomId}. Remaining: ${room.listeners.length}`);
+    }
   });
 });
 

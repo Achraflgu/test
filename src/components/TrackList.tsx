@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
-import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw, Maximize } from "lucide-react";
+import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw, Maximize, Radio, Users } from "lucide-react";
 import { FullScreenPlayer } from "@/components/FullScreenPlayer";
+import { LiveListeningDialog, ShareLiveRoomDialog } from "@/components/LiveListeningDialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/tabNotifications";
 import { savePlaylistToHistory } from "@/components/SavedPlaylists";
 import { savePlayerSession, loadPlayerSession, savePlayerSettings, loadPlayerSettings, resetPlayerSession, saveCurrentTrackList, loadCurrentTrackList } from "@/lib/playlistStorage";
+import { liveListeningService } from "@/services/liveListening";
 
 interface TrackListProps {
   tracks: Track[];
@@ -73,6 +75,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
   const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
+  
+  // 🎧 Live Listening state
+  const [showLiveDialog, setShowLiveDialog] = useState(false);
+  const [showShareLiveDialog, setShowShareLiveDialog] = useState(false);
+  const [isLiveHost, setIsLiveHost] = useState(false);
+  const [liveRoomId, setLiveRoomId] = useState<string | null>(null);
+  const [liveListenerCount, setLiveListenerCount] = useState(0);
   
   // Keyboard shortcut: "F" to toggle fullscreen
   useEffect(() => {
@@ -1202,6 +1211,78 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setShowTrackDetails(true);
   };
 
+  // ========== 🎧 LIVE LISTENING FUNCTIONS ==========
+
+  const handleStartLiveSession = (hostName: string) => {
+    // Create live room
+    liveListeningService.createRoom(
+      hostName,
+      currentPlayingTrack,
+      currentTime,
+      isPlaying
+    );
+
+    // Setup event listeners
+    liveListeningService.onRoomCreated((data) => {
+      setIsLiveHost(true);
+      setLiveRoomId(data.roomId);
+      setLiveListenerCount(0);
+      setShowShareLiveDialog(true);
+      toast.success('🎧 Live session started!');
+    });
+
+    liveListeningService.onListenerCountUpdated((data) => {
+      setLiveListenerCount(data.listenerCount);
+    });
+
+    liveListeningService.onListenerJoined((data) => {
+      toast.success(`${data.userName} joined your session! 👋`);
+    });
+
+    liveListeningService.onRoomError((data) => {
+      toast.error(data.message);
+      setIsLiveHost(false);
+      setLiveRoomId(null);
+    });
+  };
+
+  const handleEndLiveSession = () => {
+    if (liveRoomId) {
+      liveListeningService.endRoom();
+      setIsLiveHost(false);
+      setLiveRoomId(null);
+      setLiveListenerCount(0);
+      setShowShareLiveDialog(false);
+      toast.success('Live session ended');
+    }
+  };
+
+  // Sync playback state with listeners when host makes changes
+  useEffect(() => {
+    if (isLiveHost && liveRoomId) {
+      liveListeningService.updatePlaybackState(
+        currentPlayingTrack,
+        currentTime,
+        isPlaying
+      );
+    }
+  }, [currentPlayingTrack?.id, isPlaying, isLiveHost, liveRoomId]);
+
+  // Periodic sync for time updates (every 5 seconds)
+  useEffect(() => {
+    if (!isLiveHost || !liveRoomId || !isPlaying) return;
+
+    const syncInterval = setInterval(() => {
+      liveListeningService.updatePlaybackState(
+        currentPlayingTrack,
+        currentTime,
+        isPlaying
+      );
+    }, 5000);
+
+    return () => clearInterval(syncInterval);
+  }, [isLiveHost, liveRoomId, isPlaying, currentPlayingTrack, currentTime]);
+
   // Drag and drop handlers
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -1565,6 +1646,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Initialize WebSocket connection
   useEffect(() => {
     const socket = initWebSocket();
+    
+    // Initialize Live Listening service
+    liveListeningService.init(socket);
 
     socket.on('download:status', (data: any) => {
       console.log('Download status:', data);
@@ -3273,6 +3357,34 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Live Listening Button */}
+                  {isLiveHost ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowShareLiveDialog(true)}
+                      className="hover:bg-primary/20 h-8 w-8 p-0 relative"
+                      title={`Live Session Active - ${liveListenerCount} listeners`}
+                    >
+                      <Radio className="w-4 h-4 text-green-500 animate-pulse" />
+                      {liveListenerCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                          {liveListenerCount}
+                        </span>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowLiveDialog(true)}
+                      className="hover:bg-primary/20 h-8 w-8 p-0"
+                      title="Start Live Listening"
+                    >
+                      <Radio className="w-4 h-4" />
+                    </Button>
+                  )}
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -3463,6 +3575,34 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     </div>
                     
                     <div className="w-px h-6 bg-border mx-2"></div>
+                    
+                    {/* Live Listening Button */}
+                    {isLiveHost ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowShareLiveDialog(true)}
+                        className="hover:bg-primary/20 relative"
+                        title={`Live Session Active - ${liveListenerCount} listeners`}
+                      >
+                        <Radio className="w-4 h-4 text-green-500 animate-pulse" />
+                        {liveListenerCount > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                            {liveListenerCount}
+                          </span>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowLiveDialog(true)}
+                        className="hover:bg-primary/20"
+                        title="Start Live Listening"
+                      >
+                        <Radio className="w-4 h-4" />
+                      </Button>
+                    )}
                     
                     {/* Fullscreen Toggle */}
                     <Button
@@ -3719,6 +3859,23 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             playTrack(track);
             // Keep fullscreen open when changing tracks from queue
           }}
+        />
+      )}
+
+      {/* Live Listening Dialogs */}
+      <LiveListeningDialog
+        open={showLiveDialog}
+        onOpenChange={setShowLiveDialog}
+        onStartLive={handleStartLiveSession}
+      />
+
+      {liveRoomId && (
+        <ShareLiveRoomDialog
+          open={showShareLiveDialog}
+          onOpenChange={setShowShareLiveDialog}
+          roomId={liveRoomId}
+          listenerCount={liveListenerCount}
+          onEndSession={handleEndLiveSession}
         />
       )}
 

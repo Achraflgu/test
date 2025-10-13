@@ -30,3 +30,32 @@ export interface DownloadSettings {
   quality: '128k' | '192k' | '256k' | '320k';
   threads: number;
 }
+
+// ============================================================
+// 🎧 LIVE LISTENING TYPES
+// ============================================================
+
+export interface LiveRoom {
+  roomId: string;
+  hostName: string;
+  hostSocketId: string;
+  listeners: LiveListener[];
+  currentTrack: Track | null;
+  currentTime: number;
+  isPlaying: boolean;
+  createdAt: number;
+}
+
+export interface LiveListener {
+  socketId: string;
+  userName: string;
+  joinedAt: number;
+}
+
+export interface LiveSessionState {
+  isHost: boolean;
+  isListener: boolean;
+  roomId: string | null;
+  hostName?: string;
+  listenerCount: number;
+}
