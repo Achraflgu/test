@@ -77,6 +77,11 @@ export const LiveListening = () => {
   const videoId = directVideoId || youtubeSearchId;
   const isYouTubeTrack = !!videoId;
 
+  // Debug: Log queue updates
+  useEffect(() => {
+    console.log('📋 Live Listening Queue updated:', queue.length, 'tracks');
+  }, [queue.length]);
+
   // Search YouTube for Spotify tracks
   useEffect(() => {
     if (!currentTrack || !isSpotifyTrack || directVideoId) {
@@ -857,7 +862,9 @@ export const LiveListening = () => {
                   <List className="w-5 h-5 text-purple-400" />
                   <h3 className="font-bold text-lg">Up Next</h3>
                   {queue.length > 0 && (
-                    <span className="text-sm text-gray-400">({queue.length})</span>
+                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full font-semibold">
+                      {queue.length}
+                    </span>
                   )}
                 </div>
                 <Button
@@ -870,14 +877,14 @@ export const LiveListening = () => {
                 </Button>
               </div>
 
-              <ScrollArea className="flex-1 overflow-y-auto" ref={queueContainerRef}>
+              <ScrollArea className="flex-1 overflow-y-auto" ref={queueContainerRef} key={`queue-${queue.length}`}>
                 <div className="p-4 space-y-2">
                   {queue.length > 0 ? (
                     queue.map((track, index) => {
                       const isCurrentTrack = track.id === currentTrack?.id;
                       return (
                         <div
-                          key={`${track.id}-${index}`}
+                          key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
                           className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
                             isCurrentTrack
