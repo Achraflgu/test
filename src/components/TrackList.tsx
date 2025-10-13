@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
-import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw } from "lucide-react";
+import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw, Maximize } from "lucide-react";
+import { FullScreenPlayer } from "@/components/FullScreenPlayer";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -71,6 +72,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [playerPosition, setPlayerPosition] = useState<'bottom' | 'bottom-left' | 'bottom-right'>('bottom');
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
+  const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
   
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -3249,6 +3251,16 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <Button
                     size="sm"
                     variant="ghost"
+                    onClick={() => setShowFullScreenPlayer(true)}
+                    className="hover:bg-primary/20 h-8 w-8 p-0"
+                    title="Open fullscreen player"
+                  >
+                    <Maximize className="w-4 h-4" />
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     onClick={cyclePlayerPosition}
                     className="hover:bg-primary/20 h-8 w-8 p-0"
                     title="Move player"
@@ -3426,6 +3438,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     </div>
                     
                     <div className="w-px h-6 bg-border mx-2"></div>
+                    
+                    {/* Fullscreen Toggle */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowFullScreenPlayer(true)}
+                      className="hover:bg-primary/20"
+                      title="Open fullscreen player"
+                    >
+                      <Maximize className="w-4 h-4" />
+                    </Button>
                     
                     {/* Position Toggle */}
                     <Button
@@ -3645,6 +3668,34 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full Screen Player */}
+      {showFullScreenPlayer && currentPlayingTrack && (
+        <FullScreenPlayer
+          track={currentPlayingTrack}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          volume={volume}
+          isMuted={isMuted}
+          isShuffled={isShuffled}
+          repeatMode={repeatMode}
+          queue={playlistQueue}
+          onClose={() => setShowFullScreenPlayer(false)}
+          onPlayPause={togglePlayPause}
+          onNext={playNext}
+          onPrevious={playPrevious}
+          onSeek={seekTo}
+          onVolumeChange={changeVolume}
+          onToggleMute={toggleMute}
+          onToggleShuffle={toggleShuffle}
+          onCycleRepeat={cycleRepeat}
+          onPlayTrack={(track) => {
+            playTrack(track);
+            setShowFullScreenPlayer(false);
+          }}
+        />
+      )}
 
     </div>
   );
