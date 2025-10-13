@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Music2, Users, Radio, LogOut, Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Loader2, List, ChevronDown, ChevronUp, Music, Settings, Video, Image as ImageIcon, Activity, X } from 'lucide-react';
 import { Track } from '@/types';
-import { initWebSocket } from '@/services/api';
+import { initWebSocket, youtubeSearchForPlayer } from '@/services/api';
 import { liveListeningService } from '@/services/liveListening';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -89,7 +89,7 @@ export const LiveListening = () => {
     console.log('📋 Live Listening Queue updated:', queue.length, 'tracks');
   }, [queue.length]);
 
-  // Search YouTube for Spotify tracks - WITH PROPER RESET
+  // Search YouTube for Spotify tracks - WITH PROPER RESET & BACKEND FALLBACK
   useEffect(() => {
     // Reset youtubeSearchId when track changes or is not Spotify
     if (!currentTrack) {
@@ -105,7 +105,7 @@ export const LiveListening = () => {
       return;
     }
 
-    // For Spotify tracks, check for cached youtubeId
+    // For Spotify tracks, check for cached youtubeId or search backend
     const checkYouTubeId = async () => {
       setIsSearching(true);
       
@@ -115,9 +115,37 @@ export const LiveListening = () => {
           setYoutubeSearchId(currentTrack.youtubeId);
         } else {
           console.log('⚠️ No cached YouTube ID for Spotify track:', currentTrack.name);
-          console.log('💡 Tip: This track needs a YouTube version. Playing may not work.');
-          // CRITICAL: Set to null so it doesn't use previous track's ID
-          setYoutubeSearchId(null);
+          // Smart backend search using yt-dlp (no API key)
+          const queries = [
+            `${currentTrack.name} ${currentTrack.artist} audio`,
+            `${currentTrack.artist} ${currentTrack.name}`,
+            `${currentTrack.name} official audio`,
+            `${currentTrack.name}`,
+          ];
+          let foundVideoId: string | null = null;
+          for (const q of queries) {
+            try {
+              const res = await youtubeSearchForPlayer(q, 5);
+              const first = res.results?.find(r => r.id?.startsWith('search-') || r.url?.includes('youtube.com'));
+              if (first) {
+                const vid = first.url?.match(/v=([a-zA-Z0-9_-]{11})/)?.[1] || first.videoId;
+                if (vid) {
+                  foundVideoId = vid;
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore and try next query
+            }
+          }
+
+          if (foundVideoId) {
+            console.log('✅ Backend search found YouTube ID:', foundVideoId);
+            setYoutubeSearchId(foundVideoId);
+          } else {
+            console.log('⚠️ Backend search failed; no YouTube version found for:', currentTrack.name);
+            setYoutubeSearchId(null);
+          }
         }
       } catch (err) {
         console.error('❌ Error checking YouTube ID:', err);
@@ -203,13 +231,16 @@ export const LiveListening = () => {
                 console.log('▶️ Starting playback');
                 try {
                   event.target.playVideo();
-                  if (!isMuted) {
-                    // Unmute shortly after starting to bypass autoplay policies
-                    setTimeout(() => {
-                      try { event.target.unMute?.(); } catch {}
-                    }, 300);
-                  }
                 } catch {}
+                // Always try to unmute after a short delay if not muted
+                setTimeout(() => {
+                  try {
+                    if (!isMuted) {
+                      event.target.unMute?.();
+                      event.target.setVolume?.(volume);
+                    }
+                  } catch {}
+                }, 300);
               }
             },
             onStateChange: (event: any) => {
@@ -458,8 +489,14 @@ export const LiveListening = () => {
           setDuration(data.currentTrack?.duration || 0);
           setCurrentTime(data.currentTime || 0);
         } else if (data.currentTrack) {
-          // Same track, but update duration if it changed
-          const newDuration = data.currentTrack.duration || duration;
+          // Same track, prefer player's known duration when ready to avoid flicker
+          let newDuration = data.currentTrack.duration || duration;
+          try {
+            if (playerRef.current?.getDuration && isPlayerReady) {
+              const playerDur = playerRef.current.getDuration();
+              if (playerDur && playerDur > 0) newDuration = playerDur;
+            }
+          } catch {}
           if (Math.abs(newDuration - duration) > 1) {
             console.log('📏 Duration updated:', newDuration);
             setDuration(newDuration);

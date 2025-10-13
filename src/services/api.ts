@@ -213,6 +213,17 @@ export const searchMusic = async (query: string, limit: number = 10): Promise<Se
   return response.json();
 };
 
+// Lightweight YouTube search for player (uses backend yt-dlp, no API key)
+export const youtubeSearchForPlayer = async (query: string, limit: number = 5): Promise<SearchResponse> => {
+  const url = `${API_URL}/api/youtube/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to search YouTube');
+  }
+  return response.json();
+};
+
 // Create short share on server
 export const createShare = async (payload: { playlistId?: string; playlistName: string; playlistData: any; expiry?: '1h'|'1d'|'1w' }): Promise<{ shareId: string; expiresAt: number }> => {
   const response = await fetch(`${API_URL}/api/share`, {
