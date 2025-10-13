@@ -95,7 +95,26 @@ export const FullScreenPlayer = ({
   };
 
   const isYouTubeTrack = track.url.includes('youtube.com') || track.url.includes('youtu.be');
-  const videoId = isYouTubeTrack ? extractYouTubeVideoId(track.url) : null;
+  const isSpotifyTrack = track.url.includes('spotify.com');
+  
+  // Get video ID: from URL for YouTube tracks, or from youtubeId for Spotify tracks
+  const videoId = isYouTubeTrack 
+    ? extractYouTubeVideoId(track.url) 
+    : isSpotifyTrack && track.youtubeId 
+      ? track.youtubeId 
+      : null;
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🎬 FullScreen Background Video Info:', {
+      trackName: track.name,
+      isYouTubeTrack,
+      isSpotifyTrack,
+      youtubeId: track.youtubeId,
+      calculatedVideoId: videoId,
+      backgroundMode
+    });
+  }, [track.id, videoId, backgroundMode]);
 
   // Save background mode preference
   useEffect(() => {
@@ -150,8 +169,11 @@ export const FullScreenPlayer = ({
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) return;
 
+      const playerId = `bg-video-player-${videoId}`;
+      console.log('🎬 Initializing background video player:', { playerId, videoId, backgroundMode });
+
       try {
-        videoPlayerRef.current = new window.YT.Player('bg-video-player', {
+        videoPlayerRef.current = new window.YT.Player(playerId, {
           events: {
             onReady: (event: any) => {
               console.log('✅ Background video ready:', videoId);
@@ -164,12 +186,12 @@ export const FullScreenPlayer = ({
               }
             },
             onError: (event: any) => {
-              console.log('❌ Background video error:', event.data);
+              console.log('❌ Background video error:', event.data, 'for video:', videoId);
             }
           },
         });
       } catch (err) {
-        console.log('❌ YouTube player init error:', err);
+        console.log('❌ YouTube player init error:', err, 'for video:', videoId);
       }
     };
 
@@ -362,14 +384,15 @@ export const FullScreenPlayer = ({
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
           /* YouTube Video Background - Enhanced Visibility with Sync */
-          <div className="absolute inset-0" key={`video-${videoId}`}>
+          <div className="absolute inset-0" key={`video-container-${videoId}`}>
             <iframe
-              id="bg-video-player"
-              key={videoId}
-              src={`https://www.youtube.com/embed/${videoId}?autoplay=${isPlaying ? 1 : 0}&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
+              id={`bg-video-player-${videoId}`}
+              key={`iframe-${videoId}`}
+              src={`https://www.youtube.com/embed/${videoId}?autoplay=${isPlaying ? 1 : 0}&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0&playsinline=1`}
               className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-40"
-              allow="autoplay"
-              title="Background Video"
+              allow="autoplay; fullscreen"
+              title={`Background Video - ${track.name}`}
+              loading="eager"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
           </div>

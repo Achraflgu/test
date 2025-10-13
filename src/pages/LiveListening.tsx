@@ -823,7 +823,13 @@ export const LiveListening = () => {
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-xl [@media(min-width:1600px)]:max-w-2xl [@media(min-width:1920px)]:max-w-3xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl [@media(min-width:1920px)]:rounded-3xl p-2 md:p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-6 border border-purple-500/20 flex flex-col justify-center h-full">
+              <div 
+                className="w-full bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl border border-purple-500/20 flex flex-col justify-center h-full"
+                style={{
+                  maxWidth: 'clamp(36rem, 50vw, 56rem)',
+                  padding: 'clamp(0.75rem, 2vw, 1.5rem)'
+                }}
+              >
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
                   <div className="mb-2 md:mb-3 bg-green-500/10 border border-green-500/30 rounded-lg p-2 flex items-center gap-2">
@@ -834,13 +840,23 @@ export const LiveListening = () => {
                   </div>
                 )}
                 
-                {/* Album Art - SMART RESPONSIVE */}
-                <div className="flex flex-col items-center mb-2 [@media(min-width:1600px)]:mb-3 [@media(min-width:1920px)]:mb-4 flex-shrink-0">
-                  <div className="relative mb-2 [@media(min-width:1920px)]:mb-3 group">
+                {/* Album Art - FLUID RESPONSIVE */}
+                <div 
+                  className="flex flex-col items-center flex-shrink-0"
+                  style={{ marginBottom: 'clamp(0.5rem, 1.5vw, 1.5rem)' }}
+                >
+                  <div 
+                    className="relative group"
+                    style={{ marginBottom: 'clamp(0.5rem, 1vw, 1rem)' }}
+                  >
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 [@media(min-width:1600px)]:w-56 [@media(min-width:1600px)]:h-56 [@media(min-width:1920px)]:w-72 [@media(min-width:1920px)]:h-72 rounded-lg [@media(min-width:1920px)]:rounded-xl shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="rounded-lg shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      style={{
+                        width: 'clamp(10rem, 25vw, 18rem)',
+                        height: 'clamp(10rem, 25vw, 18rem)'
+                      }}
                     />
                     {isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
@@ -851,9 +867,24 @@ export const LiveListening = () => {
                     )}
                   </div>
 
-                  <h2 className="text-sm md:text-base [@media(min-width:1600px)]:text-lg [@media(min-width:1920px)]:text-xl font-bold text-center mb-1 px-4 line-clamp-2">{currentTrack.name}</h2>
-                  <p className="text-xs md:text-sm [@media(min-width:1920px)]:text-base text-gray-400 text-center mb-0.5 truncate max-w-full px-4">{currentTrack.artist}</p>
-                  <p className="text-[11px] md:text-xs [@media(min-width:1920px)]:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
+                  <h2 
+                    className="font-bold text-center mb-1 px-4 line-clamp-2"
+                    style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}
+                  >
+                    {currentTrack.name}
+                  </h2>
+                  <p 
+                    className="text-gray-400 text-center mb-0.5 truncate max-w-full px-4"
+                    style={{ fontSize: 'clamp(0.75rem, 1.2vw, 1rem)' }}
+                  >
+                    {currentTrack.artist}
+                  </p>
+                  <p 
+                    className="text-gray-500 truncate max-w-full px-4"
+                    style={{ fontSize: 'clamp(0.6875rem, 1vw, 0.875rem)' }}
+                  >
+                    {currentTrack.album}
+                  </p>
                 </div>
 
                 {/* Progress Bar */}
@@ -881,36 +912,51 @@ export const LiveListening = () => {
                 </div>
 
                 {/* Controls (Display only) */}
-                <div className="flex items-center justify-center gap-3 [@media(min-width:1920px)]:gap-4 mb-2 [@media(min-width:1920px)]:mb-3">
+                <div 
+                  className="flex items-center justify-center mb-2"
+                  style={{ gap: 'clamp(0.75rem, 1.5vw, 1.25rem)' }}
+                >
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-9 h-9 [@media(min-width:1600px)]:w-10 [@media(min-width:1600px)]:h-10 [@media(min-width:1920px)]:w-11 [@media(min-width:1920px)]:h-11 opacity-50 cursor-not-allowed"
+                    className="opacity-50 cursor-not-allowed"
+                    style={{
+                      width: 'clamp(2.25rem, 3vw, 2.75rem)',
+                      height: 'clamp(2.25rem, 3vw, 2.75rem)'
+                    }}
                     disabled
                   >
-                    <SkipBack className="w-4 h-4 [@media(min-width:1920px)]:w-5 [@media(min-width:1920px)]:h-5" />
+                    <SkipBack style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-12 h-12 [@media(min-width:1600px)]:w-14 [@media(min-width:1600px)]:h-14 [@media(min-width:1920px)]:w-16 [@media(min-width:1920px)]:h-16 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    className="bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    style={{
+                      width: 'clamp(3rem, 4.5vw, 4rem)',
+                      height: 'clamp(3rem, 4.5vw, 4rem)'
+                    }}
                     disabled
                   >
                     {isPlaying ? (
-                      <Pause className="w-5 h-5 [@media(min-width:1600px)]:w-6 [@media(min-width:1600px)]:h-6 [@media(min-width:1920px)]:w-8 [@media(min-width:1920px)]:h-8" />
+                      <Pause style={{ width: 'clamp(1.25rem, 2vw, 2rem)', height: 'clamp(1.25rem, 2vw, 2rem)' }} />
                     ) : (
-                      <Play className="w-5 h-5 [@media(min-width:1600px)]:w-6 [@media(min-width:1600px)]:h-6 [@media(min-width:1920px)]:w-8 [@media(min-width:1920px)]:h-8 ml-1" />
+                      <Play style={{ width: 'clamp(1.25rem, 2vw, 2rem)', height: 'clamp(1.25rem, 2vw, 2rem)' }} className="ml-1" />
                     )}
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-9 h-9 [@media(min-width:1600px)]:w-10 [@media(min-width:1600px)]:h-10 [@media(min-width:1920px)]:w-11 [@media(min-width:1920px)]:h-11 opacity-50 cursor-not-allowed"
+                    className="opacity-50 cursor-not-allowed"
+                    style={{
+                      width: 'clamp(2.25rem, 3vw, 2.75rem)',
+                      height: 'clamp(2.25rem, 3vw, 2.75rem)'
+                    }}
                     disabled
                   >
-                    <SkipForward className="w-4 h-4 [@media(min-width:1920px)]:w-5 [@media(min-width:1920px)]:h-5" />
+                    <SkipForward style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />
                   </Button>
                 </div>
 
