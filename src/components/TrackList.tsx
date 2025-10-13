@@ -3689,7 +3689,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           onVolumeChange={changeVolume}
           onToggleMute={toggleMute}
           onToggleShuffle={toggleShuffle}
-          onCycleRepeat={cycleRepeat}
+          onCycleRepeat={toggleRepeatMode}
           onPlayTrack={(track) => {
             playTrack(track);
             setShowFullScreenPlayer(false);
