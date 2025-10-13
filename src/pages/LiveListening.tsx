@@ -532,33 +532,44 @@ export const LiveListening = () => {
           desiredTimeRef.current = data.currentTime; // keep target until we converge
         }
 
-        // Sync time with player even if paused; if not ready, queue a delayed seek
-        if (playerRef.current && isPlayerReady && !isTrackChange) {
-          try {
-            const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
-            const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
-            
-            console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
-            
-            // Seek to host time until within small threshold
-            if (timeDiff > 0.15) {
-              console.log('🔄 Seeking to', data.currentTime);
-              playerRef.current.seekTo(data.currentTime, true);
-            }
-            // UI already updated above
-          } catch (err) {
-            console.error('Seek error:', err);
-            // UI already updated above
-          }
-        } else if (!isTrackChange) {
-          // Player not ready yet: perform a delayed seek when ready
-          setTimeout(() => {
+        // AGGRESSIVE time sync: always force seek to host time when updated (except track change)
+        if (!isTrackChange) {
+          if (playerRef.current && isPlayerReady) {
             try {
-              if (playerRef.current?.seekTo) {
+              const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
+              const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
+              
+              console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
+              
+              // Always seek if any difference (no threshold) to force exact sync
+              if (timeDiff > 0.05) {
+                console.log('🔄 FORCE SEEKING to', data.currentTime);
                 playerRef.current.seekTo(data.currentTime, true);
+                // Double-check after a brief delay
+                setTimeout(() => {
+                  try {
+                    if (playerRef.current) {
+                      playerRef.current.seekTo(data.currentTime, true);
+                    }
+                  } catch {}
+                }, 100);
               }
-            } catch {}
-          }, 300);
+            } catch (err) {
+              console.error('Seek error:', err);
+            }
+          } else {
+            // Player not ready yet: perform delayed seeks until it works
+            for (let i = 0; i < 3; i++) {
+              setTimeout(() => {
+                try {
+                  if (playerRef.current?.seekTo) {
+                    playerRef.current.seekTo(data.currentTime, true);
+                    console.log(`🔄 Delayed seek attempt ${i + 1} to`, data.currentTime);
+                  }
+                } catch {}
+              }, 200 * (i + 1));
+            }
+          }
         }
 
         if (data.queue) {
@@ -809,24 +820,24 @@ export const LiveListening = () => {
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-3xl lg:max-w-[56rem] bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-5 lg:p-7 xl:p-8 border border-purple-500/20 flex flex-col justify-center h-full">
+              <div className="w-full max-w-2xl lg:max-w-3xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-4 lg:p-6 border border-purple-500/20 flex flex-col justify-center h-full">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
-                  <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-3">
-                    <div className="text-green-400">✅</div>
-                    <p className="text-sm text-green-300">
+                  <div className="mb-3 md:mb-4 bg-green-500/10 border border-green-500/30 rounded-lg md:rounded-xl p-2 md:p-3 flex items-center gap-2 md:gap-3">
+                    <div className="text-green-400 text-sm md:text-base">✅</div>
+                    <p className="text-xs md:text-sm text-green-300">
                       Synced playback active • Audio playing from {isSpotifyTrack ? 'YouTube (converted)' : 'YouTube'}
                     </p>
                   </div>
                 )}
                 
                 {/* Album Art - RESPONSIVE NO SCROLL */}
-                <div className="flex flex-col items-center mb-3 md:mb-4 lg:mb-6 flex-shrink-0">
-                  <div className="relative mb-2 md:mb-4 lg:mb-6 group">
+                <div className="flex flex-col items-center mb-2 md:mb-3 lg:mb-4 flex-shrink-0">
+                  <div className="relative mb-2 md:mb-3 lg:mb-4 group">
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-32 h-32 sm:w-44 sm:h-44 md:w-52 md:h-52 lg:w-64 lg:h-64 xl:w-72 xl:h-72 rounded-xl md:rounded-2xl lg:rounded-3xl shadow-2xl object-cover ring-2 md:ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44 lg:w-56 lg:h-56 xl:w-64 xl:h-64 rounded-lg md:rounded-xl lg:rounded-2xl shadow-2xl object-cover ring-2 md:ring-3 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
@@ -837,9 +848,9 @@ export const LiveListening = () => {
                     )}
                   </div>
 
-                  <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
-                  <p className="text-xs sm:text-sm md:text-base lg:text-lg text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
-                  <p className="text-[11px] sm:text-xs md:text-sm lg:text-base text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
+                  <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-bold text-center mb-1 px-4 line-clamp-2">{currentTrack.name}</h2>
+                  <p className="text-[11px] sm:text-xs md:text-sm lg:text-base text-gray-400 text-center mb-0.5 truncate max-w-full px-4">{currentTrack.artist}</p>
+                  <p className="text-[10px] sm:text-[11px] md:text-xs lg:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
                 </div>
 
                 {/* Progress Bar */}
@@ -867,36 +878,36 @@ export const LiveListening = () => {
                 </div>
 
                 {/* Controls (Display only) */}
-                <div className="flex items-center justify-center gap-4 md:gap-6 mb-3 md:mb-4 lg:mb-6">
+                <div className="flex items-center justify-center gap-3 md:gap-4 mb-2 md:mb-3 lg:mb-4">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-12 h-12 md:w-14 md:h-14 opacity-50 cursor-not-allowed"
+                    className="w-10 h-10 md:w-11 md:h-11 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipBack className="w-5 h-5 md:w-6 md:h-6" />
+                    <SkipBack className="w-4 h-4 md:w-5 md:h-5" />
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-16 h-16 md:w-20 md:h-20 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    className="w-14 h-14 md:w-16 md:h-16 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
                     disabled
                   >
                     {isPlaying ? (
-                      <Pause className="w-8 h-8 md:w-10 md:h-10" />
+                      <Pause className="w-6 h-6 md:w-8 md:h-8" />
                     ) : (
-                      <Play className="w-8 h-8 md:w-10 md:h-10 ml-1" />
+                      <Play className="w-6 h-6 md:w-8 md:h-8 ml-1" />
                     )}
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-12 h-12 md:w-14 md:h-14 opacity-50 cursor-not-allowed"
+                    className="w-10 h-10 md:w-11 md:h-11 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipForward className="w-5 h-5 md:w-6 md:h-6" />
+                    <SkipForward className="w-4 h-4 md:w-5 md:h-5" />
                   </Button>
                 </div>
 
@@ -957,16 +968,16 @@ export const LiveListening = () => {
 
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
-            <div className="w-72 md:w-80 lg:w-96 xl:w-[26rem] flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-2xl md:rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
-              <div className="p-6 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-500/20 rounded-lg">
-                    <List className="w-5 h-5 text-purple-400" />
+            <div className="w-64 md:w-72 lg:w-80 xl:w-96 flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-2xl md:rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
+              <div className="p-4 md:p-5 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="p-1.5 md:p-2 bg-purple-500/20 rounded-lg">
+                    <List className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-xl">Up Next</h3>
+                    <h3 className="font-bold text-base md:text-lg">Up Next</h3>
                     {queue.length > 0 && (
-                      <p className="text-xs text-purple-400">
+                      <p className="text-[10px] md:text-xs text-purple-400">
                         {queue.length} track{queue.length !== 1 ? 's' : ''} in queue
                       </p>
                     )}
@@ -976,9 +987,9 @@ export const LiveListening = () => {
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowQueue(false)}
-                  className="hover:bg-purple-500/20 h-10 w-10"
+                  className="hover:bg-purple-500/20 h-8 w-8 md:h-10 md:w-10"
                 >
-                  <ChevronDown className="w-5 h-5" />
+                  <ChevronDown className="w-4 h-4 md:w-5 md:h-5" />
                 </Button>
               </div>
 
@@ -991,7 +1002,7 @@ export const LiveListening = () => {
                         <div
                           key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
-                          className={`flex items-center gap-4 p-4 rounded-xl transition-all cursor-default ${
+                          className={`flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-lg md:rounded-xl transition-all cursor-default ${
                             isCurrentTrack
                               ? 'bg-gradient-to-r from-purple-500/40 to-blue-500/40 border-2 border-purple-500/60 scale-[1.02] shadow-lg'
                               : 'bg-black/30 hover:bg-black/50 border border-transparent'
@@ -1001,28 +1012,28 @@ export const LiveListening = () => {
                             <img
                               src={track.imageUrl}
                               alt={track.name}
-                              className="w-16 h-16 rounded-lg object-cover shadow-md"
+                              className="w-12 h-12 md:w-14 md:h-14 rounded-md md:rounded-lg object-cover shadow-md"
                             />
                             {isCurrentTrack && isPlaying && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-                                <Music className="w-6 h-6 text-purple-400 animate-pulse" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-md md:rounded-lg">
+                                <Music className="w-5 h-5 md:w-6 md:h-6 text-purple-400 animate-pulse" />
                               </div>
                             )}
                             {isCurrentTrack && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
-                                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 md:w-4 md:h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full animate-pulse" />
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-base truncate mb-1 ${isCurrentTrack ? 'text-purple-200' : 'text-white'}`}>
+                            <p className={`font-semibold text-xs md:text-sm truncate mb-0.5 ${isCurrentTrack ? 'text-purple-200' : 'text-white'}`}>
                               {track.name}
                             </p>
-                            <p className="text-sm text-gray-400 truncate">
+                            <p className="text-[10px] md:text-xs text-gray-400 truncate">
                               {track.artist}
                             </p>
                           </div>
-                          <span className="text-sm text-gray-500 flex-shrink-0 font-medium">
+                          <span className="text-[10px] md:text-xs text-gray-500 flex-shrink-0 font-medium">
                             {formatTime(track.duration)}
                           </span>
                         </div>
