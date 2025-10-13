@@ -75,6 +75,11 @@ export const FullScreenPlayer = ({
   const queueContainerRef = useRef<HTMLDivElement>(null);
   const currentTrackRef = useRef<HTMLDivElement>(null);
 
+  // Debug: Log queue updates
+  useEffect(() => {
+    console.log('📋 Queue updated in FullScreenPlayer:', queue.length, 'tracks');
+  }, [queue.length]);
+
   // Extract YouTube video ID
   const extractYouTubeVideoId = (url: string): string | null => {
     const patterns = [

@@ -3867,6 +3867,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       {/* Full Screen Player */}
       {showFullScreenPlayer && currentPlayingTrack && (
         <FullScreenPlayer
+          key={`fullscreen-${playlistQueue.length}`}
           track={currentPlayingTrack}
           isPlaying={isPlaying}
           currentTime={currentTime}
