@@ -369,11 +369,19 @@ export const LiveListening = () => {
     };
   }, [backgroundMode, videoId, currentTrack?.id, isListener]);
 
-  // Sync background video with playback
+  // Sync background video with playback AND time
   useEffect(() => {
     if (!videoPlayerRef.current || !isVideoReady) return;
 
     try {
+      // Sync time first
+      const bgCurrentTime = videoPlayerRef.current.getCurrentTime?.() || 0;
+      const timeDiff = Math.abs(bgCurrentTime - currentTime);
+      if (timeDiff > 2 && currentTime > 0) {
+        videoPlayerRef.current.seekTo?.(currentTime, true);
+      }
+      
+      // Then sync play/pause
       if (isPlaying) {
         videoPlayerRef.current.playVideo();
       } else {
@@ -382,7 +390,7 @@ export const LiveListening = () => {
     } catch (err) {
       // Ignore
     }
-  }, [isPlaying, isVideoReady]);
+  }, [isPlaying, currentTime, isVideoReady]);
 
   // Sync main player with state (immediate)
   useEffect(() => {
@@ -776,11 +784,11 @@ export const LiveListening = () => {
         </div>
 
         {/* Main Content - Flex Container - FULLSCREEN NO SCROLL */}
-        <div className="flex-1 flex gap-4 px-4 pb-4 min-h-0 overflow-hidden">
+        <div className="flex-1 flex gap-2 md:gap-4 px-2 md:px-4 pb-2 md:pb-4 min-h-0 overflow-hidden">
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-3xl p-4 md:p-8 lg:p-12 border border-purple-500/20 flex flex-col justify-center h-full">
+              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-6 lg:p-10 xl:p-12 border border-purple-500/20 flex flex-col justify-center h-full">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
                   <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-3">
@@ -792,12 +800,12 @@ export const LiveListening = () => {
                 )}
                 
                 {/* Album Art - RESPONSIVE NO SCROLL */}
-                <div className="flex flex-col items-center mb-4 md:mb-6 flex-shrink-0">
-                  <div className="relative mb-3 md:mb-6 group">
+                <div className="flex flex-col items-center mb-3 md:mb-4 lg:mb-6 flex-shrink-0">
+                  <div className="relative mb-2 md:mb-4 lg:mb-6 group">
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-2xl md:rounded-3xl shadow-2xl object-cover ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="w-40 h-40 sm:w-52 sm:h-52 md:w-64 md:h-64 lg:w-80 lg:h-80 xl:w-96 xl:h-96 rounded-xl md:rounded-2xl lg:rounded-3xl shadow-2xl object-cover ring-2 md:ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
@@ -808,14 +816,14 @@ export const LiveListening = () => {
                     )}
                   </div>
 
-                  <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
-                  <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
-                  <p className="text-xs md:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
+                  <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
+                  <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
+                  <p className="text-xs md:text-sm lg:text-base text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-4">
+                <div className="mb-3 md:mb-4 lg:mb-6">
+                  <div className="flex items-center gap-2 md:gap-4">
                     <span className="text-sm text-gray-400 w-14 text-right">{formatTime(currentTime)}</span>
                     <div className="flex-1 group">
                       <input
@@ -838,51 +846,51 @@ export const LiveListening = () => {
                 </div>
 
                 {/* Controls (Display only) */}
-                <div className="flex items-center justify-center gap-6 mb-6">
+                <div className="flex items-center justify-center gap-4 md:gap-6 mb-3 md:mb-4 lg:mb-6">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-14 h-14 opacity-50 cursor-not-allowed"
+                    className="w-12 h-12 md:w-14 md:h-14 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipBack className="w-6 h-6" />
+                    <SkipBack className="w-5 h-5 md:w-6 md:h-6" />
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-20 h-20 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    className="w-16 h-16 md:w-20 md:h-20 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
                     disabled
                   >
                     {isPlaying ? (
-                      <Pause className="w-10 h-10" />
+                      <Pause className="w-8 h-8 md:w-10 md:h-10" />
                     ) : (
-                      <Play className="w-10 h-10 ml-1" />
+                      <Play className="w-8 h-8 md:w-10 md:h-10 ml-1" />
                     )}
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-14 h-14 opacity-50 cursor-not-allowed"
+                    className="w-12 h-12 md:w-14 md:h-14 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipForward className="w-6 h-6" />
+                    <SkipForward className="w-5 h-5 md:w-6 md:h-6" />
                   </Button>
                 </div>
 
                 {/* Volume Control */}
-                <div className="flex items-center justify-center gap-4">
+                <div className="flex items-center justify-center gap-2 md:gap-4">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsMuted(!isMuted)}
-                    className="hover:bg-purple-500/20"
+                    className="hover:bg-purple-500/20 flex-shrink-0"
                   >
                     {isMuted ? (
-                      <VolumeX className="w-5 h-5" />
+                      <VolumeX className="w-4 h-4 md:w-5 md:h-5" />
                     ) : (
-                      <Volume2 className="w-5 h-5" />
+                      <Volume2 className="w-4 h-4 md:w-5 md:h-5" />
                     )}
                   </Button>
                   <Slider
@@ -900,9 +908,9 @@ export const LiveListening = () => {
                     }}
                     max={100}
                     step={1}
-                    className="w-64"
+                    className="w-32 sm:w-48 md:w-64"
                   />
-                  <span className="text-sm text-gray-400 w-12">{isMuted ? 0 : volume}%</span>
+                  <span className="text-xs md:text-sm text-gray-400 w-10 md:w-12 flex-shrink-0">{isMuted ? 0 : volume}%</span>
                 </div>
 
                 {/* Info */}
@@ -928,7 +936,7 @@ export const LiveListening = () => {
 
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
-            <div className="w-96 md:w-[26rem] flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
+            <div className="w-72 md:w-80 lg:w-96 xl:w-[26rem] flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-2xl md:rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
               <div className="p-6 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-purple-500/20 rounded-lg">
