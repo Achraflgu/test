@@ -529,44 +529,50 @@ export const LiveListening = () => {
         desiredTimeRef.current = data.currentTime; // Target time for convergence
         
         // FORCE SEEK to exact host time (works for both track change and time updates)
-        if (playerRef.current && isPlayerReady) {
+        const performSeek = (targetTime: number, attempt: number = 0) => {
           try {
-            const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
-            const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
+            if (!playerRef.current?.seekTo) {
+              if (attempt < 5) {
+                setTimeout(() => performSeek(targetTime, attempt + 1), 200);
+              }
+              return;
+            }
             
-            console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
+            const currentPlayerTime = playerRef.current.getCurrentTime?.() || 0;
+            const timeDiff = Math.abs(currentPlayerTime - targetTime);
             
-            // ALWAYS seek unconditionally to force exact sync (track change or time update)
-            console.log('🔄 FORCE SEEKING to', data.currentTime);
-            playerRef.current.seekTo(data.currentTime, true);
+            if (attempt === 0) {
+              console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${targetTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
+            }
             
-            // Triple-check with multiple delayed seeks to ensure it sticks
-            setTimeout(() => {
-              try {
-                if (playerRef.current) playerRef.current.seekTo(data.currentTime, true);
-              } catch {}
-            }, 100);
-            setTimeout(() => {
-              try {
-                if (playerRef.current) playerRef.current.seekTo(data.currentTime, true);
-              } catch {}
-            }, 250);
+            // Always seek to ensure sync
+            playerRef.current.seekTo(targetTime, true);
+            console.log(`🔄 SEEK to ${targetTime.toFixed(1)}s (attempt ${attempt + 1})`);
+            
+            // Verify seek worked after a delay
+            if (attempt < 3) {
+              setTimeout(() => {
+                try {
+                  const newTime = playerRef.current?.getCurrentTime?.() || 0;
+                  if (Math.abs(newTime - targetTime) > 0.5) {
+                    performSeek(targetTime, attempt + 1);
+                  }
+                } catch {}
+              }, attempt === 0 ? 100 : 200);
+            }
           } catch (err) {
             console.error('Seek error:', err);
+            if (attempt < 5) {
+              setTimeout(() => performSeek(targetTime, attempt + 1), 300);
+            }
           }
+        };
+        
+        if (playerRef.current && isPlayerReady) {
+          performSeek(data.currentTime);
         } else {
-          // Player not ready: perform aggressive delayed seeks
           console.log('⏳ Player not ready, scheduling delayed seeks to', data.currentTime);
-          for (let i = 0; i < 5; i++) {
-            setTimeout(() => {
-              try {
-                if (playerRef.current?.seekTo) {
-                  playerRef.current.seekTo(data.currentTime, true);
-                  console.log(`🔄 Delayed seek attempt ${i + 1} to`, data.currentTime);
-                }
-              } catch {}
-            }, 150 * (i + 1));
-          }
+          setTimeout(() => performSeek(data.currentTime), 200);
         }
 
         if (data.queue) {
@@ -817,24 +823,24 @@ export const LiveListening = () => {
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-2xl lg:max-w-3xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-4 lg:p-6 border border-purple-500/20 flex flex-col justify-center h-full">
+              <div className="w-full max-w-xl [@media(min-width:1600px)]:max-w-2xl [@media(min-width:1920px)]:max-w-3xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl [@media(min-width:1920px)]:rounded-3xl p-2 md:p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-6 border border-purple-500/20 flex flex-col justify-center h-full">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
-                  <div className="mb-3 md:mb-4 bg-green-500/10 border border-green-500/30 rounded-lg md:rounded-xl p-2 md:p-3 flex items-center gap-2 md:gap-3">
-                    <div className="text-green-400 text-sm md:text-base">✅</div>
-                    <p className="text-xs md:text-sm text-green-300">
+                  <div className="mb-2 md:mb-3 bg-green-500/10 border border-green-500/30 rounded-lg p-2 flex items-center gap-2">
+                    <div className="text-green-400 text-sm">✅</div>
+                    <p className="text-xs text-green-300">
                       Synced playback active • Audio playing from {isSpotifyTrack ? 'YouTube (converted)' : 'YouTube'}
                     </p>
                   </div>
                 )}
                 
-                {/* Album Art - RESPONSIVE NO SCROLL */}
-                <div className="flex flex-col items-center mb-2 md:mb-3 lg:mb-4 flex-shrink-0">
-                  <div className="relative mb-2 md:mb-3 lg:mb-4 group">
+                {/* Album Art - SMART RESPONSIVE */}
+                <div className="flex flex-col items-center mb-2 [@media(min-width:1600px)]:mb-3 [@media(min-width:1920px)]:mb-4 flex-shrink-0">
+                  <div className="relative mb-2 [@media(min-width:1920px)]:mb-3 group">
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44 lg:w-56 lg:h-56 xl:w-64 xl:h-64 rounded-lg md:rounded-xl lg:rounded-2xl shadow-2xl object-cover ring-2 md:ring-3 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 [@media(min-width:1600px)]:w-56 [@media(min-width:1600px)]:h-56 [@media(min-width:1920px)]:w-72 [@media(min-width:1920px)]:h-72 rounded-lg [@media(min-width:1920px)]:rounded-xl shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
@@ -845,15 +851,15 @@ export const LiveListening = () => {
                     )}
                   </div>
 
-                  <h2 className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl font-bold text-center mb-1 px-4 line-clamp-2">{currentTrack.name}</h2>
-                  <p className="text-[11px] sm:text-xs md:text-sm lg:text-base text-gray-400 text-center mb-0.5 truncate max-w-full px-4">{currentTrack.artist}</p>
-                  <p className="text-[10px] sm:text-[11px] md:text-xs lg:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
+                  <h2 className="text-sm md:text-base [@media(min-width:1600px)]:text-lg [@media(min-width:1920px)]:text-xl font-bold text-center mb-1 px-4 line-clamp-2">{currentTrack.name}</h2>
+                  <p className="text-xs md:text-sm [@media(min-width:1920px)]:text-base text-gray-400 text-center mb-0.5 truncate max-w-full px-4">{currentTrack.artist}</p>
+                  <p className="text-[11px] md:text-xs [@media(min-width:1920px)]:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="mb-3 md:mb-4 lg:mb-6">
-                  <div className="flex items-center gap-2 md:gap-4">
-                    <span className="text-sm text-gray-400 w-14 text-right">{formatTime(currentTime)}</span>
+                <div className="mb-2 [@media(min-width:1600px)]:mb-3 [@media(min-width:1920px)]:mb-4">
+                  <div className="flex items-center gap-2 [@media(min-width:1920px)]:gap-4">
+                    <span className="text-xs [@media(min-width:1920px)]:text-sm text-gray-400 w-12 [@media(min-width:1920px)]:w-14 text-right">{formatTime(currentTime)}</span>
                     <div className="flex-1 group">
                       <input
                         type="range"
@@ -867,44 +873,44 @@ export const LiveListening = () => {
                         }}
                       />
                     </div>
-                    <span className="text-sm text-gray-400 w-14">{formatTime(duration)}</span>
+                    <span className="text-xs [@media(min-width:1920px)]:text-sm text-gray-400 w-12 [@media(min-width:1920px)]:w-14">{formatTime(duration)}</span>
                   </div>
-                  <p className="text-xs text-center text-gray-500 mt-2">
+                  <p className="text-[11px] [@media(min-width:1920px)]:text-xs text-center text-gray-500 mt-1 [@media(min-width:1920px)]:mt-2">
                     Controlled by {hostName}
                   </p>
                 </div>
 
                 {/* Controls (Display only) */}
-                <div className="flex items-center justify-center gap-3 md:gap-4 mb-2 md:mb-3 lg:mb-4">
+                <div className="flex items-center justify-center gap-3 [@media(min-width:1920px)]:gap-4 mb-2 [@media(min-width:1920px)]:mb-3">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-10 h-10 md:w-11 md:h-11 opacity-50 cursor-not-allowed"
+                    className="w-9 h-9 [@media(min-width:1600px)]:w-10 [@media(min-width:1600px)]:h-10 [@media(min-width:1920px)]:w-11 [@media(min-width:1920px)]:h-11 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipBack className="w-4 h-4 md:w-5 md:h-5" />
+                    <SkipBack className="w-4 h-4 [@media(min-width:1920px)]:w-5 [@media(min-width:1920px)]:h-5" />
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-14 h-14 md:w-16 md:h-16 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    className="w-12 h-12 [@media(min-width:1600px)]:w-14 [@media(min-width:1600px)]:h-14 [@media(min-width:1920px)]:w-16 [@media(min-width:1920px)]:h-16 bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
                     disabled
                   >
                     {isPlaying ? (
-                      <Pause className="w-6 h-6 md:w-8 md:h-8" />
+                      <Pause className="w-5 h-5 [@media(min-width:1600px)]:w-6 [@media(min-width:1600px)]:h-6 [@media(min-width:1920px)]:w-8 [@media(min-width:1920px)]:h-8" />
                     ) : (
-                      <Play className="w-6 h-6 md:w-8 md:h-8 ml-1" />
+                      <Play className="w-5 h-5 [@media(min-width:1600px)]:w-6 [@media(min-width:1600px)]:h-6 [@media(min-width:1920px)]:w-8 [@media(min-width:1920px)]:h-8 ml-1" />
                     )}
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="w-10 h-10 md:w-11 md:h-11 opacity-50 cursor-not-allowed"
+                    className="w-9 h-9 [@media(min-width:1600px)]:w-10 [@media(min-width:1600px)]:h-10 [@media(min-width:1920px)]:w-11 [@media(min-width:1920px)]:h-11 opacity-50 cursor-not-allowed"
                     disabled
                   >
-                    <SkipForward className="w-4 h-4 md:w-5 md:h-5" />
+                    <SkipForward className="w-4 h-4 [@media(min-width:1920px)]:w-5 [@media(min-width:1920px)]:h-5" />
                   </Button>
                 </div>
 
@@ -965,8 +971,8 @@ export const LiveListening = () => {
 
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
-            <div className="w-64 md:w-72 lg:w-80 xl:w-96 flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-2xl md:rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
-              <div className="p-4 md:p-5 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+            <div className="w-60 [@media(min-width:1600px)]:w-72 [@media(min-width:1920px)]:w-80 [@media(min-width:2560px)]:w-96 flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-xl [@media(min-width:1920px)]:rounded-2xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
+              <div className="p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-5 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-1.5 md:p-2 bg-purple-500/20 rounded-lg">
                     <List className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
