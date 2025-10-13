@@ -82,7 +82,7 @@ export const LiveListening = () => {
     console.log('📋 Live Listening Queue updated:', queue.length, 'tracks');
   }, [queue.length]);
 
-  // Search YouTube for Spotify tracks
+  // Search YouTube for Spotify tracks - WITH REAL API SEARCH
   useEffect(() => {
     if (!currentTrack || !isSpotifyTrack || directVideoId) {
       setYoutubeSearchId(null);
@@ -94,25 +94,39 @@ export const LiveListening = () => {
     const searchYouTube = async () => {
       setIsSearching(true);
       try {
-        const searchQuery = `${currentTrack.artist} ${currentTrack.name} official audio`;
-        console.log('🔍 Searching YouTube for:', searchQuery);
-        
-        // Use YouTube iframe search (simple method)
-        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
-        
-        // For now, we'll use the track's youtubeId if available, or search via API
-        // Check if track has cached youtubeId
+        // Check if track has cached youtubeId first
         if (currentTrack.youtubeId) {
           console.log('✅ Found cached YouTube ID:', currentTrack.youtubeId);
           setYoutubeSearchId(currentTrack.youtubeId);
+          setIsSearching(false);
+          return;
+        }
+
+        // If no cached ID, search YouTube using the Data API
+        const searchQuery = `${currentTrack.artist} ${currentTrack.name} official audio`;
+        console.log('🔍 Searching YouTube for:', searchQuery);
+        
+        const API_KEY = 'AIzaSyBFY3sT8Z0P8aKvW0yKN0cMxLGf3xqVx8c'; // YouTube Data API v3 key
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=1&key=${API_KEY}`;
+        
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+        
+        if (data.items && data.items.length > 0) {
+          const videoId = data.items[0].id.videoId;
+          console.log('✅ Found YouTube video:', videoId, '-', data.items[0].snippet.title);
+          setYoutubeSearchId(videoId);
+          // Don't show success toast - too many notifications
         } else {
-          // Try to extract from search page (simplified - in production use YouTube API)
-          console.log('⚠️ No YouTube ID available for Spotify track');
-          toast.error(`Cannot play Spotify track: ${currentTrack.name}. YouTube version not found.`);
+          console.log('⚠️ No YouTube results found for:', searchQuery);
+          // Show warning but don't block playback
+          toast.warning(`Spotify track not available: ${currentTrack.name}`);
+          setYoutubeSearchId(null);
         }
       } catch (err) {
-        console.error('Search error:', err);
-        toast.error('Failed to find YouTube version of track');
+        console.error('❌ YouTube search error:', err);
+        toast.error(`Failed to search YouTube: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setYoutubeSearchId(null);
       } finally {
         setIsSearching(false);
       }
@@ -678,12 +692,12 @@ export const LiveListening = () => {
           )}
         </div>
 
-        {/* Main Content - Flex Container - FULLSCREEN */}
+        {/* Main Content - Flex Container - FULLSCREEN NO SCROLL */}
         <div className="flex-1 flex gap-4 px-4 pb-4 min-h-0 overflow-hidden">
-          {/* Main Player - Scrollable - FULLSCREEN */}
-          <div className={`flex-1 overflow-y-auto overflow-x-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
+          {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
+          <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-3xl p-12 border border-purple-500/20">
+              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-3xl p-4 md:p-8 lg:p-12 border border-purple-500/20 flex flex-col justify-center h-full">
                 {/* Searching for YouTube version */}
                 {isSearching && isSpotifyTrack && (
                   <div className="mb-6 bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-start gap-3">
@@ -737,26 +751,26 @@ export const LiveListening = () => {
                   </div>
                 )}
                 
-                {/* Album Art - FULLSCREEN SIZE */}
-                <div className="flex flex-col items-center mb-8">
-                  <div className="relative mb-8 group">
+                {/* Album Art - RESPONSIVE NO SCROLL */}
+                <div className="flex flex-col items-center mb-4 md:mb-6 flex-shrink-0">
+                  <div className="relative mb-3 md:mb-6 group">
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-96 h-96 md:w-[28rem] md:h-[28rem] rounded-3xl shadow-2xl object-cover ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-2xl md:rounded-3xl shadow-2xl object-cover ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-24 h-24 bg-purple-500/30 rounded-full flex items-center justify-center animate-pulse">
-                          <Music2 className="w-12 h-12 text-purple-400" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-16 h-16 md:w-24 md:h-24 bg-purple-500/30 rounded-full flex items-center justify-center animate-pulse">
+                          <Music2 className="w-8 h-8 md:w-12 md:h-12 text-purple-400" />
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <h2 className="text-4xl md:text-5xl font-bold text-center mb-3 px-4">{currentTrack.name}</h2>
-                  <p className="text-2xl md:text-3xl text-gray-400 text-center mb-2">{currentTrack.artist}</p>
-                  <p className="text-base text-gray-500">{currentTrack.album}</p>
+                  <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
+                  <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
+                  <p className="text-xs md:text-sm text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
                 </div>
 
                 {/* Progress Bar */}
