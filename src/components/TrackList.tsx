@@ -74,6 +74,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
   const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
   
+  // Keyboard shortcut: "F" to toggle fullscreen
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if ((e.key === 'f' || e.key === 'F') && currentPlayingTrack) {
+        e.preventDefault();
+        setShowFullScreenPlayer(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPlayingTrack]);
+  
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);

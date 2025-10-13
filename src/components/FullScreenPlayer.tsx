@@ -99,9 +99,10 @@ export const FullScreenPlayer = ({
     onSeek(newTime);
   };
 
-  // Handle ESC key
+  // Handle keyboard shortcuts (ESC and F)
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // ESC key - Close settings or fullscreen
       if (e.key === 'Escape') {
         if (showSettings) {
           setShowSettings(false);
@@ -109,9 +110,16 @@ export const FullScreenPlayer = ({
           onClose();
         }
       }
+      
+      // F key - Toggle fullscreen
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        onClose();
+      }
     };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
   }, [onClose, showSettings]);
 
   // Handle click outside settings to close
@@ -170,11 +178,14 @@ export const FullScreenPlayer = ({
 
   return (
     <div 
-      className="fixed inset-0 z-[100] animate-in fade-in duration-500"
+      className="fixed inset-0 z-[100] animate-in fade-in duration-500 bg-black"
       style={{
-        background: `linear-gradient(135deg, ${dominantColor}05 0%, ${dominantColor}08 50%, ${dominantColor}05 100%)`
+        background: `radial-gradient(ellipse at top, ${dominantColor}12 0%, #000000 50%, ${dominantColor}08 100%)`
       }}
     >
+      {/* Vignette Effect for Focus */}
+      <div className="absolute inset-0 pointer-events-none bg-gradient-radial from-transparent via-transparent to-black/40" />
+      
       {/* Background Layer */}
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
@@ -189,19 +200,30 @@ export const FullScreenPlayer = ({
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
           </div>
         ) : backgroundMode === 'artwork' ? (
-          /* Album Artwork Background */
+          /* Album Artwork Background - Enhanced */
           <div className="absolute inset-0">
             <img
               src={track.imageUrl}
               alt={track.name}
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-3xl opacity-30"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-3xl opacity-20 animate-pulse"
+              style={{ animationDuration: '8s' }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background/90" />
+            <div className="absolute inset-0 bg-gradient-radial from-black/60 via-black/80 to-black/95" />
+            {/* Floating particles effect */}
+            <div className="absolute inset-0 opacity-30">
+              <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
+              <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '4s', animationDelay: '1s' }} />
+              <div className="absolute bottom-1/4 left-1/3 w-1.5 h-1.5 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '5s', animationDelay: '2s' }} />
+            </div>
           </div>
         ) : (
-          /* Visualizer Background */
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-pink-900/20">
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20" />
+          /* Visualizer Background - Enhanced */
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/15 via-blue-900/15 to-pink-900/15">
+            {/* Animated gradient orbs */}
+            <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s', animationDelay: '2s' }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '7s', animationDelay: '1s' }} />
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-10" />
           </div>
         )}
       </div>
@@ -223,10 +245,14 @@ export const FullScreenPlayer = ({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowSettings(!showSettings)}
-              className="h-10 w-10 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 text-white"
+              onClick={() => setShowSettings(prev => !prev)}
+              className={`h-10 w-10 rounded-full backdrop-blur-sm text-white transition-all ${
+                showSettings 
+                  ? 'bg-primary/40 hover:bg-primary/50 ring-2 ring-primary/30' 
+                  : 'bg-black/20 hover:bg-black/40'
+              }`}
             >
-              <Settings className="w-5 h-5" />
+              <Settings className={`w-5 h-5 ${showSettings ? 'animate-spin' : ''}`} />
             </Button>
             <Button
               variant="ghost"
@@ -390,13 +416,10 @@ export const FullScreenPlayer = ({
               onClick={() => {
                 if (queueState === 'open') {
                   setQueueState('minimized');
-                  toast.info('Queue minimized');
                 } else if (queueState === 'minimized') {
                   setQueueState('closed');
-                  toast.info('Queue closed');
                 } else {
                   setQueueState('open');
-                  toast.info('Queue opened');
                 }
               }}
               className={`h-9 w-9 ${queueState !== 'closed' ? 'text-primary bg-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
@@ -599,10 +622,7 @@ export const FullScreenPlayer = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => {
-                    setQueueState('minimized');
-                    toast.info('Queue minimized');
-                  }}
+                  onClick={() => setQueueState('minimized')}
                   className="h-8 w-8 hover:bg-primary/20"
                   title="Minimize"
                 >
@@ -614,10 +634,7 @@ export const FullScreenPlayer = ({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  setQueueState('open');
-                  toast.info('Queue opened');
-                }}
+                onClick={() => setQueueState('open')}
                 className="h-8 w-8 hover:bg-primary/20 mx-auto"
                 title="Show queue"
               >
