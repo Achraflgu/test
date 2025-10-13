@@ -188,7 +188,11 @@ export const LiveListening = () => {
             onReady: (event: any) => {
               console.log('✅ YouTube player ready:', videoId);
               setIsPlayerReady(true);
-              event.target.setVolume(isMuted ? 0 : volume);
+              try {
+                // Improve autoplay reliability: start muted, play, then unmute if needed
+                event.target.mute?.();
+                event.target.setVolume?.(isMuted ? 0 : volume);
+              } catch {}
               
               // Sync with current state
               if (currentTime > 0) {
@@ -196,7 +200,16 @@ export const LiveListening = () => {
               }
               
               if (isPlaying) {
-                event.target.playVideo();
+                console.log('▶️ Starting playback');
+                try {
+                  event.target.playVideo();
+                  if (!isMuted) {
+                    // Unmute shortly after starting to bypass autoplay policies
+                    setTimeout(() => {
+                      try { event.target.unMute?.(); } catch {}
+                    }, 300);
+                  }
+                } catch {}
               }
             },
             onStateChange: (event: any) => {
@@ -230,6 +243,29 @@ export const LiveListening = () => {
       clearTimeout(timeoutId);
     };
   }, [videoId, isListener]);
+
+  // Force play/pause sync and volume after player is ready (handles adblock/autoplay edge cases)
+  useEffect(() => {
+    if (!playerRef.current || !isPlayerReady) return;
+    try {
+      const player = playerRef.current;
+      // Sync play/pause
+      if (isPlaying) {
+        player.playVideo?.();
+      } else {
+        player.pauseVideo?.();
+      }
+      // Sync volume/mute
+      if (isMuted) {
+        player.mute?.();
+      } else {
+        player.unMute?.();
+        player.setVolume?.(volume);
+      }
+    } catch (err) {
+      console.log('Playback/volume sync error:', err);
+    }
+  }, [isPlaying, isMuted, volume, isPlayerReady]);
 
   // Initialize background video player
   useEffect(() => {
