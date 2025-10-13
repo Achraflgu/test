@@ -347,7 +347,7 @@ export const FullScreenPlayer = ({
     <div 
       className="fixed inset-0 z-[100] animate-in fade-in duration-500 bg-black"
       style={{
-        background: `radial-gradient(ellipse at top, ${dominantColor}05 0%, #000000 50%, ${dominantColor}03 100%)`
+        background: `radial-gradient(ellipse at top, ${dominantColor}02 0%, #000000 50%, ${dominantColor}01 100%)`
       }}
     >
       {/* Vignette Effect for Focus */}

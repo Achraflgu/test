@@ -24,6 +24,43 @@
 
   <body>
     <div id="root"></div>
+    
+    <!-- Block IDM (Internet Download Manager) -->
+    <script>
+      // Prevent IDM from detecting media elements
+      (function() {
+        // Block IDM's common detection methods
+        if (window.external && window.external.AddUrlToList) {
+          window.external.AddUrlToList = function() {};
+        }
+        
+        // Override common IDM hooks
+        const originalAddEventListener = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          // Block IDM's context menu listeners
+          if (type === 'contextmenu' && listener.toString().includes('IDM')) {
+            return;
+          }
+          return originalAddEventListener.call(this, type, listener, options);
+        };
+        
+        // Disable right-click context menu on media elements
+        document.addEventListener('DOMContentLoaded', function() {
+          document.addEventListener('contextmenu', function(e) {
+            if (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO') {
+              e.preventDefault();
+              return false;
+            }
+          });
+        });
+        
+        // Block IDM toolbar detection
+        if (window.IEGetDownloadedBlobData) {
+          window.IEGetDownloadedBlobData = function() {};
+        }
+      })();
+    </script>
+    
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
