@@ -1073,7 +1073,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               
               // Try to find alternative version - use track from closure
               if (track) {
-                // Remove blocked id from cache so it is not reused
+                // Mark current id as blocked and remove from cache so it is not reused
+                const blockedForTrack = blockedYoutubeIdCacheRef.current.get(track.id) || new Set<string>();
+                if (currentYoutubeIdRef.current) blockedForTrack.add(currentYoutubeIdRef.current);
+                blockedYoutubeIdCacheRef.current.set(track.id, blockedForTrack);
                 if (youtubeIdCache.has(track.id)) {
                   const newCache = new Map<string, string>(youtubeIdCache);
                   newCache.delete(track.id);
@@ -1093,8 +1096,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     const data = await response.json();
                     console.log('📦 Search results:', data.results?.length || 0);
                     
-                    // Try each result until we find one that works
-                    const blockedForTrack = blockedYoutubeIdCacheRef.current.get(track.id) || new Set<string>();
+                      // Try each result until we find one that works (skip blocked IDs)
+                      const blockedForTrack = blockedYoutubeIdCacheRef.current.get(track.id) || new Set<string>();
                     for (const result of data.results || []) {
                       const altYoutubeId = getYouTubeId(result.url);
                       console.log('🧪 Testing alternative:', altYoutubeId);
