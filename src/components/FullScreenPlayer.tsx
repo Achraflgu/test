@@ -180,7 +180,7 @@ export const FullScreenPlayer = ({
     <div 
       className="fixed inset-0 z-[100] animate-in fade-in duration-500 bg-black"
       style={{
-        background: `radial-gradient(ellipse at top, ${dominantColor}12 0%, #000000 50%, ${dominantColor}08 100%)`
+        background: `radial-gradient(ellipse at top, ${dominantColor}05 0%, #000000 50%, ${dominantColor}03 100%)`
       }}
     >
       {/* Vignette Effect for Focus */}
@@ -245,14 +245,17 @@ export const FullScreenPlayer = ({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowSettings(prev => !prev)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSettings(prev => !prev);
+              }}
               className={`h-10 w-10 rounded-full backdrop-blur-sm text-white transition-all ${
                 showSettings 
                   ? 'bg-primary/40 hover:bg-primary/50 ring-2 ring-primary/30' 
                   : 'bg-black/20 hover:bg-black/40'
               }`}
             >
-              <Settings className={`w-5 h-5 ${showSettings ? 'animate-spin' : ''}`} />
+              <Settings className={`w-5 h-5 transition-transform ${showSettings ? 'rotate-90' : ''}`} />
             </Button>
             <Button
               variant="ghost"
@@ -534,7 +537,8 @@ export const FullScreenPlayer = ({
       {showSettings && (
         <div 
           ref={settingsRef}
-          className="absolute top-20 right-4 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl animate-in slide-in-from-top duration-300 p-4 z-50"
+          className="absolute top-20 right-4 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl animate-in slide-in-from-top duration-300 p-4 z-[60]"
+          onClick={(e) => e.stopPropagation()}
         >
           <h3 className="text-lg font-bold mb-4">Display Settings</h3>
           <div className="space-y-3">
@@ -542,6 +546,7 @@ export const FullScreenPlayer = ({
               onClick={() => {
                 setBackgroundMode('video');
                 toast.success('Video background enabled');
+                setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
                 backgroundMode === 'video' ? 'bg-primary/20 border border-primary/30' : 'hover:bg-secondary'
@@ -558,6 +563,7 @@ export const FullScreenPlayer = ({
               onClick={() => {
                 setBackgroundMode('artwork');
                 toast.success('Artwork background enabled');
+                setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
                 backgroundMode === 'artwork' ? 'bg-primary/20 border border-primary/30' : 'hover:bg-secondary'
@@ -574,6 +580,7 @@ export const FullScreenPlayer = ({
               onClick={() => {
                 setBackgroundMode('visualizer');
                 toast.success('Visualizer background enabled');
+                setShowSettings(false);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
                 backgroundMode === 'visualizer' ? 'bg-primary/20 border border-primary/30' : 'hover:bg-secondary'
