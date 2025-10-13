@@ -72,6 +72,8 @@ export const FullScreenPlayer = ({
   const settingsRef = useRef<HTMLDivElement>(null);
   const videoPlayerRef = useRef<any>(null);
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const queueContainerRef = useRef<HTMLDivElement>(null);
+  const currentTrackRef = useRef<HTMLDivElement>(null);
 
   // Extract YouTube video ID
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -269,6 +271,18 @@ export const FullScreenPlayer = ({
     const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
     setDominantColor(colors[Math.floor(Math.random() * colors.length)]);
   }, [track.id]);
+
+  // Auto-scroll to current track in queue
+  useEffect(() => {
+    if (queueState === 'open' && currentTrackRef.current && queueContainerRef.current) {
+      // Smooth scroll to current track with center alignment
+      currentTrackRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest'
+      });
+    }
+  }, [track.id, queueState]);
 
   // Prevent body scroll and hide toasts when fullscreen is open
   useEffect(() => {
@@ -797,10 +811,14 @@ export const FullScreenPlayer = ({
 
           {/* Queue Content */}
           {queueState === 'open' && (
-            <div className="overflow-y-auto max-h-[calc(100vh-16rem)] p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent">
+            <div 
+              ref={queueContainerRef}
+              className="overflow-y-auto max-h-[calc(100vh-16rem)] p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent"
+            >
               {queue.map((queueTrack, index) => (
                  <div
                    key={`${queueTrack.id}-${index}`}
+                   ref={queueTrack.id === track.id ? currentTrackRef : null}
                    onClick={(e) => {
                      e.stopPropagation();
                      onPlayTrack?.(queueTrack);
