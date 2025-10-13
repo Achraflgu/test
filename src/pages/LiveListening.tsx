@@ -102,25 +102,45 @@ export const LiveListening = () => {
           return;
         }
 
-        // If no cached ID, search YouTube using the Data API
-        const searchQuery = `${currentTrack.artist} ${currentTrack.name} official audio`;
-        console.log('🔍 Searching YouTube for:', searchQuery);
+        // If no cached ID, search YouTube using the Data API with multiple attempts
+        const queries = [
+          `${currentTrack.artist} ${currentTrack.name}`,
+          `${currentTrack.name} ${currentTrack.artist}`,
+          `${currentTrack.artist} ${currentTrack.name} audio`,
+          `${currentTrack.name}`,
+        ];
+
+        let foundVideo = false;
         
-        const API_KEY = 'AIzaSyBFY3sT8Z0P8aKvW0yKN0cMxLGf3xqVx8c'; // YouTube Data API v3 key
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=1&key=${API_KEY}`;
+        for (const searchQuery of queries) {
+          if (foundVideo) break;
+          
+          console.log('🔍 Searching YouTube for:', searchQuery);
+          
+          const API_KEY = 'AIzaSyBFY3sT8Z0P8aKvW0yKN0cMxLGf3xqVx8c';
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=5&key=${API_KEY}`;
+          
+          const response = await fetch(searchUrl);
+          const data = await response.json();
+          
+          if (data.items && data.items.length > 0) {
+            // Find best match (prefer "official" or "audio" in title)
+            const bestMatch = data.items.find((item: any) => 
+              item.snippet.title.toLowerCase().includes('official') ||
+              item.snippet.title.toLowerCase().includes('audio')
+            ) || data.items[0];
+            
+            const videoId = bestMatch.id.videoId;
+            console.log('✅ Found YouTube video:', videoId, '-', bestMatch.snippet.title);
+            setYoutubeSearchId(videoId);
+            foundVideo = true;
+            break;
+          }
+        }
         
-        const response = await fetch(searchUrl);
-        const data = await response.json();
-        
-        if (data.items && data.items.length > 0) {
-          const videoId = data.items[0].id.videoId;
-          console.log('✅ Found YouTube video:', videoId, '-', data.items[0].snippet.title);
-          setYoutubeSearchId(videoId);
-          // Don't show success toast - too many notifications
-        } else {
-          console.log('⚠️ No YouTube results found for:', searchQuery);
-          // Show warning but don't block playback
-          toast.warning(`Spotify track not available: ${currentTrack.name}`);
+        if (!foundVideo) {
+          console.log('⚠️ No YouTube results found after multiple attempts');
+          toast.warning(`Could not find: ${currentTrack.name}`);
           setYoutubeSearchId(null);
         }
       } catch (err) {
@@ -570,15 +590,23 @@ export const LiveListening = () => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-white overflow-hidden">
+    <div 
+      className="fixed inset-0 z-[100] animate-in fade-in duration-500 bg-black text-white"
+      style={{
+        background: `radial-gradient(ellipse at top, ${dominantColor}02 0%, #000000 50%, ${dominantColor}01 100%)`
+      }}
+    >
       {/* Hidden Audio Player */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px' }}>
         <div id="live-youtube-player"></div>
       </div>
 
-      {/* Background Layer - Full Screen */}
-      <div className="absolute inset-0 overflow-hidden -z-10">
-        {backgroundMode === 'video' && videoId && (
+      {/* Vignette Effect */}
+      <div className="absolute inset-0 pointer-events-none bg-gradient-radial from-transparent via-transparent to-black/40" />
+
+      {/* Background Layer - Like FullScreenPlayer */}
+      <div className="absolute inset-0 overflow-hidden">
+        {backgroundMode === 'video' && videoId ? (
           <div className="absolute inset-0" key={`video-${videoId}`}>
             <iframe
               id="bg-video-player"
@@ -590,46 +618,36 @@ export const LiveListening = () => {
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
           </div>
-        )}
-
-        {backgroundMode === 'artwork' && currentTrack && (
+        ) : backgroundMode === 'artwork' && currentTrack ? (
           <div className="absolute inset-0">
             <img
               src={currentTrack.imageUrl}
               alt={currentTrack.name}
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-3xl opacity-30"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-3xl opacity-20 animate-pulse"
+              style={{ animationDuration: '8s' }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
+            <div className="absolute inset-0 bg-gradient-radial from-black/60 via-black/80 to-black/95" />
+            {/* Floating particles */}
+            <div className="absolute inset-0 opacity-30">
+              <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
+              <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '4s', animationDelay: '1s' }} />
+              <div className="absolute bottom-1/4 left-1/3 w-1.5 h-1.5 bg-white/20 rounded-full animate-ping" style={{ animationDuration: '5s', animationDelay: '2s' }} />
+            </div>
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/15 via-blue-900/15 to-pink-900/15">
+            <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s', animationDelay: '2s' }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '7s', animationDelay: '1s' }} />
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-10" />
           </div>
         )}
-
-        {backgroundMode === 'visualizer' && (
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/30 via-black to-blue-900/30">
-            {showVisualizer && isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                {[...Array(50)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-2 mx-0.5 bg-gradient-to-t from-purple-500 to-blue-500 rounded-t-full animate-pulse"
-                    style={{
-                      height: `${20 + Math.random() * 60}%`,
-                      animationDelay: `${i * 0.05}s`,
-                      animationDuration: `${0.5 + Math.random() * 0.5}s`,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="absolute inset-0 bg-gradient-radial from-purple-500/02 via-transparent to-blue-500/01" />
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col h-full">
-        {/* Header */}
-        <div className="p-6 pb-4 flex-shrink-0">
+      <div className="relative h-full flex flex-col">
+        {/* Header - Like FullScreenPlayer */}
+        <div className="flex items-center justify-between p-4 md:p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-purple-500/20 rounded-xl backdrop-blur-sm">
