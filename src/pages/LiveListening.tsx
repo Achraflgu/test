@@ -109,47 +109,13 @@ export const LiveListening = () => {
           return;
         }
 
-        // If no cached ID, search YouTube using the Data API with multiple attempts
-        const queries = [
-          `${currentTrack.artist} ${currentTrack.name}`,
-          `${currentTrack.name} ${currentTrack.artist}`,
-          `${currentTrack.artist} ${currentTrack.name} audio`,
-          `${currentTrack.name}`,
-        ];
-
-        let foundVideo = false;
+        // For Spotify tracks without youtubeId, show info message
+        console.log('⚠️ No cached YouTube ID for Spotify track:', currentTrack.name);
+        console.log('💡 Tip: This track needs a YouTube version. Playing may not work.');
         
-        for (const searchQuery of queries) {
-          if (foundVideo) break;
-          
-          console.log('🔍 Searching YouTube for:', searchQuery);
-          
-          const API_KEY = 'AIzaSyBFY3sT8Z0P8aKvW0yKN0cMxLGf3xqVx8c';
-          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=5&key=${API_KEY}`;
-          
-          const response = await fetch(searchUrl);
-          const data = await response.json();
-          
-          if (data.items && data.items.length > 0) {
-            // Find best match (prefer "official" or "audio" in title)
-            const bestMatch = data.items.find((item: any) => 
-              item.snippet.title.toLowerCase().includes('official') ||
-              item.snippet.title.toLowerCase().includes('audio')
-            ) || data.items[0];
-            
-            const videoId = bestMatch.id.videoId;
-            console.log('✅ Found YouTube video:', videoId, '-', bestMatch.snippet.title);
-            setYoutubeSearchId(videoId);
-            foundVideo = true;
-            break;
-          }
-        }
-        
-        if (!foundVideo) {
-          console.log('⚠️ No YouTube results found after multiple attempts');
-          toast.warning(`Could not find: ${currentTrack.name}`);
-          setYoutubeSearchId(null);
-        }
+        // Don't show error toast - too intrusive
+        // Just log and set null so player knows to skip
+        setYoutubeSearchId(null);
       } catch (err) {
         console.error('❌ YouTube search error:', err);
         toast.error(`Failed to search YouTube: ${err instanceof Error ? err.message : 'Unknown error'}`);
