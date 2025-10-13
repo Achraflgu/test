@@ -57,8 +57,15 @@ export const FullScreenPlayer = ({
 }: FullScreenPlayerProps) => {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('artwork');
-  const [showVisualizer, setShowVisualizer] = useState(true);
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(() => {
+    // Load saved background mode from localStorage
+    const saved = localStorage.getItem('fullscreen-background-mode');
+    return (saved as BackgroundMode) || 'artwork';
+  });
+  const [showVisualizer, setShowVisualizer] = useState(() => {
+    const saved = localStorage.getItem('fullscreen-show-visualizer');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [dominantColor, setDominantColor] = useState('#6366f1');
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [queueState, setQueueState] = useState<QueueState>('open');
@@ -82,6 +89,16 @@ export const FullScreenPlayer = ({
 
   const isYouTubeTrack = track.url.includes('youtube.com') || track.url.includes('youtu.be');
   const videoId = isYouTubeTrack ? extractYouTubeVideoId(track.url) : null;
+
+  // Save background mode preference
+  useEffect(() => {
+    localStorage.setItem('fullscreen-background-mode', backgroundMode);
+  }, [backgroundMode]);
+
+  // Save visualizer preference
+  useEffect(() => {
+    localStorage.setItem('fullscreen-show-visualizer', String(showVisualizer));
+  }, [showVisualizer]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -198,17 +215,30 @@ export const FullScreenPlayer = ({
 
   // Handle click outside settings to close
   useEffect(() => {
+    if (!showSettings) return;
+
     const handleClickOutside = (e: MouseEvent) => {
-      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const settingsButton = document.querySelector('[data-settings-button]');
+      
+      // Don't close if clicking the settings button itself (let button handle it)
+      if (settingsButton && settingsButton.contains(target)) {
+        return;
+      }
+      
+      // Close if clicking outside the settings panel
+      if (settingsRef.current && !settingsRef.current.contains(target)) {
         setShowSettings(false);
       }
     };
     
-    if (showSettings) {
+    // Add slight delay to prevent immediate closing after opening
+    const timeoutId = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-    }
+    }, 100);
     
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showSettings]);
@@ -218,6 +248,20 @@ export const FullScreenPlayer = ({
     const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
     setDominantColor(colors[Math.floor(Math.random() * colors.length)]);
   }, [track.id]);
+
+  // Prevent body scroll when fullscreen is open
+  useEffect(() => {
+    // Save original overflow style
+    const originalOverflow = document.body.style.overflow;
+    
+    // Disable scrolling
+    document.body.style.overflow = 'hidden';
+    
+    // Restore on unmount
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   // Handle swipe gestures for mobile
   useEffect(() => {
@@ -320,6 +364,7 @@ export const FullScreenPlayer = ({
             <Button
               variant="ghost"
               size="icon"
+              data-settings-button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowSettings(prev => !prev);
@@ -728,7 +773,8 @@ export const FullScreenPlayer = ({
               {queue.map((queueTrack, index) => (
                  <div
                    key={`${queueTrack.id}-${index}`}
-                   onClick={() => {
+                   onClick={(e) => {
+                     e.stopPropagation();
                      onPlayTrack?.(queueTrack);
                    }}
                   className={`group flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
@@ -806,7 +852,8 @@ export const FullScreenPlayer = ({
                      key={`mini-${queueTrack.id}-${index}`}
                      className="w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                      title={queueTrack.name}
-                     onClick={() => {
+                     onClick={(e) => {
+                       e.stopPropagation();
                        onPlayTrack?.(queueTrack);
                      }}
                    >
