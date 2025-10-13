@@ -3710,7 +3710,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           onCycleRepeat={toggleRepeatMode}
           onPlayTrack={(track) => {
             playTrack(track);
-            setShowFullScreenPlayer(false);
+            // Keep fullscreen open when changing tracks from queue
           }}
         />
       )}
