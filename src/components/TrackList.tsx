@@ -1279,7 +1279,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         playlistQueue
       );
     }
-  }, [currentPlayingTrack?.id, isPlaying, currentTime, isLiveHost, liveRoomId]);
+  }, [currentPlayingTrack?.id, isPlaying, isLiveHost, liveRoomId]);
 
   // Periodic sync for time updates (every 5 seconds)
   useEffect(() => {
