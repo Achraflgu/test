@@ -518,6 +518,11 @@ export const LiveListening = () => {
         }
         setIsPlaying(data.isPlaying);
         
+        // Immediately reflect host time in UI, then seek player if needed
+        if (!isTrackChange) {
+          setCurrentTime(data.currentTime);
+        }
+
         // Sync time only if not track change and player is ready
         if (playerRef.current && isPlayerReady && !isTrackChange) {
           try {
@@ -531,13 +536,11 @@ export const LiveListening = () => {
               console.log('🔄 Seeking to', data.currentTime);
               playerRef.current.seekTo(data.currentTime, true);
             }
-            setCurrentTime(data.currentTime);
+            // UI already updated above
           } catch (err) {
             console.error('Seek error:', err);
-            setCurrentTime(data.currentTime);
+            // UI already updated above
           }
-        } else if (!isTrackChange) {
-          setCurrentTime(data.currentTime);
         }
 
         if (data.queue) {
@@ -788,7 +791,7 @@ export const LiveListening = () => {
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-6 lg:p-10 xl:p-12 border border-purple-500/20 flex flex-col justify-center h-full">
+              <div className="w-full max-w-4xl xl:max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-2xl md:rounded-3xl p-3 md:p-6 lg:p-8 xl:p-10 border border-purple-500/20 flex flex-col justify-center h-full">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
                   <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-3">
@@ -805,7 +808,7 @@ export const LiveListening = () => {
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-40 h-40 sm:w-52 sm:h-52 md:w-64 md:h-64 lg:w-80 lg:h-80 xl:w-96 xl:h-96 rounded-xl md:rounded-2xl lg:rounded-3xl shadow-2xl object-cover ring-2 md:ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
+                      className="w-36 h-36 sm:w-48 sm:h-48 md:w-56 md:h-56 lg:w-72 lg:h-72 xl:w-80 xl:h-80 rounded-xl md:rounded-2xl lg:rounded-3xl shadow-2xl object-cover ring-2 md:ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
@@ -816,8 +819,8 @@ export const LiveListening = () => {
                     )}
                   </div>
 
-                  <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
-                  <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
+                  <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl font-bold text-center mb-1 md:mb-2 px-4 line-clamp-2">{currentTrack.name}</h2>
+                  <p className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl text-gray-400 text-center mb-1 truncate max-w-full px-4">{currentTrack.artist}</p>
                   <p className="text-xs md:text-sm lg:text-base text-gray-500 truncate max-w-full px-4">{currentTrack.album}</p>
                 </div>
 
