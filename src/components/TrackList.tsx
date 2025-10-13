@@ -776,8 +776,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     console.log('✅ Valid YouTube ID confirmed:', youtubeId);
 
-    // Play new track
-    setCurrentPlayingTrack(track);
+    // Play new track - Update track object with youtubeId for FullScreenPlayer
+    const trackWithYoutubeId = { ...track, youtubeId };
+    setCurrentPlayingTrack(trackWithYoutubeId);
     setIsPlaying(true);
     
     // 🔥 FIX: Don't reset time if we have a pending seek (Spotify restoration)
