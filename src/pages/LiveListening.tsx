@@ -70,6 +70,8 @@ export const LiveListening = () => {
   };
 
   const videoId = currentTrack ? extractYouTubeVideoId(currentTrack.url) : null;
+  const isSpotifyTrack = currentTrack?.url.includes('spotify.com') || false;
+  const isYouTubeTrack = !!videoId;
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -245,19 +247,28 @@ export const LiveListening = () => {
     }
   }, [isPlaying, isVideoReady]);
 
-  // Sync main player with state
+  // Sync main player with state (immediate)
   useEffect(() => {
-    if (!playerRef.current || !isPlayerReady || isSyncingRef.current) return;
+    if (!playerRef.current || !isPlayerReady) return;
 
     try {
       const player = playerRef.current;
       
-      // Sync play/pause
+      // Sync play/pause immediately
       const playerState = player.getPlayerState();
-      if (isPlaying && (playerState === 2 || playerState === -1 || playerState === 5 || playerState === 0)) {
-        player.playVideo();
-      } else if (!isPlaying && playerState === 1) {
-        player.pauseVideo();
+      
+      if (isPlaying) {
+        // Should be playing
+        if (playerState !== 1) { // Not playing
+          console.log('▶️ Starting playback');
+          player.playVideo();
+        }
+      } else {
+        // Should be paused
+        if (playerState === 1) { // Currently playing
+          console.log('⏸️ Pausing playback');
+          player.pauseVideo();
+        }
       }
 
       // Sync volume
@@ -329,26 +340,35 @@ export const LiveListening = () => {
         const isTrackChange = data.currentTrack && data.currentTrack.id !== currentTrack?.id;
         
         if (isTrackChange) {
+          console.log('🎵 Track changed to:', data.currentTrack?.name);
           setCurrentTrack(data.currentTrack);
           setDuration(data.currentTrack.duration || 0);
+          setCurrentTime(data.currentTime || 0);
         }
         
+        // Update play/pause state
+        console.log('🎮 Playback state:', data.isPlaying ? 'Playing' : 'Paused');
         setIsPlaying(data.isPlaying);
         
-        // Sync time
+        // Sync time only if not track change and player is ready
         if (playerRef.current && isPlayerReady && !isTrackChange) {
           try {
             const currentPlayerTime = playerRef.current.getCurrentTime() || 0;
             const timeDiff = Math.abs(currentPlayerTime - data.currentTime);
             
+            console.log(`⏱️ Time sync - Player: ${currentPlayerTime.toFixed(1)}s, Host: ${data.currentTime.toFixed(1)}s, Diff: ${timeDiff.toFixed(1)}s`);
+            
+            // Sync if difference is significant
             if (timeDiff > 2) {
+              console.log('🔄 Seeking to', data.currentTime);
               playerRef.current.seekTo(data.currentTime, true);
-              setCurrentTime(data.currentTime);
             }
+            setCurrentTime(data.currentTime);
           } catch (err) {
             console.error('Seek error:', err);
+            setCurrentTime(data.currentTime);
           }
-        } else {
+        } else if (!isTrackChange) {
           setCurrentTime(data.currentTime);
         }
 
@@ -598,6 +618,33 @@ export const LiveListening = () => {
           <div className={`flex-1 overflow-y-auto overflow-x-hidden ${showQueue ? '' : 'mx-auto max-w-4xl'}`}>
             {currentTrack ? (
               <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl p-8 border border-purple-500/20">
+                {/* Spotify Warning */}
+                {isSpotifyTrack && (
+                  <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-start gap-3">
+                    <div className="text-yellow-500 mt-0.5">⚠️</div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-yellow-300 mb-1">Spotify Track Limitation</p>
+                      <p className="text-sm text-yellow-200/80">
+                        This is a Spotify track. Audio playback is not available for Spotify URLs in Live Listening.
+                        Only the host can hear this track. YouTube tracks work perfectly for all listeners!
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* YouTube Error Info */}
+                {!isYouTubeTrack && !isSpotifyTrack && (
+                  <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-xl p-4 flex items-start gap-3">
+                    <div className="text-red-500 mt-0.5">❌</div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-red-300 mb-1">Playback Not Available</p>
+                      <p className="text-sm text-red-200/80">
+                        This track cannot be played in Live Listening. Only YouTube tracks are supported for synchronized playback.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Album Art */}
                 <div className="flex flex-col items-center mb-6">
                   <div className="relative mb-6 group">
@@ -717,6 +764,11 @@ export const LiveListening = () => {
                   <p className="text-sm text-gray-500">
                     💡 Only {hostName} can control playback • You can adjust your volume
                   </p>
+                  {isYouTubeTrack && (
+                    <p className="text-xs text-green-400 mt-2">
+                      ✅ YouTube playback active - Audio synced with {hostName}
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
