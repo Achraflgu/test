@@ -453,6 +453,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     
                     // Try to find alternative version
                     if (currentTrack) {
+                      // Mark current id as blocked for this track
+                      const blockedForTrack = blockedYoutubeIdCacheRef.current.get(currentTrack.id) || new Set<string>();
+                      if (currentYoutubeIdRef.current) blockedForTrack.add(currentYoutubeIdRef.current);
+                      blockedYoutubeIdCacheRef.current.set(currentTrack.id, blockedForTrack);
+                      console.log('⛔ Marked blocked YT id for', currentTrack.name, currentYoutubeIdRef.current);
                       // Remove blocked id from cache so it is not reused
                       if (youtubeIdCache.has(currentTrack.id)) {
                         const newCache = new Map<string, string>(youtubeIdCache);
