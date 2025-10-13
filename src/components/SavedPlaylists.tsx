@@ -711,6 +711,13 @@ export const savePlaylistToHistory = async (
     const stored = localStorage.getItem(STORAGE_KEY);
     const playlists: SavedPlaylist[] = stored ? JSON.parse(stored) : [];
     
+    // Clean tracks: remove download status/progress before saving
+    const cleanTracks = tracks?.map(track => ({
+      ...track,
+      downloadStatus: 'pending',
+      downloadProgress: 0,
+    }));
+    
     // Check for duplicate name (case-insensitive)
     const existingPlaylist = playlists.find(p => p.name.toLowerCase() === name.toLowerCase());
     
@@ -733,7 +740,7 @@ export const savePlaylistToHistory = async (
                 trackCount,
                 owner,
                 description,
-                tracks,
+                tracks: cleanTracks,
                 lastLoaded: Date.now()
               }
             : p
@@ -755,7 +762,7 @@ export const savePlaylistToHistory = async (
       trackCount,
       owner,
       description,
-      tracks,
+      tracks: cleanTracks,
       savedAt: Date.now(),
       lastLoaded: Date.now(),
       isFavorite: false

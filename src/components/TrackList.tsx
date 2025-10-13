@@ -526,15 +526,22 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Save track list whenever it changes (skip if in private mode)
   useEffect(() => {
     if (tracks.length > 0 && !isPrivateMode) {
+      // Clean tracks: remove download status/progress before saving
+      const cleanTracks = tracks.map(track => ({
+        ...track,
+        downloadStatus: 'pending' as const, // Reset to pending
+        downloadProgress: 0,                 // Reset progress
+      }));
+      
       const trackList = {
-        tracks,
+        tracks: cleanTracks,
         playlistUrl,
         playlistName,
         playlistImages,
         timestamp: Date.now()
       };
       saveCurrentTrackList(trackList);
-      console.log('💾 Auto-saved tracklist to localStorage');
+      console.log('💾 Auto-saved tracklist to localStorage (without download states)');
     } else if (isPrivateMode) {
       console.log('🔒 Private mode: Skipping auto-save to localStorage');
     }
