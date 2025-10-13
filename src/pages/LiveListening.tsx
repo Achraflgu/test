@@ -363,14 +363,21 @@ export const LiveListening = () => {
         setHostName(data.hostName || 'Host');
         setListenerCount(data.listenerCount || 0);
         
+        // Sync initial state from host
         if (data.currentTrack) {
+          console.log('🎵 Initial track:', data.currentTrack.name);
+          console.log('🎮 Initial play state:', data.isPlaying ? 'Playing' : 'Paused');
+          console.log('⏱️ Initial time:', data.currentTime);
+          console.log('📏 Initial duration:', data.currentTrack.duration);
+          
           setCurrentTrack(data.currentTrack);
-          setIsPlaying(data.isPlaying);
+          setIsPlaying(data.isPlaying); // Match host's play/pause state
           setCurrentTime(data.currentTime || 0);
           setDuration(data.currentTrack.duration || 0);
         }
 
         if (data.queue) {
+          console.log('📋 Initial queue:', data.queue.length, 'tracks');
           setQueue(data.queue);
         }
 
@@ -390,12 +397,22 @@ export const LiveListening = () => {
         if (isTrackChange) {
           console.log('🎵 Track changed to:', data.currentTrack?.name);
           setCurrentTrack(data.currentTrack);
-          setDuration(data.currentTrack.duration || 0);
+          setDuration(data.currentTrack?.duration || 0);
           setCurrentTime(data.currentTime || 0);
+        } else if (data.currentTrack) {
+          // Same track, but update duration if it changed
+          const newDuration = data.currentTrack.duration || duration;
+          if (Math.abs(newDuration - duration) > 1) {
+            console.log('📏 Duration updated:', newDuration);
+            setDuration(newDuration);
+          }
         }
         
-        // Update play/pause state
-        console.log('🎮 Playback state:', data.isPlaying ? 'Playing' : 'Paused');
+        // Update play/pause state - CRITICAL for sync
+        const playStateChanged = data.isPlaying !== isPlaying;
+        if (playStateChanged) {
+          console.log('🎮 Playback state CHANGED:', data.isPlaying ? 'Playing' : 'Paused');
+        }
         setIsPlaying(data.isPlaying);
         
         // Sync time only if not track change and player is ready
@@ -421,6 +438,7 @@ export const LiveListening = () => {
         }
 
         if (data.queue) {
+          console.log('📋 Queue updated:', data.queue.length, 'tracks');
           setQueue(data.queue);
         }
 
@@ -544,8 +562,8 @@ export const LiveListening = () => {
         <div id="live-youtube-player"></div>
       </div>
 
-      {/* Background Layer */}
-      <div className="absolute inset-0 overflow-hidden">
+      {/* Background Layer - Full Screen */}
+      <div className="absolute inset-0 overflow-hidden -z-10">
         {backgroundMode === 'video' && videoId && (
           <div className="absolute inset-0" key={`video-${videoId}`}>
             <iframe
@@ -660,12 +678,12 @@ export const LiveListening = () => {
           )}
         </div>
 
-        {/* Main Content - Flex Container */}
-        <div className="flex-1 flex gap-6 px-6 pb-6 min-h-0 overflow-hidden">
-          {/* Main Player - Scrollable */}
-          <div className={`flex-1 overflow-y-auto overflow-x-hidden ${showQueue ? '' : 'mx-auto max-w-4xl'}`}>
+        {/* Main Content - Flex Container - FULLSCREEN */}
+        <div className="flex-1 flex gap-4 px-4 pb-4 min-h-0 overflow-hidden">
+          {/* Main Player - Scrollable - FULLSCREEN */}
+          <div className={`flex-1 overflow-y-auto overflow-x-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
-              <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl p-8 border border-purple-500/20">
+              <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-3xl p-12 border border-purple-500/20">
                 {/* Searching for YouTube version */}
                 {isSearching && isSpotifyTrack && (
                   <div className="mb-6 bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-start gap-3">
@@ -719,26 +737,26 @@ export const LiveListening = () => {
                   </div>
                 )}
                 
-                {/* Album Art */}
-                <div className="flex flex-col items-center mb-6">
-                  <div className="relative mb-6 group">
+                {/* Album Art - FULLSCREEN SIZE */}
+                <div className="flex flex-col items-center mb-8">
+                  <div className="relative mb-8 group">
                     <img
                       src={currentTrack.imageUrl}
                       alt={currentTrack.name}
-                      className="w-80 h-80 rounded-2xl shadow-2xl object-cover ring-4 ring-purple-500/30"
+                      className="w-96 h-96 md:w-[28rem] md:h-[28rem] rounded-3xl shadow-2xl object-cover ring-4 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                     />
                     {isPlaying && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-20 h-20 bg-purple-500/30 rounded-full flex items-center justify-center animate-pulse">
-                          <Music2 className="w-10 h-10 text-purple-400" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-24 h-24 bg-purple-500/30 rounded-full flex items-center justify-center animate-pulse">
+                          <Music2 className="w-12 h-12 text-purple-400" />
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <h2 className="text-3xl font-bold text-center mb-2">{currentTrack.name}</h2>
-                  <p className="text-xl text-gray-400 text-center">{currentTrack.artist}</p>
-                  <p className="text-sm text-gray-500">{currentTrack.album}</p>
+                  <h2 className="text-4xl md:text-5xl font-bold text-center mb-3 px-4">{currentTrack.name}</h2>
+                  <p className="text-2xl md:text-3xl text-gray-400 text-center mb-2">{currentTrack.artist}</p>
+                  <p className="text-base text-gray-500">{currentTrack.album}</p>
                 </div>
 
                 {/* Progress Bar */}
@@ -854,26 +872,30 @@ export const LiveListening = () => {
             )}
           </div>
 
-          {/* Queue Sidebar - Scrollable */}
+          {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
-            <div className="w-96 flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl border border-purple-500/20 overflow-hidden">
-              <div className="p-6 border-b border-purple-500/20 flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <List className="w-5 h-5 text-purple-400" />
-                  <h3 className="font-bold text-lg">Up Next</h3>
-                  {queue.length > 0 && (
-                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full font-semibold">
-                      {queue.length}
-                    </span>
-                  )}
+            <div className="w-96 md:w-[26rem] flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-3xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
+              <div className="p-6 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-500/20 rounded-lg">
+                    <List className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xl">Up Next</h3>
+                    {queue.length > 0 && (
+                      <p className="text-xs text-purple-400">
+                        {queue.length} track{queue.length !== 1 ? 's' : ''} in queue
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowQueue(false)}
-                  className="hover:bg-purple-500/20 h-8 w-8"
+                  className="hover:bg-purple-500/20 h-10 w-10"
                 >
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-5 h-5" />
                 </Button>
               </div>
 
@@ -886,33 +908,38 @@ export const LiveListening = () => {
                         <div
                           key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
-                          className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                          className={`flex items-center gap-4 p-4 rounded-xl transition-all cursor-default ${
                             isCurrentTrack
-                              ? 'bg-purple-500/30 border border-purple-500/50 scale-105'
-                              : 'bg-black/20 hover:bg-black/40'
+                              ? 'bg-gradient-to-r from-purple-500/40 to-blue-500/40 border-2 border-purple-500/60 scale-[1.02] shadow-lg'
+                              : 'bg-black/30 hover:bg-black/50 border border-transparent'
                           }`}
                         >
                           <div className="relative flex-shrink-0">
                             <img
                               src={track.imageUrl}
                               alt={track.name}
-                              className="w-12 h-12 rounded-md object-cover"
+                              className="w-16 h-16 rounded-lg object-cover shadow-md"
                             />
                             {isCurrentTrack && isPlaying && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-md">
-                                <Music className="w-5 h-5 text-purple-400 animate-pulse" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                                <Music className="w-6 h-6 text-purple-400 animate-pulse" />
+                              </div>
+                            )}
+                            {isCurrentTrack && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`font-medium text-sm truncate ${isCurrentTrack ? 'text-purple-300' : ''}`}>
+                            <p className={`font-semibold text-base truncate mb-1 ${isCurrentTrack ? 'text-purple-200' : 'text-white'}`}>
                               {track.name}
                             </p>
-                            <p className="text-xs text-gray-400 truncate">
+                            <p className="text-sm text-gray-400 truncate">
                               {track.artist}
                             </p>
                           </div>
-                          <span className="text-xs text-gray-500 flex-shrink-0">
+                          <span className="text-sm text-gray-500 flex-shrink-0 font-medium">
                             {formatTime(track.duration)}
                           </span>
                         </div>
