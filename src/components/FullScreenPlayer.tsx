@@ -187,6 +187,12 @@ export const FullScreenPlayer = ({
             },
             onError: (event: any) => {
               console.log('❌ Background video error:', event.data, 'for video:', videoId);
+              // Error 150 = embedding restricted, 101 = video not found
+              if (event.data === 150 || event.data === 101) {
+                console.log('🔄 Video cannot be embedded, falling back to artwork mode');
+                setBackgroundMode('artwork');
+                toast.error('Video embedding restricted. Switched to artwork mode.');
+              }
             }
           },
         });
@@ -231,6 +237,24 @@ export const FullScreenPlayer = ({
       console.log('Video sync error:', err);
     }
   }, [isPlaying, isVideoReady]);
+
+  // Sync video time when user seeks (only when there's a significant difference)
+  useEffect(() => {
+    if (!isVideoReady || !videoPlayerRef.current) return;
+
+    try {
+      const currentVideoTime = videoPlayerRef.current.getCurrentTime?.() || 0;
+      const timeDiff = Math.abs(currentVideoTime - currentTime);
+      
+      // Only seek if difference is significant (user manually seeked)
+      if (timeDiff > 3) {
+        console.log(`🎬 Syncing background video time: ${currentTime.toFixed(1)}s (diff: ${timeDiff.toFixed(1)}s)`);
+        videoPlayerRef.current.seekTo?.(currentTime, true);
+      }
+    } catch (err) {
+      console.log('Video time sync error:', err);
+    }
+  }, [currentTime, isVideoReady]);
 
   // Format time
   const formatTime = (seconds: number) => {
@@ -467,9 +491,9 @@ export const FullScreenPlayer = ({
         </div>
 
         {/* Center Content */}
-        <div className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 pb-8">
+        <div className="flex-1 flex flex-col items-center justify-center pb-8" style={{ padding: 'clamp(1rem, 3vw, 2rem)' }}>
           {/* Album Art */}
-          <div className="relative mb-8 md:mb-12 animate-in zoom-in duration-700">
+          <div className="relative animate-in zoom-in duration-700" style={{ marginBottom: 'clamp(2rem, 4vh, 3rem)' }}>
             <div 
               className="absolute inset-0 blur-3xl opacity-50 animate-pulse"
               style={{ background: dominantColor }}
@@ -478,7 +502,11 @@ export const FullScreenPlayer = ({
               <img
                 src={track.imageUrl}
                 alt={track.name}
-                className="w-64 h-64 md:w-96 md:h-96 rounded-3xl shadow-2xl ring-4 ring-white/10 object-cover"
+                className="rounded-3xl shadow-2xl ring-4 ring-white/10 object-cover"
+                style={{
+                  width: 'clamp(16rem, 30vw, 24rem)',
+                  height: 'clamp(16rem, 30vw, 24rem)'
+                }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/placeholder.svg';
                 }}
@@ -490,15 +518,30 @@ export const FullScreenPlayer = ({
           </div>
 
           {/* Track Info */}
-          <div className="text-center mb-8 md:mb-12 max-w-2xl animate-in slide-in-from-bottom duration-700">
-            <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-3 line-clamp-2">
+          <div className="text-center max-w-2xl animate-in slide-in-from-bottom duration-700" style={{ marginBottom: 'clamp(2rem, 4vh, 3rem)' }}>
+            <h1 
+              className="font-bold text-foreground line-clamp-2"
+              style={{ 
+                fontSize: 'clamp(1.5rem, 3.5vw, 3rem)',
+                marginBottom: 'clamp(0.5rem, 1vh, 0.75rem)'
+              }}
+            >
               {track.name}
             </h1>
-            <p className="text-lg md:text-2xl text-muted-foreground mb-2">
+            <p 
+              className="text-muted-foreground"
+              style={{ 
+                fontSize: 'clamp(1rem, 2vw, 1.5rem)',
+                marginBottom: 'clamp(0.25rem, 0.5vh, 0.5rem)'
+              }}
+            >
               {track.artist}
             </p>
             {track.album && (
-              <p className="text-sm md:text-base text-muted-foreground/70">
+              <p 
+                className="text-muted-foreground/70"
+                style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1rem)' }}
+              >
                 {track.album}
               </p>
             )}
