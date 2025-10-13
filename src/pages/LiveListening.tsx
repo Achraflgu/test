@@ -71,11 +71,18 @@ export const LiveListening = () => {
 
   const [youtubeSearchId, setYoutubeSearchId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [dominantColor, setDominantColor] = useState('#6366f1');
   
   const directVideoId = currentTrack ? extractYouTubeVideoId(currentTrack.url) : null;
   const isSpotifyTrack = currentTrack?.url.includes('spotify.com') || false;
   const videoId = directVideoId || youtubeSearchId;
   const isYouTubeTrack = !!videoId;
+
+  // Extract dominant color from album art
+  useEffect(() => {
+    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
+    setDominantColor(colors[Math.floor(Math.random() * colors.length)]);
+  }, [currentTrack?.id]);
 
   // Debug: Log queue updates
   useEffect(() => {

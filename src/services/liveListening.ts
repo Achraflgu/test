@@ -14,7 +14,7 @@ export class LiveListeningService {
   // Callbacks for various events
   private onRoomCreatedCallback: ((data: { roomId: string; room: LiveRoom }) => void) | null = null;
   private onRoomJoinedCallback: ((data: any) => void) | null = null;
-  private onPlaybackUpdatedCallback: ((data: { currentTrack: Track; currentTime: number; isPlaying: boolean }) => void) | null = null;
+  private onPlaybackUpdatedCallback: ((data: { currentTrack: Track; currentTime: number; isPlaying: boolean; queue?: Track[] }) => void) | null = null;
   private onListenerCountUpdatedCallback: ((data: { listenerCount: number }) => void) | null = null;
   private onRoomEndedCallback: ((data: { message: string }) => void) | null = null;
   private onRoomErrorCallback: ((data: { message: string }) => void) | null = null;
