@@ -619,68 +619,72 @@ export const LiveListening = () => {
 
       {/* Main Content */}
       <div className="relative h-full flex flex-col">
-        {/* Header - Like FullScreenPlayer */}
+        {/* Header */}
         <div className="flex items-center justify-between p-4 md:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-purple-500/20 rounded-xl backdrop-blur-sm">
-                <Radio className="w-6 h-6 text-purple-400 animate-pulse" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">
-                  🎧 Listening Live with {hostName}
-                </h1>
-                <p className="text-sm text-gray-400">Synchronized playback</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-purple-500/20 rounded-xl backdrop-blur-sm">
+              <Radio className="w-6 h-6 text-purple-400 animate-pulse" />
             </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 backdrop-blur-sm rounded-lg">
-                <Users className="w-5 h-5 text-purple-400" />
-                <span className="font-semibold">{listenerCount}</span>
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowQueue(!showQueue)}
-                className={`hover:bg-purple-500/20 ${showQueue ? 'bg-purple-500/20' : ''}`}
-                title="Toggle queue"
-              >
-                <List className="w-5 h-5" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowSettings(!showSettings)}
-                className="hover:bg-purple-500/20"
-                title="Display settings"
-                data-settings-button
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={handleLeaveRoom}
-                className="gap-2 bg-black/20 backdrop-blur-sm border-gray-700 hover:bg-black/40"
-              >
-                <LogOut className="w-4 h-4" />
-                Leave
-              </Button>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold">
+                🎧 Listening Live with {hostName}
+              </h1>
+              <p className="text-xs md:text-sm text-gray-400 flex items-center gap-2">
+                <Users className="w-4 h-4 text-purple-400" />
+                <span>{listenerCount} listening</span>
+                {isSyncing && (
+                  <>
+                    <span>•</span>
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-400 inline" />
+                    <span className="text-blue-400">Syncing...</span>
+                  </>
+                )}
+              </p>
             </div>
           </div>
 
-          {/* Syncing indicator */}
-          {isSyncing && (
-            <div className="mt-3">
-              <div className="bg-blue-500/20 border border-blue-500/50 backdrop-blur-sm rounded-lg px-4 py-2 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                <span className="text-sm text-blue-400">🔄 Syncing with {hostName}...</span>
-              </div>
-            </div>
-          )}
+          {/* Right side buttons */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowQueue(!showQueue)}
+              className={`h-10 w-10 rounded-full backdrop-blur-sm text-white transition-all ${
+                showQueue 
+                  ? 'bg-primary/40 hover:bg-primary/50 ring-2 ring-primary/30' 
+                  : 'bg-black/20 hover:bg-black/40'
+              }`}
+              title="Toggle queue"
+            >
+              <List className="w-5 h-5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              data-settings-button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSettings(prev => !prev);
+              }}
+              className={`h-10 w-10 rounded-full backdrop-blur-sm text-white transition-all ${
+                showSettings 
+                  ? 'bg-primary/40 hover:bg-primary/50 ring-2 ring-primary/30' 
+                  : 'bg-black/20 hover:bg-black/40'
+              }`}
+            >
+              <Settings className={`w-5 h-5 transition-transform ${showSettings ? 'rotate-90' : ''}`} />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLeaveRoom}
+              className="h-10 w-10 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 text-white"
+            >
+              <X className="w-6 h-6" />
+            </Button>
+          </div>
         </div>
 
         {/* Main Content - Flex Container - FULLSCREEN NO SCROLL */}
@@ -689,56 +693,13 @@ export const LiveListening = () => {
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
             {currentTrack ? (
               <div className="w-full max-w-5xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-3xl p-4 md:p-8 lg:p-12 border border-purple-500/20 flex flex-col justify-center h-full">
-                {/* Searching for YouTube version */}
-                {isSearching && isSpotifyTrack && (
-                  <div className="mb-6 bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-start gap-3">
-                    <Loader2 className="w-5 h-5 text-blue-400 animate-spin mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-blue-300 mb-1">Finding YouTube Version...</p>
-                      <p className="text-sm text-blue-200/80">
-                        Searching for "{currentTrack?.artist} - {currentTrack?.name}" on YouTube...
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Spotify track with YouTube ID */}
-                {isSpotifyTrack && youtubeSearchId && !isSearching && (
-                  <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-xl p-4 flex items-start gap-3">
-                    <div className="text-green-400 mt-0.5">✅</div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-green-300 mb-1">Playing YouTube Version</p>
-                      <p className="text-sm text-green-200/80">
-                        Spotify track converted to YouTube for synchronized playback. Audio is synced with {hostName}!
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Spotify Warning - No YouTube ID */}
-                {isSpotifyTrack && !youtubeSearchId && !isSearching && (
-                  <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-start gap-3">
-                    <div className="text-yellow-500 mt-0.5">⚠️</div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-yellow-300 mb-1">Spotify Track - No YouTube Version</p>
-                      <p className="text-sm text-yellow-200/80">
-                        This Spotify track doesn't have a YouTube version available. Only the host can hear this track.
-                        The host should download tracks with YouTube support for Live Listening!
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* YouTube Error Info */}
-                {!isYouTubeTrack && !isSpotifyTrack && !isSearching && (
-                  <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-xl p-4 flex items-start gap-3">
-                    <div className="text-red-500 mt-0.5">❌</div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-red-300 mb-1">Playback Not Available</p>
-                      <p className="text-sm text-red-200/80">
-                        This track cannot be played in Live Listening. Only YouTube tracks are supported for synchronized playback.
-                      </p>
-                    </div>
+                {/* Playing YouTube Version - Green status */}
+                {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
+                  <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-3">
+                    <div className="text-green-400">✅</div>
+                    <p className="text-sm text-green-300">
+                      Synced playback active • Audio playing from {isSpotifyTrack ? 'YouTube (converted)' : 'YouTube'}
+                    </p>
                   </div>
                 )}
                 
