@@ -63,6 +63,8 @@ export const FullScreenPlayer = ({
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [queueState, setQueueState] = useState<QueueState>('open');
   const settingsRef = useRef<HTMLDivElement>(null);
+  const videoPlayerRef = useRef<any>(null);
+  const [isVideoReady, setIsVideoReady] = useState(false);
 
   // Extract YouTube video ID
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -80,6 +82,78 @@ export const FullScreenPlayer = ({
 
   const isYouTubeTrack = track.url.includes('youtube.com') || track.url.includes('youtu.be');
   const videoId = isYouTubeTrack ? extractYouTubeVideoId(track.url) : null;
+
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+  }, []);
+
+  // Initialize YouTube player for background video
+  useEffect(() => {
+    if (backgroundMode !== 'video' || !videoId) {
+      videoPlayerRef.current = null;
+      setIsVideoReady(false);
+      return;
+    }
+
+    const initPlayer = () => {
+      if (window.YT && window.YT.Player) {
+        try {
+          videoPlayerRef.current = new window.YT.Player('bg-video-player', {
+            events: {
+              onReady: (event: any) => {
+                setIsVideoReady(true);
+                event.target.mute();
+                if (isPlaying) {
+                  event.target.playVideo();
+                } else {
+                  event.target.pauseVideo();
+                }
+              },
+            },
+          });
+        } catch (err) {
+          console.log('YouTube player init error:', err);
+        }
+      }
+    };
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = initPlayer;
+    }
+
+    return () => {
+      if (videoPlayerRef.current?.destroy) {
+        try {
+          videoPlayerRef.current.destroy();
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
+    };
+  }, [backgroundMode, videoId]);
+
+  // Sync video play/pause with music
+  useEffect(() => {
+    if (!isVideoReady || !videoPlayerRef.current) return;
+
+    try {
+      if (isPlaying) {
+        videoPlayerRef.current.playVideo?.();
+      } else {
+        videoPlayerRef.current.pauseVideo?.();
+      }
+    } catch (err) {
+      console.log('Video sync error:', err);
+    }
+  }, [isPlaying, isVideoReady]);
 
   // Format time
   const formatTime = (seconds: number) => {
@@ -189,10 +263,11 @@ export const FullScreenPlayer = ({
       {/* Background Layer */}
       <div className="absolute inset-0 overflow-hidden">
         {backgroundMode === 'video' && videoId ? (
-          /* YouTube Video Background - Enhanced Visibility */
+          /* YouTube Video Background - Enhanced Visibility with Sync */
           <div className="absolute inset-0">
             <iframe
-              src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
+              id="bg-video-player"
+              src={`https://www.youtube.com/embed/${videoId}?autoplay=${isPlaying ? 1 : 0}&mute=1&controls=0&loop=1&playlist=${videoId}&enablejsapi=1&modestbranding=1&rel=0`}
               className="absolute inset-0 w-full h-full object-cover scale-125 blur-sm opacity-40"
               allow="autoplay"
               title="Background Video"
