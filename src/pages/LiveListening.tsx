@@ -853,25 +853,28 @@ export const LiveListening = () => {
                   style={{ marginBottom: 'clamp(0.5rem, 1.5vw, 1.5rem)' }}
                 >
                   <div 
-                    className="relative group"
+                    className="relative animate-in zoom-in duration-700"
                     style={{ marginBottom: 'clamp(0.5rem, 1vw, 1rem)' }}
                   >
-                    <img
-                      src={currentTrack.imageUrl}
-                      alt={currentTrack.name}
-                      className="rounded-lg shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
-                      style={{
-                        width: 'clamp(8rem, 16vw, 15rem)',
-                        height: 'clamp(8rem, 16vw, 15rem)'
-                      }}
+                    {/* Glow effect behind album art */}
+                    <div 
+                      className="absolute inset-0 blur-3xl opacity-50 animate-pulse"
+                      style={{ background: dominantColor }}
                     />
-                    {isPlaying && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl md:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-16 h-16 md:w-24 md:h-24 bg-purple-500/30 rounded-full flex items-center justify-center animate-pulse">
-                          <Music2 className="w-8 h-8 md:w-12 md:h-12 text-purple-400" />
-                        </div>
-                      </div>
-                    )}
+                    <div className="relative">
+                      <img
+                        src={currentTrack.imageUrl}
+                        alt={currentTrack.name}
+                        className="rounded-3xl shadow-2xl object-cover ring-4 ring-white/10"
+                        style={{
+                          width: 'clamp(8rem, 16vw, 15rem)',
+                          height: 'clamp(8rem, 16vw, 15rem)'
+                        }}
+                      />
+                      {isPlaying && (
+                        <div className="absolute inset-0 rounded-3xl border-4 border-primary/30 animate-pulse" />
+                      )}
+                    </div>
                   </div>
 
                   <h2 
