@@ -831,21 +831,12 @@ export const LiveListening = () => {
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
              {currentTrack ? (
               <div 
-                className="w-full backdrop-blur-xl rounded-xl md:rounded-2xl border flex flex-col justify-center h-full relative overflow-hidden bg-black/20"
+                className="w-full flex flex-col justify-center h-full"
                 style={{
                   maxWidth: 'clamp(28rem, 40vw, 50rem)',
-                  padding: 'clamp(0.625rem, 1.25vw, 1.25rem)',
-                  borderColor: `${dominantColor}20`
+                  padding: 'clamp(0.625rem, 1.25vw, 1.25rem)'
                 }}
               >
-                {/* Subtle inner glow */}
-                <div 
-                  className="absolute inset-0 opacity-5 pointer-events-none"
-                  style={{ background: `radial-gradient(circle at 50% 50%, ${dominantColor}, transparent 60%)` }}
-                />
-                
-                {/* Content wrapper */}
-                <div className="relative z-10">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
                   <div className="mb-2 md:mb-3 bg-green-500/10 border border-green-500/30 rounded-lg p-2 flex items-center gap-2">
@@ -1022,7 +1013,6 @@ export const LiveListening = () => {
                     </p>
                   )}
                 </div>
-                </div>
               </div>
             ) : (
               <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl p-16 border border-purple-500/20 text-center">
@@ -1069,7 +1059,7 @@ export const LiveListening = () => {
                         <div
                           key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
-                          className={`group flex items-center gap-2 md:gap-3 p-2.5 rounded-xl transition-all hover:scale-[1.02] cursor-default ${
+                          className={`group flex items-center gap-3 p-2.5 rounded-xl transition-all hover:scale-[1.02] cursor-default ${
                             isCurrentTrack
                               ? 'bg-primary/20 border-2 border-primary/40 shadow-lg shadow-primary/20'
                               : 'bg-secondary/30 hover:bg-secondary/60 border-2 border-transparent hover:border-primary/20'
