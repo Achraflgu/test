@@ -89,6 +89,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [reorderPosition, setReorderPosition] = useState<number>(1);
   
+  // 🔍 Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  
   // Keyboard shortcut: "F" to toggle fullscreen
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -2277,14 +2280,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     
     // Save to storage
-    saveCurrentTrackList(newTracks);
+    saveCurrentTrackList({
+      tracks: newTracks,
+      playlistUrl,
+      playlistName,
+      playlistImages,
+      timestamp: Date.now()
+    });
     
     toast.success(`✅ Moved ${selectedCount} track${selectedCount > 1 ? 's' : ''} to position ${targetPosition}`);
     setShowReorderDialog(false);
   };
 
+  // 🔍 Filter tracks by search query
+  const filteredTracks = tracks.filter(track => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      track.name.toLowerCase().includes(query) ||
+      track.artist.toLowerCase().includes(query) ||
+      track.album?.toLowerCase().includes(query)
+    );
+  });
+
   // Sort tracks: completed first, then downloading, then pending, then failed
-  const sortedTracks = [...tracks].sort((a, b) => {
+  const sortedTracks = [...filteredTracks].sort((a, b) => {
     const statusOrder = { completed: 0, downloading: 1, pending: 2, failed: 3 };
     const aOrder = statusOrder[a.downloadStatus || 'pending'];
     const bOrder = statusOrder[b.downloadStatus || 'pending'];
@@ -2320,7 +2340,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </div>
         )}
         
-        {/* Modern Header with Gradient */}
+        {/* 🎨 Enhanced Professional Header with Search */}
         <div className="relative p-6 md:p-8 border-b border-border bg-gradient-to-br from-card via-secondary/10 to-primary/5 overflow-hidden">
           {/* Animated Background Pattern */}
           <div className="absolute inset-0 opacity-5">
@@ -2329,9 +2349,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </div>
 
           {/* Header Content */}
-          <div className="relative z-10">
-            {/* Title Row */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-6">
+          <div className="relative z-10 space-y-6">
+            {/* Top Row: Title & Quick Actions */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Left: Title & Icon */}
               <div className="flex items-center gap-4">
                 <div className="relative group">
                   <div className="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-500"></div>
@@ -2339,103 +2360,108 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     <Music2 className="w-6 h-6 text-primary" />
                   </div>
                 </div>
-
-      {/* Bottom-left Download Tray */}
-      {showDownloadTray && recentDownloads.length > 0 && (
-        <div className="fixed bottom-4 left-4 z-50 w-72 max-w-[85vw] bg-card/95 backdrop-blur border border-border rounded-xl shadow-xl">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Download className="w-4 h-4" /> Downloads
-            </div>
-            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowDownloadTray(false)}>Hide</button>
-          </div>
-          <div className="max-h-64 overflow-auto p-2">
-            {recentDownloads.map(d => (
-              <div key={d.id} className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-secondary/50">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{d.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{new Date(d.time).toLocaleTimeString()}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="ghost" className="text-xs" onClick={() => window.open(d.url, '_blank')}>
-                    Open
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                      Track List
-                    </h3>
-                    <div className="flex items-center gap-2 bg-secondary/70 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-border/50 hover:border-primary/50 transition-colors">
-                      <Checkbox
-                        checked={allSelected}
-                        onCheckedChange={toggleSelectAll}
-                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                      />
-                      <span className="text-xs md:text-sm font-medium whitespace-nowrap">
-                        {allSelected ? 'Deselect All' : 'Select All'}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setExpanded(!expanded)}
-                      className="h-8 w-8 p-0 hover:bg-secondary/50 rounded-lg lg:hidden"
-                    >
-                      {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                <div>
+                  <h3 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+                    Track List
+                  </h3>
+                  <div className="flex items-center gap-2 mt-1">
                     {selectedCount > 0 ? (
-                      <span className="text-sm md:text-base font-semibold text-primary flex items-center gap-1.5">
+                      <span className="text-sm font-semibold text-primary flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
                         {selectedCount} selected
                       </span>
                     ) : (
                       <span className="text-sm text-muted-foreground flex items-center gap-1.5">
                         <Music2 className="w-3.5 h-3.5" />
-                        {tracks.length} tracks
+                        {filteredTracks.length} {searchQuery ? `of ${tracks.length}` : ''} tracks
                       </span>
                     )}
                     <span className="text-xs text-muted-foreground/50">•</span>
-                    <span className="text-xs md:text-sm text-muted-foreground font-mono">
+                    <span className="text-xs text-muted-foreground font-mono">
                       {settings.format.toUpperCase()}
-                    </span>
-                    <span className="text-xs text-muted-foreground/50">•</span>
-                    <span className="text-xs md:text-sm text-muted-foreground font-mono">
-                      {settings.quality}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Collapse Button for Desktop */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setExpanded(!expanded)}
-                className="hidden lg:flex items-center gap-2 hover:bg-secondary/50 rounded-lg px-3 py-2"
-              >
-                {expanded ? (
-                  <>
-                    <ChevronUp className="w-4 h-4" />
-                    <span className="text-sm">Collapse</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4" />
-                    <span className="text-sm">Expand</span>
-                  </>
-                )}
-              </Button>
+              {/* Right: Select All & Collapse */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-secondary/70 backdrop-blur-sm px-3 py-2 rounded-lg border border-border/50 hover:border-primary/50 transition-colors">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleSelectAll}
+                    className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                  <span className="text-sm font-medium whitespace-nowrap">
+                    {allSelected ? 'Deselect All' : 'Select All'}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExpanded(!expanded)}
+                  className="h-10 w-10 p-0 hover:bg-secondary/50 rounded-lg lg:hidden"
+                >
+                  {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
 
-            {/* Action Buttons - Enhanced Responsive Grid */}
+            {/* Search Bar */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                <Music className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <Input
+                type="text"
+                placeholder="Search by track name, artist, or album..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-10 h-12 bg-secondary/50 border-border/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-xl text-base"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Stats Bar */}
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/50 rounded-lg border border-border/30">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-muted-foreground">Ready</span>
+              </div>
+              {completedCount > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-lg border border-green-500/30">
+                  <Check className="w-4 h-4 text-green-500" />
+                  <span className="text-green-500 font-medium">{completedCount} completed</span>
+                </div>
+              )}
+              {failedCount > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 rounded-lg border border-red-500/30">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <span className="text-red-500 font-medium">{failedCount} failed</span>
+                </div>
+              )}
+              {searchQuery && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 rounded-lg border border-blue-500/30">
+                  <Music className="w-4 h-4 text-blue-500" />
+                  <span className="text-blue-500 font-medium">
+                    {filteredTracks.length} result{filteredTracks.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons - Enhanced Responsive Grid */}
+        {expanded && (
+          <div className="relative p-4 md:p-6 border-b border-border bg-gradient-to-br from-secondary/5 to-transparent">
             <div className={`grid grid-cols-2 sm:grid-cols-3 ${isPrivateMode ? 'lg:grid-cols-3' : 'lg:grid-cols-5'} gap-2.5`}>
               {/* Play All */}
               <Button
@@ -2559,46 +2585,46 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   </Button>
                 </>
               )}
+
+              {/* Overall Progress */}
+              {(completedCount > 0 || failedCount > 0) && (
+                <div className="col-span-full space-y-3 mt-4">
+                  <Progress value={overallProgress} className="h-2" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-6 text-sm font-medium">
+                      {completedCount > 0 && (
+                        <span className="text-success flex items-center gap-2">
+                          <Check className="w-4 h-4" />
+                          {completedCount} completed
+                        </span>
+                      )}
+                      {failedCount > 0 && (
+                        <span className="text-destructive flex items-center gap-2">
+                          <X className="w-4 h-4" />
+                          {failedCount} failed
+                        </span>
+                      )}
+                      <span className="text-muted-foreground">
+                        {Math.round(overallProgress)}% complete
+                      </span>
+                    </div>
+                    {failedCount > 0 && !downloading && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowFailedTracksDialog(true)}
+                        className="border-destructive/50 text-destructive hover:bg-destructive/10 rounded-lg"
+                      >
+                        <Terminal className="w-3 h-3 mr-1" />
+                        Show Fallback Commands
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Overall Progress */}
-          {(completedCount > 0 || failedCount > 0) && (
-            <div className="space-y-3">
-              <Progress value={overallProgress} className="h-2" />
-              <div className="flex items-center justify-between">
-                <div className="flex gap-6 text-sm font-medium">
-                  {completedCount > 0 && (
-                    <span className="text-success flex items-center gap-2">
-                      <Check className="w-4 h-4" />
-                      {completedCount} completed
-                    </span>
-                  )}
-                  {failedCount > 0 && (
-                    <span className="text-destructive flex items-center gap-2">
-                      <X className="w-4 h-4" />
-                      {failedCount} failed
-                    </span>
-                  )}
-                  <span className="text-muted-foreground">
-                    {Math.round(overallProgress)}% complete
-                  </span>
-                </div>
-                {failedCount > 0 && !downloading && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowFailedTracksDialog(true)}
-                    className="border-destructive/50 text-destructive hover:bg-destructive/10 rounded-lg"
-                  >
-                    <Terminal className="w-3 h-3 mr-1" />
-                    Show Fallback Commands
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Track List */}
         {expanded && (
