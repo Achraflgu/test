@@ -750,18 +750,25 @@ export const LiveListening = () => {
 
       {/* Main Content */}
       <div className="relative h-full flex flex-col">
-        {/* Header */}
+         {/* Header */}
         <div className="flex items-center justify-between p-4 md:p-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-purple-500/20 rounded-xl backdrop-blur-sm">
-              <Radio className="w-6 h-6 text-purple-400 animate-pulse" />
+            <div 
+              className="p-3 rounded-xl backdrop-blur-sm relative overflow-hidden"
+              style={{ backgroundColor: `${dominantColor}25` }}
+            >
+              <div 
+                className="absolute inset-0 blur-xl opacity-30"
+                style={{ background: `radial-gradient(circle, ${dominantColor}, transparent)` }}
+              />
+              <Radio className="w-6 h-6 animate-pulse relative z-10" style={{ color: dominantColor }} />
             </div>
             <div>
               <h1 className="text-xl md:text-2xl font-bold">
                 🎧 Listening Live with {hostName}
               </h1>
               <p className="text-xs md:text-sm text-gray-400 flex items-center gap-2">
-                <Users className="w-4 h-4 text-purple-400" />
+                <Users className="w-4 h-4" style={{ color: `${dominantColor}cc` }} />
                 <span>{listenerCount} listening</span>
                 {isSyncing && (
                   <>
@@ -822,14 +829,24 @@ export const LiveListening = () => {
         <div className="flex-1 flex gap-2 md:gap-4 px-2 md:px-4 pb-2 md:pb-4 min-h-0 overflow-hidden">
           {/* Main Player - NO SCROLL - FULLY RESPONSIVE */}
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
-            {currentTrack ? (
+             {currentTrack ? (
               <div 
-                className="w-full bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl border border-purple-500/20 flex flex-col justify-center h-full"
+                className="w-full backdrop-blur-2xl rounded-xl md:rounded-2xl border flex flex-col justify-center h-full relative overflow-hidden"
                 style={{
                   maxWidth: 'clamp(28rem, 40vw, 50rem)',
-                  padding: 'clamp(0.625rem, 1.25vw, 1.25rem)'
+                  padding: 'clamp(0.625rem, 1.25vw, 1.25rem)',
+                  background: `linear-gradient(135deg, ${dominantColor}15 0%, ${dominantColor}08 50%, transparent 100%)`,
+                  borderColor: `${dominantColor}30`
                 }}
               >
+                {/* Dynamic glow effect */}
+                <div 
+                  className="absolute inset-0 blur-3xl opacity-20 pointer-events-none"
+                  style={{ background: `radial-gradient(circle at 50% 0%, ${dominantColor}, transparent 70%)` }}
+                />
+                
+                {/* Content wrapper */}
+                <div className="relative z-10">
                 {/* Playing YouTube Version - Green status */}
                 {(isYouTubeTrack || (isSpotifyTrack && youtubeSearchId)) && !isSearching && (
                   <div className="mb-2 md:mb-3 bg-green-500/10 border border-green-500/30 rounded-lg p-2 flex items-center gap-2">
@@ -1006,6 +1023,7 @@ export const LiveListening = () => {
                     </p>
                   )}
                 </div>
+                </div>
               </div>
             ) : (
               <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-2xl rounded-3xl p-16 border border-purple-500/20 text-center">
@@ -1018,16 +1036,37 @@ export const LiveListening = () => {
 
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
-            <div className="w-60 [@media(min-width:1600px)]:w-72 [@media(min-width:1920px)]:w-80 [@media(min-width:2560px)]:w-96 flex-shrink-0 flex flex-col bg-gradient-to-br from-purple-900/50 to-blue-900/50 backdrop-blur-3xl rounded-xl [@media(min-width:1920px)]:rounded-2xl border-2 border-purple-500/30 overflow-hidden shadow-2xl">
-              <div className="p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-5 border-b border-purple-500/30 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+            <div 
+              className="w-72 md:w-80 lg:w-96 flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-xl [@media(min-width:1920px)]:rounded-2xl border-2 overflow-hidden shadow-2xl relative"
+              style={{
+                background: `linear-gradient(135deg, ${dominantColor}20 0%, ${dominantColor}10 100%)`,
+                borderColor: `${dominantColor}40`
+              }}
+            >
+              {/* Dynamic glow */}
+              <div 
+                className="absolute inset-0 blur-2xl opacity-10 pointer-events-none"
+                style={{ background: `radial-gradient(circle at 50% 0%, ${dominantColor}, transparent 60%)` }}
+              />
+              
+              <div 
+                className="p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-5 border-b flex items-center justify-between flex-shrink-0 relative z-10"
+                style={{
+                  borderColor: `${dominantColor}30`,
+                  background: `linear-gradient(to right, ${dominantColor}15, ${dominantColor}08)`
+                }}
+              >
                 <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-1.5 md:p-2 bg-purple-500/20 rounded-lg">
-                    <List className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
+                  <div 
+                    className="p-1.5 md:p-2 rounded-lg"
+                    style={{ backgroundColor: `${dominantColor}30` }}
+                  >
+                    <List className="w-4 h-4 md:w-5 md:h-5" style={{ color: dominantColor }} />
                   </div>
                   <div>
                     <h3 className="font-bold text-base md:text-lg">Up Next</h3>
                     {queue.length > 0 && (
-                      <p className="text-[10px] md:text-xs text-purple-400">
+                      <p className="text-[10px] md:text-xs" style={{ color: `${dominantColor}cc` }}>
                         {queue.length} track{queue.length !== 1 ? 's' : ''} in queue
                       </p>
                     )}
@@ -1037,14 +1076,19 @@ export const LiveListening = () => {
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowQueue(false)}
-                  className="hover:bg-purple-500/20 h-8 w-8 md:h-10 md:w-10"
+                  className="h-8 w-8 md:h-10 md:w-10 transition-colors"
+                  style={{ 
+                    '--hover-bg': `${dominantColor}20` 
+                  } as React.CSSProperties}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `${dominantColor}20`}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <ChevronDown className="w-4 h-4 md:w-5 md:h-5" />
                 </Button>
               </div>
 
-              <ScrollArea className="flex-1 overflow-y-auto" ref={queueContainerRef} key={`queue-${queue.length}`}>
-                <div className="p-3 space-y-2">
+              <ScrollArea className="flex-1 overflow-y-auto relative z-10" ref={queueContainerRef} key={`queue-${queue.length}`}>
+                <div className="p-3 space-y-2 scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent">
                   {queue.length > 0 ? (
                     queue.map((track, index) => {
                       const isCurrentTrack = track.id === currentTrack?.id;

@@ -212,10 +212,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             // If no URL, try using the track's youtubeId or id directly
             if (!youtubeId) {
               youtubeId = restoredTrack.youtubeId || restoredTrack.id;
-              
+            
               // Remove "search-" prefix if present (from YouTube search results)
               if (youtubeId && youtubeId.startsWith('search-')) {
-                youtubeId = youtubeId.replace('search-', '');
+              youtubeId = youtubeId.replace('search-', '');
                 console.log('🔧 [2/5] Cleaned search ID:', youtubeId);
               }
             }
@@ -548,9 +548,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 duration: 4000
               });
             } else {
-              toast.error('Could not restore player', {
+            toast.error('Could not restore player', {
                 description: 'Track info saved, click ▶️ Play to start'
-              });
+            });
             }
           }
         };
@@ -850,7 +850,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     // 🔥 FIX: Don't reset time if we have a pending seek (Spotify restoration)
     if (pendingSeekTimeRef.current === null) {
-      setCurrentTime(0);
+    setCurrentTime(0);
     } else {
       console.log('⏱️ Keeping current time for pending seek:', pendingSeekTimeRef.current + 's');
     }
@@ -956,18 +956,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           });
         }
         
-        playerRef.current.loadVideoById(youtubeId);
-        // Set volume after a short delay to ensure it's applied after video loads
-        setTimeout(() => {
+      playerRef.current.loadVideoById(youtubeId);
+      // Set volume after a short delay to ensure it's applied after video loads
+      setTimeout(() => {
           if (playerRef.current && playerRef.current.setVolume) {
-            playerRef.current.setVolume(volumeRef.current);
-            if (isMutedRef.current) {
-              playerRef.current.mute();
-            } else {
-              playerRef.current.unMute();
-            }
+          playerRef.current.setVolume(volumeRef.current);
+          if (isMutedRef.current) {
+            playerRef.current.mute();
+          } else {
+            playerRef.current.unMute();
           }
-        }, 100);
+        }
+      }, 100);
         return; // Successfully loaded, exit early
       } catch (error) {
         console.error('❌ Error loading video, recreating player:', error);
@@ -1034,7 +1034,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 pendingSeekTimeRef.current = null;
               }, 1000);
             } else {
-              event.target.playVideo();
+            event.target.playVideo();
             }
           },
           onStateChange: (event: any) => {
@@ -1281,12 +1281,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     
     try {
-      if (isPlaying) {
-        playerRef.current.pauseVideo();
-        setIsPlaying(false);
-      } else {
-        playerRef.current.playVideo();
-        setIsPlaying(true);
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+      setIsPlaying(false);
+    } else {
+      playerRef.current.playVideo();
+      setIsPlaying(true);
       }
     } catch (error) {
       console.error('❌ togglePlayPause error:', error);
@@ -1335,8 +1335,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const seekTo = (time: number) => {
     if (playerRef.current && playerRef.current.seekTo && typeof playerRef.current.seekTo === 'function') {
       try {
-        playerRef.current.seekTo(time, true);
-        setCurrentTime(time);
+      playerRef.current.seekTo(time, true);
+      setCurrentTime(time);
         // If hosting a live session, immediately propagate seek (even when paused)
         if (isLiveHost && liveRoomId) {
           try {
@@ -1379,12 +1379,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const changeVolume = (newVolume: number) => {
     if (playerRef.current && playerRef.current.setVolume && typeof playerRef.current.setVolume === 'function') {
       try {
-        playerRef.current.setVolume(newVolume);
-        setVolume(newVolume);
-        if (newVolume > 0 && isMuted) {
-          setIsMuted(false);
+      playerRef.current.setVolume(newVolume);
+      setVolume(newVolume);
+      if (newVolume > 0 && isMuted) {
+        setIsMuted(false);
           if (playerRef.current.unMute) {
-            playerRef.current.unMute();
+        playerRef.current.unMute();
           }
         }
       } catch (error) {
@@ -2005,7 +2005,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
             // Auto-start download in a new tab immediately
-            window.open(fullDownloadUrl, '_blank');
+                  window.open(fullDownloadUrl, '_blank');
             
             // Add to tray
             setRecentDownloads(prev => [{ id: data.downloadId, name: getFolderName(data.outputFolder), url: fullDownloadUrl, time: Date.now() }, ...prev].slice(0, 5));
@@ -2232,8 +2232,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <div className="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-500"></div>
                   <div className="relative p-3 bg-gradient-to-br from-primary/20 to-accent/20 rounded-xl backdrop-blur-sm">
                     <Music2 className="w-6 h-6 text-primary" />
-        </div>
-      </div>
+                  </div>
+                </div>
 
       {/* Bottom-left Download Tray */}
       {showDownloadTray && recentDownloads.length > 0 && (
@@ -2362,34 +2362,34 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
               {/* Remove Duplicates - Hidden in Preview Mode */}
               {!isPrivateMode && (
-                <Button
-                  onClick={findDuplicates}
-                  disabled={downloading || tracks.length < 2}
-                  variant="outline"
-                  className="group relative h-11 border-2 border-accent/40 text-accent hover:bg-accent hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                  title="Find and remove duplicate tracks"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <CheckCircle2 className="w-4 h-4 mr-1.5 relative z-10" />
-                  <span className="hidden xl:inline relative z-10">Duplicates</span>
-                  <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
-                </Button>
+              <Button
+                onClick={findDuplicates}
+                disabled={downloading || tracks.length < 2}
+                variant="outline"
+                className="group relative h-11 border-2 border-accent/40 text-accent hover:bg-accent hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-accent/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                title="Find and remove duplicate tracks"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                <CheckCircle2 className="w-4 h-4 mr-1.5 relative z-10" />
+                <span className="hidden xl:inline relative z-10">Duplicates</span>
+                <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
+              </Button>
               )}
 
               {/* Remove Selected - Hidden in Preview Mode */}
               {!isPrivateMode && (
-                <Button
-                  onClick={removeSelected}
-                  disabled={downloading || selectedCount === 0}
-                  variant="outline"
-                  className="group relative h-11 border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                  title="Remove selected tracks from the list"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-destructive/0 via-destructive/20 to-destructive/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <X className="w-4 h-4 mr-1.5 relative z-10" />
-                  <span className="hidden xl:inline relative z-10">Remove</span>
-                  <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
-                </Button>
+              <Button
+                onClick={removeSelected}
+                disabled={downloading || selectedCount === 0}
+                variant="outline"
+                className="group relative h-11 border-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                title="Remove selected tracks from the list"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-destructive/0 via-destructive/20 to-destructive/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                <X className="w-4 h-4 mr-1.5 relative z-10" />
+                <span className="hidden xl:inline relative z-10">Remove</span>
+                <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
+              </Button>
               )}
 
               {/* Reset Session - moved from here to PlaylistHeader */}
