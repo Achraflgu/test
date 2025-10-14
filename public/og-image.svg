@@ -1,0 +1,64 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ec4899;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Radial overlay -->
+    <radialGradient id="radialOverlay">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.3" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGradient)"/>
+  <rect width="1200" height="630" fill="url(#radialOverlay)"/>
+  
+  <!-- Decorative circles -->
+  <circle cx="100" cy="100" r="120" fill="#ffffff" opacity="0.05"/>
+  <circle cx="1100" cy="530" r="150" fill="#ffffff" opacity="0.05"/>
+  <circle cx="900" cy="100" r="80" fill="#ffffff" opacity="0.08"/>
+  
+  <!-- Music wave decoration -->
+  <path d="M 0 315 Q 150 280 300 315 T 600 315 T 900 315 T 1200 315" stroke="#ffffff" stroke-width="3" fill="none" opacity="0.2"/>
+  <path d="M 0 330 Q 150 360 300 330 T 600 330 T 900 330 T 1200 330" stroke="#ffffff" stroke-width="3" fill="none" opacity="0.2"/>
+  
+  <!-- Music Note Icon -->
+  <g transform="translate(500, 180)">
+    <!-- Note stem -->
+    <rect x="35" y="0" width="8" height="70" fill="#ffffff" rx="4"/>
+    <!-- Note head -->
+    <ellipse cx="30" cy="75" rx="18" ry="13" fill="#ffffff"/>
+    <!-- Second note stem -->
+    <rect x="65" y="15" width="8" height="60" fill="#ffffff" rx="4"/>
+    <!-- Second note head -->
+    <ellipse cx="60" cy="80" rx="18" ry="13" fill="#ffffff"/>
+    <!-- Connecting beam -->
+    <path d="M 43 0 L 73 15 L 73 25 L 43 10 Z" fill="#ffffff"/>
+  </g>
+  
+  <!-- Title -->
+  <text x="600" y="320" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#ffffff" text-anchor="middle">
+    TrackMiner
+  </text>
+  
+  <!-- Subtitle -->
+  <text x="600" y="380" font-family="Arial, sans-serif" font-size="32" fill="#ffffff" text-anchor="middle" opacity="0.95">
+    Multi-Source Music Downloader
+  </text>
+  
+  <!-- Features -->
+  <text x="600" y="440" font-family="Arial, sans-serif" font-size="24" fill="#ffffff" text-anchor="middle" opacity="0.85">
+    🎵 Spotify &amp; YouTube • 320kbps Quality • Live Listening
+  </text>
+  
+  <!-- Bottom tagline -->
+  <text x="600" y="560" font-family="Arial, sans-serif" font-size="20" fill="#ffffff" text-anchor="middle" opacity="0.7">
+    Download music with high-quality audio • Share playlists with friends
+  </text>
+</svg>
+
