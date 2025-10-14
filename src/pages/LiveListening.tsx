@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { updateTabTitle, resetTabTitle, blinkTabTitle } from '@/lib/tabNotifications';
 
 // Declare YouTube API types
 declare global {
@@ -79,11 +80,27 @@ export const LiveListening = () => {
   const videoId = directVideoId || youtubeSearchId;
   const isYouTubeTrack = !!videoId;
 
-  // Extract dominant color from album art
+  // 🔥 TAB NOTIFICATIONS: Show play/pause in tab title like home page
   useEffect(() => {
-    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
-    setDominantColor(colors[Math.floor(Math.random() * colors.length)]);
-  }, [currentTrack?.id]);
+    if (currentTrack) {
+      if (isPlaying) {
+        const truncated = currentTrack.name.length > 30 ? currentTrack.name.substring(0, 30) + '...' : currentTrack.name;
+        updateTabTitle(`▶️ ${truncated} - Live with ${hostName}`);
+      } else {
+        const truncated = currentTrack.name.length > 30 ? currentTrack.name.substring(0, 30) + '...' : currentTrack.name;
+        updateTabTitle(`⏸️ ${truncated} - Live with ${hostName}`);
+      }
+    } else {
+      updateTabTitle(`🎧 Live Listening with ${hostName}`);
+    }
+  }, [isPlaying, currentTrack, hostName]);
+
+  // Cleanup tab title on unmount
+  useEffect(() => {
+    return () => {
+      resetTabTitle();
+    };
+  }, []);
 
   // Debug: Log queue updates
   useEffect(() => {
@@ -267,10 +284,10 @@ export const LiveListening = () => {
     };
   }, [isPlaying, videoId, isListener]); // Added videoId and isListener to dependencies
 
-  // Initialize main YouTube player (for audio) - ALWAYS INITIALIZE EVEN WHEN TAB HIDDEN
+  // 🔥 SMART PLAYER MANAGEMENT: Like home page - reuse existing player or create new one
   useEffect(() => {
     if (!videoId || !isListener) {
-      // Cleanup player if no videoId (e.g., Spotify without youtubeId)
+      // Cleanup player if no videoId
       if (playerRef.current?.destroy) {
         try {
           console.log('🗑️ Destroying player - no valid videoId');
@@ -284,9 +301,63 @@ export const LiveListening = () => {
       return;
     }
 
-    const initPlayer = () => {
-      if (!window.YT || !window.YT.Player) return;
+    const loadTrack = async () => {
+      if (!window.YT || !window.YT.Player) {
+        console.log('⏳ YouTube API not ready, waiting...');
+        return;
+      }
 
+      console.log('🎵 Loading track:', videoId, 'Tab hidden:', document.hidden);
+
+      // 🔥 LIKE HOME PAGE: Try to reuse existing player first
+      if (playerRef.current && playerRef.current.loadVideoById && typeof playerRef.current.loadVideoById === 'function') {
+        try {
+          console.log('📺 Using existing player, loading video:', videoId);
+          
+          // Load new video in existing player
+          playerRef.current.loadVideoById(videoId);
+          
+          // Set volume after a short delay
+          setTimeout(() => {
+            if (playerRef.current && playerRef.current.setVolume) {
+              playerRef.current.setVolume(volume);
+              if (isMuted) {
+                playerRef.current.mute();
+              } else {
+                playerRef.current.unMute();
+              }
+            }
+          }, 100);
+          
+          // Force play if needed
+          if (isPlaying) {
+            setTimeout(() => {
+              if (playerRef.current && playerRef.current.playVideo) {
+                playerRef.current.playVideo();
+              }
+            }, 200);
+          }
+          
+          return; // Successfully loaded, exit early
+        } catch (error) {
+          console.error('❌ Error loading video, recreating player:', error);
+          // Player is corrupt, destroy and recreate
+          try {
+            if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
+              playerRef.current.destroy();
+            }
+          } catch (e) {
+            console.log('⚠️ Destroy failed (ignored):', e);
+          }
+          playerRef.current = null;
+          // Wait a bit before recreating
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      // 🔥 CREATE NEW PLAYER: Only if no existing player or it failed
+      console.log('🆕 Creating new YouTube player for:', videoId);
+      
       // Cleanup old player
       if (playerRef.current?.destroy) {
         try {
@@ -300,8 +371,6 @@ export const LiveListening = () => {
       setIsPlayerReady(false);
 
       try {
-        console.log('🎵 Initializing YouTube player for track:', videoId, 'Tab hidden:', document.hidden);
-        
         playerRef.current = new window.YT.Player('live-youtube-player', {
           videoId: videoId,
           playerVars: {
@@ -369,12 +438,12 @@ export const LiveListening = () => {
       }
     };
 
-    // 🔥 IMMEDIATE INITIALIZATION - Don't wait, initialize right away
+    // 🔥 IMMEDIATE LOADING - Don't wait, load right away
     if (window.YT && window.YT.Player) {
-      initPlayer();
+      loadTrack();
     } else {
       // If API not ready, set up callback
-      window.onYouTubeIframeAPIReady = initPlayer;
+      window.onYouTubeIframeAPIReady = loadTrack;
     }
 
     return () => {
