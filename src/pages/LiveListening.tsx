@@ -831,18 +831,17 @@ export const LiveListening = () => {
           <div className={`flex-1 overflow-hidden flex items-center justify-center ${showQueue ? '' : 'mx-auto'}`}>
              {currentTrack ? (
               <div 
-                className="w-full backdrop-blur-2xl rounded-xl md:rounded-2xl border flex flex-col justify-center h-full relative overflow-hidden"
+                className="w-full backdrop-blur-xl rounded-xl md:rounded-2xl border flex flex-col justify-center h-full relative overflow-hidden bg-black/20"
                 style={{
                   maxWidth: 'clamp(28rem, 40vw, 50rem)',
                   padding: 'clamp(0.625rem, 1.25vw, 1.25rem)',
-                  background: `linear-gradient(135deg, ${dominantColor}15 0%, ${dominantColor}08 50%, transparent 100%)`,
-                  borderColor: `${dominantColor}30`
+                  borderColor: `${dominantColor}20`
                 }}
               >
-                {/* Dynamic glow effect */}
+                {/* Subtle inner glow */}
                 <div 
-                  className="absolute inset-0 blur-3xl opacity-20 pointer-events-none"
-                  style={{ background: `radial-gradient(circle at 50% 0%, ${dominantColor}, transparent 70%)` }}
+                  className="absolute inset-0 opacity-5 pointer-events-none"
+                  style={{ background: `radial-gradient(circle at 50% 50%, ${dominantColor}, transparent 60%)` }}
                 />
                 
                 {/* Content wrapper */}
@@ -1037,53 +1036,27 @@ export const LiveListening = () => {
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
             <div 
-              className="w-72 md:w-80 lg:w-96 flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-xl [@media(min-width:1920px)]:rounded-2xl border-2 overflow-hidden shadow-2xl relative"
-              style={{
-                background: `linear-gradient(135deg, ${dominantColor}20 0%, ${dominantColor}10 100%)`,
-                borderColor: `${dominantColor}40`
-              }}
+              className="w-72 md:w-80 lg:w-96 flex-shrink-0 flex flex-col bg-background/95 backdrop-blur-xl rounded-2xl border border-border overflow-hidden shadow-2xl"
             >
-              {/* Dynamic glow */}
+              {/* Header */}
               <div 
-                className="absolute inset-0 blur-2xl opacity-10 pointer-events-none"
-                style={{ background: `radial-gradient(circle at 50% 0%, ${dominantColor}, transparent 60%)` }}
-              />
-              
-              <div 
-                className="p-3 [@media(min-width:1600px)]:p-4 [@media(min-width:1920px)]:p-5 border-b flex items-center justify-between flex-shrink-0 relative z-10"
-                style={{
-                  borderColor: `${dominantColor}30`,
-                  background: `linear-gradient(to right, ${dominantColor}15, ${dominantColor}08)`
-                }}
+                className="p-4 border-b border-border flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-primary/10 to-accent/10"
               >
-                <div className="flex items-center gap-2 md:gap-3">
-                  <div 
-                    className="p-1.5 md:p-2 rounded-lg"
-                    style={{ backgroundColor: `${dominantColor}30` }}
-                  >
-                    <List className="w-4 h-4 md:w-5 md:h-5" style={{ color: dominantColor }} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base md:text-lg">Up Next</h3>
-                    {queue.length > 0 && (
-                      <p className="text-[10px] md:text-xs" style={{ color: `${dominantColor}cc` }}>
-                        {queue.length} track{queue.length !== 1 ? 's' : ''} in queue
-                      </p>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2">
+                  <List className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold text-lg">Up Next</h3>
+                  <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                    {queue.length}
+                  </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowQueue(false)}
-                  className="h-8 w-8 md:h-10 md:w-10 transition-colors"
-                  style={{ 
-                    '--hover-bg': `${dominantColor}20` 
-                  } as React.CSSProperties}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `${dominantColor}20`}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  className="h-8 w-8 hover:bg-primary/20"
+                  title="Close"
                 >
-                  <ChevronDown className="w-4 h-4 md:w-5 md:h-5" />
+                  <ChevronDown className="w-4 h-4" />
                 </Button>
               </div>
 
