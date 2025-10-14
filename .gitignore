@@ -48,7 +48,6 @@ desktop.ini
 # Lock files (keep package-lock.json but not others)
 yarn.lock
 pnpm-lock.yaml
-bun.lockb
 
 # Download outputs (optional - uncomment if you don't want to track downloads)
 # Downloads/
