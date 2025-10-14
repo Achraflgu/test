@@ -188,7 +188,9 @@ export const LiveListening = () => {
     };
 
     const handleFocus = () => {
-      // When tab regains focus, sync player state
+      // When tab regains focus, sync player state AND ensure player is loaded
+      console.log('🎵 Live Listening - Tab focused, checking player state');
+      
       if (isPlaying && playerRef.current) {
         try {
           const playerState = playerRef.current.getPlayerState?.();
@@ -199,6 +201,57 @@ export const LiveListening = () => {
         } catch (err) {
           // Ignore
         }
+      }
+      
+      // 🔥 CRITICAL: If we have a videoId but no player, force reinitialize
+      if (videoId && !playerRef.current && isListener) {
+        console.log('🔥 Tab focused - Player missing, forcing reinitialize for:', videoId);
+        // Trigger reinitialize by updating a dependency
+        setTimeout(() => {
+          if (window.YT && window.YT.Player) {
+            try {
+              playerRef.current = new window.YT.Player('live-youtube-player', {
+                videoId: videoId,
+                playerVars: {
+                  autoplay: 1,
+                  controls: 0,
+                  disablekb: 1,
+                  modestbranding: 1,
+                  rel: 0,
+                  showinfo: 0,
+                  fs: 0,
+                },
+                events: {
+                  onReady: (event: any) => {
+                    console.log('✅ YouTube player reinitialized on focus:', videoId);
+                    setIsPlayerReady(true);
+                    try {
+                      event.target.mute?.();
+                      event.target.playVideo?.();
+                      setTimeout(() => {
+                        if (!isMuted) {
+                          event.target.unMute?.();
+                          event.target.setVolume?.(volume);
+                        }
+                      }, 200);
+                    } catch {}
+                  },
+                  onStateChange: (event: any) => {
+                    if (event.target.getDuration) {
+                      const dur = event.target.getDuration();
+                      if (dur > 0) setDuration(dur);
+                    }
+                  },
+                  onError: (event: any) => {
+                    console.error('❌ YouTube player reinit error:', event.data);
+                  }
+                },
+              });
+            } catch (err) {
+              console.error('❌ YouTube player reinit error:', err);
+            }
+          }
+        }, 100);
       }
     };
 
@@ -212,9 +265,9 @@ export const LiveListening = () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleVisibilityChange);
     };
-  }, [isPlaying]); // Re-run when isPlaying changes
+  }, [isPlaying, videoId, isListener]); // Added videoId and isListener to dependencies
 
-  // Initialize main YouTube player (for audio)
+  // Initialize main YouTube player (for audio) - ALWAYS INITIALIZE EVEN WHEN TAB HIDDEN
   useEffect(() => {
     if (!videoId || !isListener) {
       // Cleanup player if no videoId (e.g., Spotify without youtubeId)
@@ -247,10 +300,12 @@ export const LiveListening = () => {
       setIsPlayerReady(false);
 
       try {
+        console.log('🎵 Initializing YouTube player for track:', videoId, 'Tab hidden:', document.hidden);
+        
         playerRef.current = new window.YT.Player('live-youtube-player', {
           videoId: videoId,
           playerVars: {
-            autoplay: 0,
+            autoplay: 1, // 🔥 ALWAYS autoplay to work even when tab is hidden
             controls: 0,
             disablekb: 1,
             modestbranding: 1,
@@ -260,12 +315,22 @@ export const LiveListening = () => {
           },
           events: {
             onReady: (event: any) => {
-              console.log('✅ YouTube player ready:', videoId);
+              console.log('✅ YouTube player ready:', videoId, 'Tab hidden:', document.hidden);
               setIsPlayerReady(true);
               try {
-                // Improve autoplay reliability: start muted, play, then unmute if needed
+                // 🔥 CRITICAL: Start muted to bypass autoplay restrictions
                 event.target.mute?.();
-                event.target.setVolume?.(isMuted ? 0 : volume);
+                event.target.playVideo?.(); // Force play immediately
+                
+                // Then set actual volume after a delay
+                setTimeout(() => {
+                  if (isMuted) {
+                    event.target.mute?.();
+                  } else {
+                    event.target.unMute?.();
+                    event.target.setVolume?.(volume);
+                  }
+                }, 200);
               } catch {}
               
               // Sync with current state
@@ -273,20 +338,17 @@ export const LiveListening = () => {
                 event.target.seekTo(currentTime, true);
               }
               
+              // 🔥 FORCE PLAY even if tab is hidden
               if (isPlaying) {
-                console.log('▶️ Starting playback');
+                console.log('▶️ Force starting playback (even if tab hidden)');
                 try {
                   event.target.playVideo();
                 } catch {}
-                // Always try to unmute after a short delay if not muted
-                setTimeout(() => {
-                  try {
-                    if (!isMuted) {
-                      event.target.unMute?.();
-                      event.target.setVolume?.(volume);
-                    }
-                  } catch {}
-                }, 300);
+              } else {
+                // If not playing, pause it
+                try {
+                  event.target.pauseVideo();
+                } catch {}
               }
             },
             onStateChange: (event: any) => {
@@ -307,17 +369,16 @@ export const LiveListening = () => {
       }
     };
 
-    // Delay to ensure DOM is updated
-    const timeoutId = setTimeout(() => {
-      if (window.YT && window.YT.Player) {
-        initPlayer();
-      } else {
-        window.onYouTubeIframeAPIReady = initPlayer;
-      }
-    }, 300);
+    // 🔥 IMMEDIATE INITIALIZATION - Don't wait, initialize right away
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      // If API not ready, set up callback
+      window.onYouTubeIframeAPIReady = initPlayer;
+    }
 
     return () => {
-      clearTimeout(timeoutId);
+      // Cleanup on unmount
     };
   }, [videoId, isListener]);
 

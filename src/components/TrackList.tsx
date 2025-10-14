@@ -659,7 +659,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     };
 
     const handleFocus = () => {
-      // When tab regains focus, sync player state
+      // When tab regains focus, sync player state AND ensure player is loaded
+      console.log('🎵 Tab focused, checking player state');
+      
       if (isPlaying && playerRef.current) {
         try {
           const playerState = playerRef.current.getPlayerState?.();
@@ -670,6 +672,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         } catch (err) {
           // Ignore
         }
+      }
+      
+      // 🔥 CRITICAL: If we have a current track but no player, force reinitialize
+      if (currentPlayingTrack && !playerRef.current) {
+        console.log('🔥 Tab focused - Player missing, forcing reinitialize for:', currentPlayingTrack.name);
+        // Trigger reinitialize by calling playTrack again
+        setTimeout(() => {
+          if (currentPlayingTrack) {
+            console.log('🔄 Reinitializing player for track:', currentPlayingTrack.name);
+            playTrack(currentPlayingTrack);
+          }
+        }, 100);
       }
     };
 
@@ -683,7 +697,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleVisibilityChange);
     };
-  }, [isPlaying]); // Re-run when isPlaying changes
+  }, [isPlaying, currentPlayingTrack]); // Added currentPlayingTrack to dependencies
 
   // Audio player functions
   const getYouTubeId = (url: string): string | null => {
