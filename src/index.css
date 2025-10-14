@@ -89,7 +89,7 @@ All colors MUST be HSL.
   /* Small laptops - 1025px to 1366px */
   @media (min-width: 1025px) and (max-width: 1366px) {
     :root {
-      --scale-factor: 0.65;
+      --scale-factor: 0.85;
       --container-max-width: min(1200px, 90vw);
     }
   }
@@ -97,7 +97,7 @@ All colors MUST be HSL.
   /* Standard laptops (1600x900) - 1367px to 1600px */
   @media (min-width: 1367px) and (max-width: 1600px) {
     :root {
-      --scale-factor: 0.67;
+      --scale-factor: 0.9;
       --container-max-width: min(1300px, 90vw);
     }
   }
@@ -105,7 +105,7 @@ All colors MUST be HSL.
   /* HD screens (1920x1080) - 1601px to 1920px */
   @media (min-width: 1601px) and (max-width: 1920px) {
     :root {
-      --scale-factor: 0.8;
+      --scale-factor: 1;
       --container-max-width: min(1400px, 85vw);
     }
   }
@@ -113,7 +113,7 @@ All colors MUST be HSL.
   /* Full HD+ and 2K - 1921px to 2560px */
   @media (min-width: 1921px) and (max-width: 2560px) {
     :root {
-      --scale-factor: 0.85;
+      --scale-factor: 1;
       --container-max-width: min(1600px, 80vw);
     }
   }
@@ -121,7 +121,7 @@ All colors MUST be HSL.
   /* 4K and ultra-wide - 2561px+ */
   @media (min-width: 2561px) {
     :root {
-      --scale-factor: 0.95;
+      --scale-factor: 1;
       --container-max-width: min(1800px, 75vw);
     }
   }
