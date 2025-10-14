@@ -1044,7 +1044,7 @@ export const LiveListening = () => {
               </div>
 
               <ScrollArea className="flex-1 overflow-y-auto" ref={queueContainerRef} key={`queue-${queue.length}`}>
-                <div className="p-4 space-y-2">
+                <div className="p-3 space-y-2">
                   {queue.length > 0 ? (
                     queue.map((track, index) => {
                       const isCurrentTrack = track.id === currentTrack?.id;
@@ -1052,40 +1052,54 @@ export const LiveListening = () => {
                         <div
                           key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
-                          className={`flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-lg md:rounded-xl transition-all cursor-default ${
+                          className={`group flex items-center gap-2 md:gap-3 p-2.5 rounded-xl transition-all hover:scale-[1.02] cursor-default ${
                             isCurrentTrack
-                              ? 'bg-gradient-to-r from-purple-500/40 to-blue-500/40 border-2 border-purple-500/60 scale-[1.02] shadow-lg'
-                              : 'bg-black/30 hover:bg-black/50 border border-transparent'
+                              ? 'bg-primary/20 border-2 border-primary/40 shadow-lg shadow-primary/20'
+                              : 'bg-secondary/30 hover:bg-secondary/60 border-2 border-transparent hover:border-primary/20'
                           }`}
                         >
+                          {/* Track Number */}
+                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                            isCurrentTrack 
+                              ? 'bg-primary text-primary-foreground' 
+                              : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'
+                          }`}>
+                            {index + 1}
+                          </div>
+
+                          {/* Album Art */}
                           <div className="relative flex-shrink-0">
                             <img
                               src={track.imageUrl}
                               alt={track.name}
-                              className="w-12 h-12 md:w-14 md:h-14 rounded-md md:rounded-lg object-cover shadow-md"
+                              className="w-12 h-12 rounded-lg object-cover shadow-md"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/placeholder.svg';
+                              }}
                             />
-                            {isCurrentTrack && isPlaying && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-md md:rounded-lg">
-                                <Music className="w-5 h-5 md:w-6 md:h-6 text-purple-400 animate-pulse" />
-                              </div>
-                            )}
                             {isCurrentTrack && (
-                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 md:w-4 md:h-4 bg-purple-500 rounded-full flex items-center justify-center">
-                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full animate-pulse" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                                <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
                               </div>
                             )}
                           </div>
+
+                          {/* Track Info */}
                           <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-xs md:text-sm truncate mb-0.5 ${isCurrentTrack ? 'text-purple-200' : 'text-white'}`}>
+                            <p className={`font-semibold text-sm truncate ${
+                              isCurrentTrack ? 'text-primary' : 'text-foreground'
+                            }`}>
                               {track.name}
                             </p>
-                            <p className="text-[10px] md:text-xs text-gray-400 truncate">
+                            <p className="text-xs text-muted-foreground truncate">
                               {track.artist}
                             </p>
                           </div>
-                          <span className="text-[10px] md:text-xs text-gray-500 flex-shrink-0 font-medium">
+
+                          {/* Duration */}
+                          <div className="flex-shrink-0 text-xs text-muted-foreground font-mono">
                             {formatTime(track.duration)}
-                          </span>
+                          </div>
                         </div>
                       );
                     })
