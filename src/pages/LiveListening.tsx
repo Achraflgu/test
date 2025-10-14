@@ -826,8 +826,8 @@ export const LiveListening = () => {
               <div 
                 className="w-full bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl border border-purple-500/20 flex flex-col justify-center h-full"
                 style={{
-                  maxWidth: 'clamp(32rem, 45vw, 50rem)',
-                  padding: 'clamp(0.75rem, 1.5vw, 1.25rem)'
+                  maxWidth: 'clamp(28rem, 40vw, 50rem)',
+                  padding: 'clamp(0.625rem, 1.25vw, 1.25rem)'
                 }}
               >
                 {/* Playing YouTube Version - Green status */}
@@ -854,8 +854,8 @@ export const LiveListening = () => {
                       alt={currentTrack.name}
                       className="rounded-lg shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                       style={{
-                        width: 'clamp(9rem, 20vw, 15rem)',
-                        height: 'clamp(9rem, 20vw, 15rem)'
+                        width: 'clamp(8rem, 16vw, 15rem)',
+                        height: 'clamp(8rem, 16vw, 15rem)'
                       }}
                     />
                     {isPlaying && (
@@ -869,19 +869,19 @@ export const LiveListening = () => {
 
                   <h2 
                     className="font-bold text-center mb-1 px-4 line-clamp-2"
-                    style={{ fontSize: 'clamp(0.875rem, 1.25vw, 1.125rem)' }}
+                    style={{ fontSize: 'clamp(0.75rem, 1.125vw, 1.125rem)' }}
                   >
                     {currentTrack.name}
                   </h2>
                   <p 
                     className="text-gray-400 text-center mb-0.5 truncate max-w-full px-4"
-                    style={{ fontSize: 'clamp(0.75rem, 1vw, 0.875rem)' }}
+                    style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.875rem)' }}
                   >
                     {currentTrack.artist}
                   </p>
                   <p 
                     className="text-gray-500 truncate max-w-full px-4"
-                    style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.75rem)' }}
+                    style={{ fontSize: 'clamp(0.5625rem, 0.75vw, 0.75rem)' }}
                   >
                     {currentTrack.album}
                   </p>

@@ -61,21 +61,29 @@ All colors MUST be HSL.
   }
   
   /* Ensure 100% zoom is comfortable on all resolutions */
+  /* 1600x900 needs much smaller scale (67% equivalent) */
   @media (max-width: 1600px) {
     :root {
-      --scale-factor: 0.9;
+      --scale-factor: 0.67;
     }
   }
   
   @media (max-width: 1366px) {
     :root {
-      --scale-factor: 0.85;
+      --scale-factor: 0.65;
     }
   }
   
   @media (max-width: 1024px) {
     :root {
-      --scale-factor: 0.8;
+      --scale-factor: 0.6;
+    }
+  }
+  
+  /* For larger screens (1920x1080+) keep it at a good size */
+  @media (min-width: 1920px) {
+    :root {
+      --scale-factor: 0.85;
     }
   }
 }

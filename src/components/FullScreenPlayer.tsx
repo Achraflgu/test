@@ -504,8 +504,8 @@ export const FullScreenPlayer = ({
                 alt={track.name}
                 className="rounded-3xl shadow-2xl ring-4 ring-white/10 object-cover"
                 style={{
-                  width: 'clamp(12rem, 22vw, 20rem)',
-                  height: 'clamp(12rem, 22vw, 20rem)'
+                  width: 'clamp(10rem, 18vw, 20rem)',
+                  height: 'clamp(10rem, 18vw, 20rem)'
                 }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/placeholder.svg';
@@ -522,8 +522,8 @@ export const FullScreenPlayer = ({
             <h1 
               className="font-bold text-foreground line-clamp-2 px-4"
               style={{ 
-                fontSize: 'clamp(1.25rem, 2.5vw, 2.5rem)',
-                marginBottom: 'clamp(0.375rem, 0.75vh, 0.625rem)'
+                fontSize: 'clamp(1rem, 2vw, 2.5rem)',
+                marginBottom: 'clamp(0.25rem, 0.5vh, 0.625rem)'
               }}
             >
               {track.name}
@@ -531,7 +531,7 @@ export const FullScreenPlayer = ({
             <p 
               className="text-muted-foreground px-4"
               style={{ 
-                fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)',
+                fontSize: 'clamp(0.75rem, 1.25vw, 1.25rem)',
                 marginBottom: 'clamp(0.25rem, 0.5vh, 0.375rem)'
               }}
             >
@@ -540,7 +540,7 @@ export const FullScreenPlayer = ({
             {track.album && (
               <p 
                 className="text-muted-foreground/70 px-4"
-                style={{ fontSize: 'clamp(0.75rem, 1.25vw, 0.875rem)' }}
+                style={{ fontSize: 'clamp(0.625rem, 1vw, 0.875rem)' }}
               >
                 {track.album}
               </p>
