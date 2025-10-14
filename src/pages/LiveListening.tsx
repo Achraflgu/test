@@ -169,6 +169,51 @@ export const LiveListening = () => {
     }
   }, []);
 
+  // 🔥 PREVENT AUTO-PAUSE: Keep music playing when tab loses focus or Alt+Tab (Live Listening)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // When tab becomes hidden, ensure player keeps playing
+      if (document.hidden && isPlaying && playerRef.current) {
+        try {
+          // Force continue playing even when tab is hidden
+          const playerState = playerRef.current.getPlayerState?.();
+          if (playerState !== window.YT?.PlayerState?.PLAYING && playerState !== undefined) {
+            console.log('🎵 Live Listening - Tab hidden, forcing music to continue');
+            playerRef.current.playVideo?.();
+          }
+        } catch (err) {
+          console.log('⚠️ Could not resume playback on tab switch');
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      // When tab regains focus, sync player state
+      if (isPlaying && playerRef.current) {
+        try {
+          const playerState = playerRef.current.getPlayerState?.();
+          if (playerState !== window.YT?.PlayerState?.PLAYING && playerState !== undefined) {
+            console.log('🎵 Live Listening - Tab focused, resuming music');
+            playerRef.current.playVideo?.();
+          }
+        } catch (err) {
+          // Ignore
+        }
+      }
+    };
+
+    // Listen for visibility changes (tab switches, minimize window, etc.)
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleVisibilityChange);
+    };
+  }, [isPlaying]); // Re-run when isPlaying changes
+
   // Initialize main YouTube player (for audio)
   useEffect(() => {
     if (!videoId || !isListener) {
