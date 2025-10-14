@@ -1204,7 +1204,7 @@ export const LiveListening = () => {
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
             <div 
-              className="w-80 md:w-96 flex-shrink-0 flex flex-col bg-background/95 backdrop-blur-xl rounded-2xl border border-border overflow-hidden shadow-2xl max-h-[calc(100vh-10rem)]"
+              className="w-80 md:w-96 lg:w-[28rem] flex-shrink-0 flex flex-col bg-background/95 backdrop-blur-xl rounded-2xl border border-border overflow-hidden shadow-2xl max-h-[calc(100vh-10rem)]"
             >
               {/* Header */}
               <div 
@@ -1237,14 +1237,14 @@ export const LiveListening = () => {
                         <div
                           key={`${track.id}-${index}-${queue.length}`}
                           ref={isCurrentTrack ? currentTrackRef : null}
-                          className={`group flex items-center gap-3 p-2.5 rounded-xl transition-all hover:scale-[1.02] cursor-default ${
+                          className={`group flex items-center w-full gap-3 p-3 rounded-xl transition-all hover:scale-[1.01] cursor-default ${
                             isCurrentTrack
                               ? 'bg-primary/20 border-2 border-primary/40 shadow-lg shadow-primary/20'
                               : 'bg-secondary/30 hover:bg-secondary/60 border-2 border-transparent hover:border-primary/20'
                           }`}
                         >
-                          {/* Track Number */}
-                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                          {/* Track Number - Full Circle */}
+                          <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
                             isCurrentTrack 
                               ? 'bg-primary text-primary-foreground' 
                               : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'
@@ -1252,12 +1252,12 @@ export const LiveListening = () => {
                             {index + 1}
                           </div>
 
-                          {/* Album Art */}
+                          {/* Album Art - Larger */}
                           <div className="relative flex-shrink-0">
                             <img
                               src={track.imageUrl}
                               alt={track.name}
-                              className="w-12 h-12 rounded-lg object-cover shadow-md"
+                              className="w-14 h-14 rounded-lg object-cover shadow-md"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).src = '/placeholder.svg';
                               }}
@@ -1269,20 +1269,20 @@ export const LiveListening = () => {
                             )}
                           </div>
 
-                          {/* Track Info */}
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-sm truncate ${
+                          {/* Track Info - Full Width */}
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            <p className={`font-semibold text-sm leading-tight ${
                               isCurrentTrack ? 'text-primary' : 'text-foreground'
                             }`}>
                               {track.name}
                             </p>
-                            <p className="text-xs text-muted-foreground truncate">
+                            <p className="text-xs text-muted-foreground leading-tight mt-0.5">
                               {track.artist}
                             </p>
                           </div>
 
-                          {/* Duration */}
-                          <div className="flex-shrink-0 text-xs text-muted-foreground font-mono">
+                          {/* Duration - Right Aligned */}
+                          <div className="flex-shrink-0 text-xs text-muted-foreground font-mono text-right min-w-[3rem]">
                             {formatTime(track.duration)}
                           </div>
                         </div>
