@@ -47,6 +47,36 @@ All colors MUST be HSL.
     
     --shadow-glow: 0 0 40px hsl(141 76% 48% / 0.3);
     --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.5);
+    
+    /* 🎯 Responsive Scaling System - Adapts to all screen sizes without zoom */
+    /* Base: 100% at 1920px, scales down smoothly for smaller screens */
+    --scale-factor: clamp(0.75, calc(0.5 + (100vw / 3840)), 1);
+    --base-font-size: calc(16px * var(--scale-factor));
+    --container-max-width: min(1400px, 95vw);
+  }
+  
+  /* Adjust base font size for smaller screens */
+  html {
+    font-size: var(--base-font-size);
+  }
+  
+  /* Ensure 100% zoom is comfortable on all resolutions */
+  @media (max-width: 1600px) {
+    :root {
+      --scale-factor: 0.9;
+    }
+  }
+  
+  @media (max-width: 1366px) {
+    :root {
+      --scale-factor: 0.85;
+    }
+  }
+  
+  @media (max-width: 1024px) {
+    :root {
+      --scale-factor: 0.8;
+    }
   }
 }
 
