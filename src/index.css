@@ -60,30 +60,69 @@ All colors MUST be HSL.
     font-size: var(--base-font-size);
   }
   
-  /* Ensure 100% zoom is comfortable on all resolutions */
-  /* 1600x900 needs much smaller scale (67% equivalent) */
-  @media (max-width: 1600px) {
+  /* 🎯 COMPREHENSIVE RESPONSIVE SCALING FOR ALL DEVICES */
+  
+  /* Mobile devices (phones) - 320px to 480px */
+  @media (max-width: 480px) {
     :root {
-      --scale-factor: 0.67;
+      --scale-factor: 0.55;
+      --container-max-width: 100vw;
     }
   }
   
-  @media (max-width: 1366px) {
+  /* Small tablets (portrait) - 481px to 768px */
+  @media (min-width: 481px) and (max-width: 768px) {
     :root {
-      --scale-factor: 0.65;
+      --scale-factor: 0.58;
+      --container-max-width: 95vw;
     }
   }
   
-  @media (max-width: 1024px) {
+  /* Tablets (landscape) and small laptops - 769px to 1024px */
+  @media (min-width: 769px) and (max-width: 1024px) {
     :root {
       --scale-factor: 0.6;
+      --container-max-width: 90vw;
     }
   }
   
-  /* For larger screens (1920x1080+) keep it at a good size */
-  @media (min-width: 1920px) {
+  /* Small laptops - 1025px to 1366px */
+  @media (min-width: 1025px) and (max-width: 1366px) {
+    :root {
+      --scale-factor: 0.65;
+      --container-max-width: min(1200px, 90vw);
+    }
+  }
+  
+  /* Standard laptops (1600x900) - 1367px to 1600px */
+  @media (min-width: 1367px) and (max-width: 1600px) {
+    :root {
+      --scale-factor: 0.67;
+      --container-max-width: min(1300px, 90vw);
+    }
+  }
+  
+  /* HD screens (1920x1080) - 1601px to 1920px */
+  @media (min-width: 1601px) and (max-width: 1920px) {
+    :root {
+      --scale-factor: 0.8;
+      --container-max-width: min(1400px, 85vw);
+    }
+  }
+  
+  /* Full HD+ and 2K - 1921px to 2560px */
+  @media (min-width: 1921px) and (max-width: 2560px) {
     :root {
       --scale-factor: 0.85;
+      --container-max-width: min(1600px, 80vw);
+    }
+  }
+  
+  /* 4K and ultra-wide - 2561px+ */
+  @media (min-width: 2561px) {
+    :root {
+      --scale-factor: 0.95;
+      --container-max-width: min(1800px, 75vw);
     }
   }
 }
@@ -95,10 +134,33 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    /* Prevent text size adjustment on mobile */
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
+  }
+  
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    /* Make touch targets larger */
+    button, a, input, select, textarea {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Improve scrolling on mobile */
+    * {
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Prevent zoom on input focus */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
