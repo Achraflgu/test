@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Radio, Copy, Share2, MessageCircle, Send, X, Users, Link2 } from 'lucide-react';
 import {
   Dialog,
@@ -121,6 +121,21 @@ export const ShareLiveRoomDialog = ({
     navigator.clipboard.writeText(getRoomUrl());
     toast.success('Link copied to clipboard! 🔗');
   };
+
+  // 🔥 AUTO-COPY: Copy link automatically when dialog opens (if roomId exists)
+  useEffect(() => {
+    if (open && roomId && roomId.trim() !== '') {
+      // Small delay for better UX (let dialog animate in first)
+      const timer = setTimeout(() => {
+        navigator.clipboard.writeText(getRoomUrl());
+        toast.success('🎉 Live Session Link copied automatically! Share with friends!', {
+          duration: 3000,
+        });
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [open, roomId]); // Auto-copy when dialog opens with a valid roomId
 
   const shareViaWhatsApp = () => {
     const url = getRoomUrl();
