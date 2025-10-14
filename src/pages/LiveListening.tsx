@@ -1029,7 +1029,7 @@ export const LiveListening = () => {
           {/* Queue Sidebar - FULLSCREEN STYLE - Always Prominent */}
           {showQueue && (
             <div 
-              className="w-96 md:w-[28rem] lg:w-[32rem] flex-shrink-0 flex flex-col bg-background/95 backdrop-blur-xl rounded-2xl border border-border overflow-hidden shadow-2xl"
+              className="w-80 md:w-96 flex-shrink-0 flex flex-col bg-background/95 backdrop-blur-xl rounded-2xl border border-border overflow-hidden shadow-2xl max-h-[calc(100vh-10rem)]"
             >
               {/* Header */}
               <div 

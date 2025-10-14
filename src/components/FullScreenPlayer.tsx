@@ -493,7 +493,7 @@ export const FullScreenPlayer = ({
         {/* Center Content */}
         <div className="flex-1 flex flex-col items-center justify-center pb-8" style={{ padding: 'clamp(0.75rem, 2vw, 2rem)' }}>
           {/* Album Art */}
-          <div className="relative animate-in zoom-in duration-700" style={{ marginBottom: 'clamp(1.5rem, 3vh, 2.5rem)' }}>
+          <div className="relative animate-in zoom-in duration-700" style={{ marginBottom: 'clamp(1rem, 2vh, 1.5rem)' }}>
             <div 
               className="absolute inset-0 blur-3xl opacity-50 animate-pulse"
               style={{ background: dominantColor }}
@@ -504,8 +504,8 @@ export const FullScreenPlayer = ({
                 alt={track.name}
                 className="rounded-3xl shadow-2xl ring-4 ring-white/10 object-cover"
                 style={{
-                  width: 'clamp(10rem, 18vw, 20rem)',
-                  height: 'clamp(10rem, 18vw, 20rem)'
+                  width: 'clamp(8rem, 14vw, 16rem)',
+                  height: 'clamp(8rem, 14vw, 16rem)'
                 }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/placeholder.svg';
@@ -518,12 +518,12 @@ export const FullScreenPlayer = ({
           </div>
 
           {/* Track Info */}
-          <div className="text-center max-w-2xl animate-in slide-in-from-bottom duration-700" style={{ marginBottom: 'clamp(1.5rem, 3vh, 2.5rem)' }}>
+          <div className="text-center max-w-2xl animate-in slide-in-from-bottom duration-700" style={{ marginBottom: 'clamp(1rem, 2vh, 1.5rem)' }}>
             <h1 
               className="font-bold text-foreground line-clamp-2 px-4"
               style={{ 
-                fontSize: 'clamp(1rem, 2vw, 2.5rem)',
-                marginBottom: 'clamp(0.25rem, 0.5vh, 0.625rem)'
+                fontSize: 'clamp(0.875rem, 1.5vw, 1.75rem)',
+                marginBottom: 'clamp(0.25rem, 0.5vh, 0.5rem)'
               }}
             >
               {track.name}
@@ -531,7 +531,7 @@ export const FullScreenPlayer = ({
             <p 
               className="text-muted-foreground px-4"
               style={{ 
-                fontSize: 'clamp(0.75rem, 1.25vw, 1.25rem)',
+                fontSize: 'clamp(0.75rem, 1.125vw, 1.125rem)',
                 marginBottom: 'clamp(0.25rem, 0.5vh, 0.375rem)'
               }}
             >
@@ -540,7 +540,7 @@ export const FullScreenPlayer = ({
             {track.album && (
               <p 
                 className="text-muted-foreground/70 px-4"
-                style={{ fontSize: 'clamp(0.625rem, 1vw, 0.875rem)' }}
+                style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.75rem)' }}
               >
                 {track.album}
               </p>
@@ -576,15 +576,15 @@ export const FullScreenPlayer = ({
           </div>
 
           {/* Main Controls */}
-          <div className="flex items-center animate-in slide-in-from-bottom duration-700 delay-200" style={{ gap: 'clamp(1rem, 2vw, 2rem)', marginBottom: 'clamp(1rem, 2vh, 1.5rem)' }}>
+          <div className="flex items-center animate-in slide-in-from-bottom duration-700 delay-200" style={{ gap: 'clamp(0.75rem, 1.5vw, 1.25rem)', marginBottom: 'clamp(0.75rem, 1.5vh, 1rem)' }}>
             <Button
               variant="ghost"
               size="icon"
               onClick={onToggleShuffle}
               className={`rounded-full ${isShuffled ? 'text-primary bg-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
-              style={{ width: 'clamp(2rem, 3vw, 2.5rem)', height: 'clamp(2rem, 3vw, 2.5rem)' }}
+              style={{ width: 'clamp(1.75rem, 2.5vw, 2.25rem)', height: 'clamp(1.75rem, 2.5vw, 2.25rem)' }}
             >
-              <Shuffle style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />
+              <Shuffle style={{ width: 'clamp(0.875rem, 1.25vw, 1.125rem)', height: 'clamp(0.875rem, 1.25vw, 1.125rem)' }} />
             </Button>
 
             <Button
@@ -592,20 +592,20 @@ export const FullScreenPlayer = ({
               size="icon"
               onClick={onPrevious}
               className="text-foreground hover:text-primary hover:scale-110 transition-all"
-              style={{ width: 'clamp(2.5rem, 3.5vw, 3rem)', height: 'clamp(2.5rem, 3.5vw, 3rem)' }}
+              style={{ width: 'clamp(2.25rem, 3vw, 2.75rem)', height: 'clamp(2.25rem, 3vw, 2.75rem)' }}
             >
-              <SkipBack style={{ width: 'clamp(1.25rem, 1.75vw, 1.75rem)', height: 'clamp(1.25rem, 1.75vw, 1.75rem)' }} />
+              <SkipBack style={{ width: 'clamp(1.125rem, 1.5vw, 1.5rem)', height: 'clamp(1.125rem, 1.5vw, 1.5rem)' }} />
             </Button>
 
             <Button
               onClick={onPlayPause}
               className="rounded-full bg-white hover:bg-white/90 text-black shadow-2xl hover:scale-105 transition-all"
-              style={{ width: 'clamp(4rem, 6vw, 5rem)', height: 'clamp(4rem, 6vw, 5rem)' }}
+              style={{ width: 'clamp(3.5rem, 5vw, 4.5rem)', height: 'clamp(3.5rem, 5vw, 4.5rem)' }}
             >
               {isPlaying ? (
-                <Pause style={{ width: 'clamp(2rem, 3vw, 2.5rem)', height: 'clamp(2rem, 3vw, 2.5rem)' }} fill="currentColor" />
+                <Pause style={{ width: 'clamp(1.75rem, 2.5vw, 2.25rem)', height: 'clamp(1.75rem, 2.5vw, 2.25rem)' }} fill="currentColor" />
               ) : (
-                <Play style={{ width: 'clamp(2rem, 3vw, 2.5rem)', height: 'clamp(2rem, 3vw, 2.5rem)' }} className="ml-1" fill="currentColor" />
+                <Play style={{ width: 'clamp(1.75rem, 2.5vw, 2.25rem)', height: 'clamp(1.75rem, 2.5vw, 2.25rem)' }} className="ml-1" fill="currentColor" />
               )}
             </Button>
 
@@ -614,9 +614,9 @@ export const FullScreenPlayer = ({
               size="icon"
               onClick={onNext}
               className="text-foreground hover:text-primary hover:scale-110 transition-all"
-              style={{ width: 'clamp(2.5rem, 3.5vw, 3rem)', height: 'clamp(2.5rem, 3.5vw, 3rem)' }}
+              style={{ width: 'clamp(2.25rem, 3vw, 2.75rem)', height: 'clamp(2.25rem, 3vw, 2.75rem)' }}
             >
-              <SkipForward style={{ width: 'clamp(1.25rem, 1.75vw, 1.75rem)', height: 'clamp(1.25rem, 1.75vw, 1.75rem)' }} />
+              <SkipForward style={{ width: 'clamp(1.125rem, 1.5vw, 1.5rem)', height: 'clamp(1.125rem, 1.5vw, 1.5rem)' }} />
             </Button>
 
             <Button
@@ -624,9 +624,9 @@ export const FullScreenPlayer = ({
               size="icon"
               onClick={onCycleRepeat}
               className={`rounded-full ${repeatMode !== 'off' ? 'text-primary bg-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
-              style={{ width: 'clamp(2rem, 3vw, 2.5rem)', height: 'clamp(2rem, 3vw, 2.5rem)' }}
+              style={{ width: 'clamp(1.75rem, 2.5vw, 2.25rem)', height: 'clamp(1.75rem, 2.5vw, 2.25rem)' }}
             >
-              {repeatMode === 'one' ? <Repeat1 style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} /> : <Repeat style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />}
+              {repeatMode === 'one' ? <Repeat1 style={{ width: 'clamp(0.875rem, 1.25vw, 1.125rem)', height: 'clamp(0.875rem, 1.25vw, 1.125rem)' }} /> : <Repeat style={{ width: 'clamp(0.875rem, 1.25vw, 1.125rem)', height: 'clamp(0.875rem, 1.25vw, 1.125rem)' }} />}
             </Button>
           </div>
 
