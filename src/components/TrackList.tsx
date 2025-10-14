@@ -2340,146 +2340,151 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </div>
         )}
         
-        {/* 🎨 Compact Professional Header */}
-        <div className="relative p-4 md:p-5 border-b border-border bg-gradient-to-br from-card via-secondary/10 to-primary/5 overflow-hidden">
-          {/* Animated Background Pattern */}
-          <div className="absolute inset-0 opacity-5">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-primary rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent rounded-full blur-3xl animate-pulse delay-700"></div>
+        {/* 🎨 Creative Modern Header - Completely Redesigned */}
+        <div className="relative border-b border-border/50 bg-gradient-to-r from-slate-900/50 via-purple-900/30 to-blue-900/50 backdrop-blur-xl">
+          {/* Dynamic Background Effects */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-full blur-2xl animate-pulse delay-500"></div>
           </div>
 
-          {/* Header Content */}
-          <div className="relative z-10 space-y-3">
-            {/* Top Row: Title, Stats & Actions */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              {/* Left: Title & Stats */}
+          {/* Main Header Container */}
+          <div className="relative z-10">
+            {/* Top Bar - Minimalist */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
+              {/* Left: Brand & Status */}
               <div className="flex items-center gap-3">
-                <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-accent rounded-lg blur opacity-25 group-hover:opacity-75 transition duration-300"></div>
-                  <div className="relative p-2 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg backdrop-blur-sm">
-                    <Music2 className="w-5 h-5 text-primary" />
+                <div className="relative">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center shadow-lg">
+                    <Music2 className="w-4 h-4 text-white" />
                   </div>
+                  <div className="absolute -inset-1 bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-lg blur-sm opacity-50"></div>
                 </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h3 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                    Track List
-                  </h3>
+                <div>
+                  <h2 className="text-lg font-bold text-white">TrackMiner</h2>
                   <div className="flex items-center gap-2 text-xs">
-                    {selectedCount > 0 ? (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary rounded-md font-semibold">
-                        <CheckCircle2 className="w-3 h-3" />
-                        {selectedCount}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-secondary/50 text-muted-foreground rounded-md">
-                        <Music2 className="w-3 h-3" />
-                        {filteredTracks.length}{searchQuery ? `/${tracks.length}` : ''}
-                      </span>
-                    )}
-                    <span className="px-2 py-1 bg-secondary/50 text-muted-foreground rounded-md font-mono">
-                      {settings.format.toUpperCase()}
-                    </span>
-                    {/* Quick Stats */}
-                    {completedCount > 0 && (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-500 rounded-md font-medium">
-                        <Check className="w-3 h-3" />
-                        {completedCount}
-                      </span>
-                    )}
-                    {failedCount > 0 && (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-red-500/10 text-red-500 rounded-md font-medium">
-                        <AlertCircle className="w-3 h-3" />
-                        {failedCount}
-                      </span>
-                    )}
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-gray-400">Ready</span>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Select All & Collapse */}
+              {/* Right: Quick Actions */}
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-secondary/70 backdrop-blur-sm px-2.5 py-1.5 rounded-md border border-border/50 hover:border-primary/50 transition-colors">
+                <div className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-lg backdrop-blur-sm">
                   <Checkbox
                     checked={allSelected}
                     onCheckedChange={toggleSelectAll}
-                    className="data-[state=checked]:bg-primary data-[state=checked]:border-primary h-4 w-4"
+                    className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500 h-3 w-3"
                   />
-                  <span className="text-xs font-medium whitespace-nowrap">
-                    {allSelected ? 'Deselect' : 'Select All'}
+                  <span className="text-xs text-gray-300">
+                    {allSelected ? 'All' : 'None'}
                   </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setExpanded(!expanded)}
-                  className="h-8 w-8 p-0 hover:bg-secondary/50 rounded-md lg:hidden"
+                  className="h-7 w-7 p-0 hover:bg-white/10 rounded-lg lg:hidden"
                 >
-                  {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </Button>
               </div>
             </div>
 
-            {/* Compact Search Bar */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <div className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none">
-                  <Music className="w-4 h-4 text-muted-foreground" />
+            {/* Content Bar - Rich Information */}
+            <div className="px-4 py-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Left: Track Info */}
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {selectedCount > 0 ? selectedCount : filteredTracks.length}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {selectedCount > 0 ? 'Selected' : 'Tracks'}
+                    </div>
+                  </div>
+                  
+                  <div className="h-8 w-px bg-gradient-to-b from-transparent via-gray-600 to-transparent"></div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-green-400">{completedCount}</div>
+                      <div className="text-xs text-gray-400">Done</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-red-400">{failedCount}</div>
+                      <div className="text-xs text-gray-400">Failed</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-blue-400">{settings.format.toUpperCase()}</div>
+                      <div className="text-xs text-gray-400">Format</div>
+                    </div>
+                  </div>
                 </div>
-                <Input
-                  type="text"
-                  placeholder="Search tracks, artists, albums..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9 h-9 bg-secondary/50 border-border/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 rounded-lg text-sm"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute inset-y-0 right-2.5 flex items-center text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+
+                {/* Right: Search */}
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                      <Music className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <Input
+                      type="text"
+                      placeholder="Search music..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-10 h-8 w-64 bg-white/5 border border-white/10 focus:border-purple-400/50 focus:ring-1 focus:ring-purple-400/20 rounded-lg text-sm text-white placeholder-gray-400 backdrop-blur-sm"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-white transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {searchQuery && (
+                    <div className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-medium border border-blue-500/30">
+                      {filteredTracks.length} found
+                    </div>
+                  )}
+                </div>
               </div>
-              {searchQuery && (
-                <div className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-500/10 text-blue-500 rounded-md text-xs font-medium whitespace-nowrap">
-                  {filteredTracks.length} result{filteredTracks.length !== 1 ? 's' : ''}
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Action Buttons - Compact Grid */}
+        {/* Action Buttons - Creative Floating Design */}
         {expanded && (
-          <div className="relative p-3 md:p-4 border-b border-border bg-gradient-to-br from-secondary/5 to-transparent">
-            <div className={`grid grid-cols-2 sm:grid-cols-3 ${isPrivateMode ? 'lg:grid-cols-3' : 'lg:grid-cols-5'} gap-2`}>
+          <div className="relative px-4 py-3 bg-gradient-to-r from-slate-800/30 via-purple-800/20 to-blue-800/30 backdrop-blur-sm border-b border-white/10">
+            <div className="flex flex-wrap items-center justify-center gap-2">
               {/* Play All */}
               <Button
                 onClick={playAllTracks}
                 disabled={tracks.length === 0}
-                variant="outline"
-                className="group relative h-9 border border-primary/40 text-primary hover:bg-primary hover:text-white rounded-lg font-medium text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 border border-emerald-500/30 hover:border-emerald-400/50 text-emerald-300 hover:text-emerald-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
                 title="Play all tracks in playlist"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                <Play className="w-3.5 h-3.5 mr-1 relative z-10" />
-                <span className="hidden sm:inline relative z-10">Play All</span>
-                <span className="sm:hidden relative z-10">Play</span>
+                <Play className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Play All</span>
+                <span className="sm:hidden">Play</span>
               </Button>
 
               {/* Save Playlist */}
               <Button
                 onClick={() => setShowSaveDialog(true)}
                 disabled={tracks.length === 0}
-                variant="outline"
-                className="group relative h-9 border border-primary/40 text-primary hover:bg-primary hover:text-white rounded-lg font-medium text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 border border-purple-500/30 hover:border-purple-400/50 text-purple-300 hover:text-purple-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
                 title="Save current playlist to history"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                <Save className="w-3.5 h-3.5 mr-1 relative z-10" />
-                <span className="hidden lg:inline relative z-10">Save Playlist</span>
-                <span className="lg:hidden relative z-10">Save</span>
+                <Save className="w-4 h-4 mr-2" />
+                <span className="hidden lg:inline">Save Playlist</span>
+                <span className="lg:hidden">Save</span>
               </Button>
 
               {/* Remove Duplicates - Hidden in Preview Mode */}
@@ -2487,14 +2492,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <Button
                 onClick={findDuplicates}
                 disabled={downloading || tracks.length < 2}
-                variant="outline"
-                className="group relative h-9 border border-accent/40 text-accent hover:bg-accent hover:text-white rounded-lg font-medium text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-4 py-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 hover:border-amber-400/50 text-amber-300 hover:text-amber-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
                 title="Find and remove duplicate tracks"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Duplicates</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                <span className="hidden xl:inline">Duplicates</span>
+                <span className="xl:hidden hidden sm:inline">Clean</span>
               </Button>
               )}
 
@@ -2502,14 +2505,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <Button
                 onClick={handleReorderTracks}
                 disabled={downloading || selectedCount === 0}
-                variant="outline"
-                className="group relative h-9 border border-blue-500/40 text-blue-500 hover:bg-blue-500 hover:text-white rounded-lg font-medium text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-4 py-2 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 border border-blue-500/30 hover:border-blue-400/50 text-blue-300 hover:text-blue-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
                 title="Reorder selected tracks to a specific position"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/20 to-blue-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                <GripVertical className="w-3.5 h-3.5 mr-1 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Reorder</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Move</span>
+                <GripVertical className="w-4 h-4 mr-2" />
+                <span className="hidden xl:inline">Reorder</span>
+                <span className="xl:hidden hidden sm:inline">Move</span>
               </Button>
 
               {/* Remove Selected - Hidden in Preview Mode */}
@@ -2517,34 +2518,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <Button
                 onClick={removeSelected}
                 disabled={downloading || selectedCount === 0}
-                variant="outline"
-                className="group relative h-9 border border-destructive/40 text-destructive hover:bg-destructive hover:text-white rounded-lg font-medium text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
                 title="Remove selected tracks from the list"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-destructive/0 via-destructive/20 to-destructive/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                <X className="w-3.5 h-3.5 mr-1 relative z-10" />
-                <span className="hidden xl:inline relative z-10">Remove</span>
-                <span className="xl:hidden relative z-10 hidden sm:inline">Del</span>
+                <X className="w-4 h-4 mr-2" />
+                <span className="hidden xl:inline">Remove</span>
+                <span className="xl:hidden hidden sm:inline">Del</span>
               </Button>
               )}
 
               {/* Reset Session - moved from here to PlaylistHeader */}
               
-              {/* Download Button */}
+              {/* Download Button - Special Design */}
               <Button
                 onClick={openFolderDialog}
                 disabled={downloading || selectedCount === 0}
-                className="group relative h-9 col-span-2 sm:col-span-3 lg:col-span-1 bg-gradient-to-r from-primary via-primary to-accent hover:from-accent hover:via-primary hover:to-primary text-white shadow-md shadow-primary/30 hover:shadow-lg hover:shadow-primary/40 transition-all duration-300 rounded-lg font-semibold text-sm hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                className="group relative px-6 py-2 bg-gradient-to-r from-violet-500/30 to-purple-500/30 hover:from-violet-500/40 hover:to-purple-500/40 border border-violet-400/40 hover:border-violet-300/60 text-violet-200 hover:text-violet-100 rounded-xl font-semibold text-sm transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
               >
                 {downloading ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     <span className="hidden sm:inline">Downloading{attemptCount > 0 ? ` (${attemptCount})` : '...'}</span>
                     <span className="sm:hidden">...</span>
                   </>
                 ) : (
                   <>
-                    <Download className="w-4 h-4 mr-1.5" />
+                    <Download className="w-4 h-4 mr-2" />
                     <span className="hidden sm:inline">Download {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
                     <span className="sm:hidden">DL</span>
                   </>
@@ -2556,11 +2555,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <>
                   <Button
                     onClick={handleSkipToYtdlp}
-                    variant="outline"
-                    className="h-9 px-3 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 rounded-lg font-medium text-sm transition-all duration-200"
+                    className="px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 border border-yellow-500/30 hover:border-yellow-400/50 text-yellow-300 hover:text-yellow-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-yellow-500/25 backdrop-blur-sm"
                     title="Skip to yt-dlp (YouTube direct download)"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m5 3 14 9-14 9V3z"/>
                       <path d="m19 3 0 18"/>
                     </svg>
@@ -2570,20 +2568,21 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   
                   <Button
                     onClick={handleCancelDownload}
-                    variant="outline"
-                    className="h-9 px-3 border border-red-500/50 text-red-500 hover:bg-red-500/10 rounded-lg font-medium text-sm transition-all duration-200"
+                    className="px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 backdrop-blur-sm"
                     title="Cancel download"
                   >
-                    <X className="w-3.5 h-3.5 mr-1" />
+                    <X className="w-4 h-4 mr-2" />
                     <span className="hidden sm:inline">Cancel</span>
                     <span className="sm:hidden">✕</span>
                   </Button>
                 </>
               )}
 
-              {/* Overall Progress */}
-              {(completedCount > 0 || failedCount > 0) && (
-                <div className="col-span-full space-y-3 mt-4">
+            </div>
+
+            {/* Overall Progress */}
+            {(completedCount > 0 || failedCount > 0) && (
+              <div className="mt-4 space-y-3">
                   <Progress value={overallProgress} className="h-2" />
                   <div className="flex items-center justify-between">
                     <div className="flex gap-6 text-sm font-medium">
