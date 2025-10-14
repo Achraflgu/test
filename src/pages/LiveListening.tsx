@@ -826,8 +826,8 @@ export const LiveListening = () => {
               <div 
                 className="w-full bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-2xl rounded-xl md:rounded-2xl border border-purple-500/20 flex flex-col justify-center h-full"
                 style={{
-                  maxWidth: 'clamp(36rem, 50vw, 56rem)',
-                  padding: 'clamp(0.75rem, 2vw, 1.5rem)'
+                  maxWidth: 'clamp(32rem, 45vw, 50rem)',
+                  padding: 'clamp(0.75rem, 1.5vw, 1.25rem)'
                 }}
               >
                 {/* Playing YouTube Version - Green status */}
@@ -854,8 +854,8 @@ export const LiveListening = () => {
                       alt={currentTrack.name}
                       className="rounded-lg shadow-2xl object-cover ring-2 ring-purple-500/30 transition-transform group-hover:scale-[1.02]"
                       style={{
-                        width: 'clamp(10rem, 25vw, 18rem)',
-                        height: 'clamp(10rem, 25vw, 18rem)'
+                        width: 'clamp(9rem, 20vw, 15rem)',
+                        height: 'clamp(9rem, 20vw, 15rem)'
                       }}
                     />
                     {isPlaying && (
@@ -869,28 +869,28 @@ export const LiveListening = () => {
 
                   <h2 
                     className="font-bold text-center mb-1 px-4 line-clamp-2"
-                    style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}
+                    style={{ fontSize: 'clamp(0.875rem, 1.25vw, 1.125rem)' }}
                   >
                     {currentTrack.name}
                   </h2>
                   <p 
                     className="text-gray-400 text-center mb-0.5 truncate max-w-full px-4"
-                    style={{ fontSize: 'clamp(0.75rem, 1.2vw, 1rem)' }}
+                    style={{ fontSize: 'clamp(0.75rem, 1vw, 0.875rem)' }}
                   >
                     {currentTrack.artist}
                   </p>
                   <p 
                     className="text-gray-500 truncate max-w-full px-4"
-                    style={{ fontSize: 'clamp(0.6875rem, 1vw, 0.875rem)' }}
+                    style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.75rem)' }}
                   >
                     {currentTrack.album}
                   </p>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="mb-2 [@media(min-width:1600px)]:mb-3 [@media(min-width:1920px)]:mb-4">
-                  <div className="flex items-center gap-2 [@media(min-width:1920px)]:gap-4">
-                    <span className="text-xs [@media(min-width:1920px)]:text-sm text-gray-400 w-12 [@media(min-width:1920px)]:w-14 text-right">{formatTime(currentTime)}</span>
+                <div style={{ marginBottom: 'clamp(0.5rem, 1vh, 0.75rem)' }}>
+                  <div className="flex items-center" style={{ gap: 'clamp(0.5rem, 1vw, 1rem)' }}>
+                    <span className="text-gray-400 text-right" style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.75rem)', width: 'clamp(2.5rem, 3vw, 3rem)' }}>{formatTime(currentTime)}</span>
                     <div className="flex-1 group">
                       <input
                         type="range"
@@ -898,51 +898,52 @@ export const LiveListening = () => {
                         max={duration || 100}
                         value={currentTime}
                         readOnly
-                        className="w-full h-2 bg-secondary rounded-full appearance-none cursor-default [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:transition-transform"
+                        className="w-full bg-secondary rounded-full appearance-none cursor-default [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:transition-transform"
                         style={{
+                          height: 'clamp(0.375rem, 0.5vw, 0.5rem)',
                           background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${(currentTime / duration) * 100}%, hsl(var(--secondary)) ${(currentTime / duration) * 100}%, hsl(var(--secondary)) 100%)`
                         }}
                       />
                     </div>
-                    <span className="text-xs [@media(min-width:1920px)]:text-sm text-gray-400 w-12 [@media(min-width:1920px)]:w-14">{formatTime(duration)}</span>
+                    <span className="text-gray-400" style={{ fontSize: 'clamp(0.625rem, 0.875vw, 0.75rem)', width: 'clamp(2.5rem, 3vw, 3rem)' }}>{formatTime(duration)}</span>
                   </div>
-                  <p className="text-[11px] [@media(min-width:1920px)]:text-xs text-center text-gray-500 mt-1 [@media(min-width:1920px)]:mt-2">
+                  <p className="text-center text-gray-500" style={{ fontSize: 'clamp(0.625rem, 0.75vw, 0.6875rem)', marginTop: 'clamp(0.25rem, 0.5vh, 0.5rem)' }}>
                     Controlled by {hostName}
                   </p>
                 </div>
 
                 {/* Controls (Display only) */}
                 <div 
-                  className="flex items-center justify-center mb-2"
-                  style={{ gap: 'clamp(0.75rem, 1.5vw, 1.25rem)' }}
+                  className="flex items-center justify-center"
+                  style={{ gap: 'clamp(0.625rem, 1.25vw, 1rem)', marginBottom: 'clamp(0.5rem, 1vh, 0.75rem)' }}
                 >
                   <Button
                     variant="ghost"
                     size="icon"
                     className="opacity-50 cursor-not-allowed"
                     style={{
-                      width: 'clamp(2.25rem, 3vw, 2.75rem)',
-                      height: 'clamp(2.25rem, 3vw, 2.75rem)'
+                      width: 'clamp(2rem, 2.5vw, 2.5rem)',
+                      height: 'clamp(2rem, 2.5vw, 2.5rem)'
                     }}
                     disabled
                   >
-                    <SkipBack style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />
+                    <SkipBack style={{ width: 'clamp(0.875rem, 1.25vw, 1.125rem)', height: 'clamp(0.875rem, 1.25vw, 1.125rem)' }} />
                   </Button>
 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed"
+                    className="bg-purple-500/20 hover:bg-purple-500/30 opacity-50 cursor-not-allowed rounded-full"
                     style={{
-                      width: 'clamp(3rem, 4.5vw, 4rem)',
-                      height: 'clamp(3rem, 4.5vw, 4rem)'
+                      width: 'clamp(2.75rem, 4vw, 3.5rem)',
+                      height: 'clamp(2.75rem, 4vw, 3.5rem)'
                     }}
                     disabled
                   >
                     {isPlaying ? (
-                      <Pause style={{ width: 'clamp(1.25rem, 2vw, 2rem)', height: 'clamp(1.25rem, 2vw, 2rem)' }} />
+                      <Pause style={{ width: 'clamp(1.125rem, 1.75vw, 1.5rem)', height: 'clamp(1.125rem, 1.75vw, 1.5rem)' }} />
                     ) : (
-                      <Play style={{ width: 'clamp(1.25rem, 2vw, 2rem)', height: 'clamp(1.25rem, 2vw, 2rem)' }} className="ml-1" />
+                      <Play style={{ width: 'clamp(1.125rem, 1.75vw, 1.5rem)', height: 'clamp(1.125rem, 1.75vw, 1.5rem)' }} className="ml-1" />
                     )}
                   </Button>
 
@@ -951,12 +952,12 @@ export const LiveListening = () => {
                     size="icon"
                     className="opacity-50 cursor-not-allowed"
                     style={{
-                      width: 'clamp(2.25rem, 3vw, 2.75rem)',
-                      height: 'clamp(2.25rem, 3vw, 2.75rem)'
+                      width: 'clamp(2rem, 2.5vw, 2.5rem)',
+                      height: 'clamp(2rem, 2.5vw, 2.5rem)'
                     }}
                     disabled
                   >
-                    <SkipForward style={{ width: 'clamp(1rem, 1.5vw, 1.25rem)', height: 'clamp(1rem, 1.5vw, 1.25rem)' }} />
+                    <SkipForward style={{ width: 'clamp(0.875rem, 1.25vw, 1.125rem)', height: 'clamp(0.875rem, 1.25vw, 1.125rem)' }} />
                   </Button>
                 </div>
 
