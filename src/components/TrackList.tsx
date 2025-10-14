@@ -2393,230 +2393,280 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               </div>
             </div>
 
-            {/* Content Bar - Rich Information */}
+            {/* Content Bar - Better Structured Information */}
             <div className="px-4 py-3">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                {/* Left: Track Info */}
-                <div className="flex items-center gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">
-                      {selectedCount > 0 ? selectedCount : filteredTracks.length}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {selectedCount > 0 ? 'Selected' : 'Tracks'}
-                    </div>
-                  </div>
-                  
-                  <div className="h-8 w-px bg-gradient-to-b from-transparent via-gray-600 to-transparent"></div>
-                  
+                {/* Left: Primary Stats */}
+                <div className="flex items-center gap-6">
+                  {/* Main Track Count */}
                   <div className="flex items-center gap-3">
                     <div className="text-center">
-                      <div className="text-lg font-semibold text-green-400">{completedCount}</div>
-                      <div className="text-xs text-gray-400">Done</div>
+                      <div className="text-3xl font-bold text-white">
+                        {selectedCount > 0 ? selectedCount : filteredTracks.length}
+                      </div>
+                      <div className="text-xs text-gray-400 font-medium">
+                        {selectedCount > 0 ? 'Selected' : 'Total Tracks'}
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-red-400">{failedCount}</div>
-                      <div className="text-xs text-gray-400">Failed</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-blue-400">{settings.format.toUpperCase()}</div>
-                      <div className="text-xs text-gray-400">Format</div>
+                    
+                    {/* Status Indicators */}
+                    <div className="flex items-center gap-2">
+                      {completedCount > 0 && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-300 rounded-lg text-xs font-medium border border-green-500/30">
+                          <Check className="w-3 h-3" />
+                          {completedCount}
+                        </div>
+                      )}
+                      {failedCount > 0 && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 rounded-lg text-xs font-medium border border-red-500/30">
+                          <X className="w-3 h-3" />
+                          {failedCount}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-medium border border-blue-500/30">
+                        <Music2 className="w-3 h-3" />
+                        {settings.format.toUpperCase()}
+                      </div>
                     </div>
                   </div>
+                  
+                  {/* Progress Bar (if applicable) */}
+                  {(completedCount > 0 || failedCount > 0) && (
+                    <>
+                      <div className="h-8 w-px bg-gradient-to-b from-transparent via-gray-600 to-transparent"></div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-green-500 to-blue-500 transition-all duration-300"
+                            style={{ width: `${overallProgress}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-gray-400 font-mono">
+                          {Math.round(overallProgress)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Right: Search */}
+                {/* Right: Search & Actions */}
                 <div className="flex items-center gap-3">
+                  {/* Search Bar */}
                   <div className="relative">
                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                       <Music className="w-4 h-4 text-gray-400" />
                     </div>
                     <Input
                       type="text"
-                      placeholder="Search music..."
+                      placeholder="Search tracks, artists, albums..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-10 h-8 w-64 bg-white/5 border border-white/10 focus:border-purple-400/50 focus:ring-1 focus:ring-purple-400/20 rounded-lg text-sm text-white placeholder-gray-400 backdrop-blur-sm"
+                      className="pl-10 pr-10 h-9 w-72 bg-white/5 border border-white/10 focus:border-purple-400/50 focus:ring-1 focus:ring-purple-400/20 rounded-lg text-sm text-white placeholder-gray-400 backdrop-blur-sm"
                     />
                     {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
                         className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-white transition-colors"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                   
+                  {/* Search Results Badge */}
                   {searchQuery && (
-                    <div className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-medium border border-blue-500/30">
-                      {filteredTracks.length} found
+                    <div className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-lg text-xs font-medium border border-purple-500/30">
+                      {filteredTracks.length} result{filteredTracks.length !== 1 ? 's' : ''}
                     </div>
                   )}
+                  
+                  {/* Quick Actions */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpanded(!expanded)}
+                      className="h-8 w-8 p-0 hover:bg-white/10 rounded-lg"
+                      title={expanded ? "Collapse" : "Expand"}
+                    >
+                      {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons - Creative Floating Design */}
+        {/* Action Buttons - Organized by Function */}
         {expanded && (
-          <div className="relative px-4 py-3 bg-gradient-to-r from-slate-800/30 via-purple-800/20 to-blue-800/30 backdrop-blur-sm border-b border-white/10">
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {/* Play All */}
-              <Button
-                onClick={playAllTracks}
-                disabled={tracks.length === 0}
-                className="group relative px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 border border-emerald-500/30 hover:border-emerald-400/50 text-emerald-300 hover:text-emerald-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-                title="Play all tracks in playlist"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Play All</span>
-                <span className="sm:hidden">Play</span>
-              </Button>
+          <div className="relative px-4 py-4 bg-gradient-to-r from-slate-800/30 via-purple-800/20 to-blue-800/30 backdrop-blur-sm border-b border-white/10">
+            {/* Button Groups */}
+            <div className="flex flex-col gap-3">
+              {/* Primary Actions */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-white/5 rounded-lg">Primary Actions</span>
+                {/* Play All */}
+                <Button
+                  onClick={playAllTracks}
+                  disabled={tracks.length === 0}
+                  className="group relative px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 border border-emerald-500/30 hover:border-emerald-400/50 text-emerald-300 hover:text-emerald-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                  title="Play all tracks in playlist"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Play All</span>
+                  <span className="sm:hidden">Play</span>
+                </Button>
 
-              {/* Save Playlist */}
-              <Button
-                onClick={() => setShowSaveDialog(true)}
-                disabled={tracks.length === 0}
-                className="group relative px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 border border-purple-500/30 hover:border-purple-400/50 text-purple-300 hover:text-purple-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-                title="Save current playlist to history"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                <span className="hidden lg:inline">Save Playlist</span>
-                <span className="lg:hidden">Save</span>
-              </Button>
+                {/* Save Playlist */}
+                <Button
+                  onClick={() => setShowSaveDialog(true)}
+                  disabled={tracks.length === 0}
+                  className="group relative px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 border border-purple-500/30 hover:border-purple-400/50 text-purple-300 hover:text-purple-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                  title="Save current playlist to history"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  <span className="hidden lg:inline">Save Playlist</span>
+                  <span className="lg:hidden">Save</span>
+                </Button>
+              </div>
 
-              {/* Remove Duplicates - Hidden in Preview Mode */}
-              {!isPrivateMode && (
-              <Button
-                onClick={findDuplicates}
-                disabled={downloading || tracks.length < 2}
-                className="group relative px-4 py-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 hover:border-amber-400/50 text-amber-300 hover:text-amber-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-                title="Find and remove duplicate tracks"
-              >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                <span className="hidden xl:inline">Duplicates</span>
-                <span className="xl:hidden hidden sm:inline">Clean</span>
-              </Button>
-              )}
+              {/* Management Actions */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-white/5 rounded-lg">Management</span>
+                
+                {/* Remove Duplicates - Hidden in Preview Mode */}
+                {!isPrivateMode && (
+                <Button
+                  onClick={findDuplicates}
+                  disabled={downloading || tracks.length < 2}
+                  className="group relative px-4 py-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 hover:border-amber-400/50 text-amber-300 hover:text-amber-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                  title="Find and remove duplicate tracks"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  <span className="hidden xl:inline">Duplicates</span>
+                  <span className="xl:hidden hidden sm:inline">Clean</span>
+                </Button>
+                )}
 
-              {/* Reorder Selected */}
-              <Button
-                onClick={handleReorderTracks}
-                disabled={downloading || selectedCount === 0}
-                className="group relative px-4 py-2 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 border border-blue-500/30 hover:border-blue-400/50 text-blue-300 hover:text-blue-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-                title="Reorder selected tracks to a specific position"
-              >
-                <GripVertical className="w-4 h-4 mr-2" />
-                <span className="hidden xl:inline">Reorder</span>
-                <span className="xl:hidden hidden sm:inline">Move</span>
-              </Button>
+                {/* Reorder Selected */}
+                <Button
+                  onClick={handleReorderTracks}
+                  disabled={downloading || selectedCount === 0}
+                  className="group relative px-4 py-2 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 border border-blue-500/30 hover:border-blue-400/50 text-blue-300 hover:text-blue-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                  title="Reorder selected tracks to a specific position"
+                >
+                  <GripVertical className="w-4 h-4 mr-2" />
+                  <span className="hidden xl:inline">Reorder</span>
+                  <span className="xl:hidden hidden sm:inline">Move</span>
+                </Button>
 
-              {/* Remove Selected - Hidden in Preview Mode */}
-              {!isPrivateMode && (
-              <Button
-                onClick={removeSelected}
-                disabled={downloading || selectedCount === 0}
-                className="group relative px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-                title="Remove selected tracks from the list"
-              >
-                <X className="w-4 h-4 mr-2" />
-                <span className="hidden xl:inline">Remove</span>
-                <span className="xl:hidden hidden sm:inline">Del</span>
-              </Button>
-              )}
+                {/* Remove Selected - Hidden in Preview Mode */}
+                {!isPrivateMode && (
+                <Button
+                  onClick={removeSelected}
+                  disabled={downloading || selectedCount === 0}
+                  className="group relative px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                  title="Remove selected tracks from the list"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  <span className="hidden xl:inline">Remove</span>
+                  <span className="xl:hidden hidden sm:inline">Del</span>
+                </Button>
+                )}
+              </div>
 
-              {/* Reset Session - moved from here to PlaylistHeader */}
-              
-              {/* Download Button - Special Design */}
-              <Button
-                onClick={openFolderDialog}
-                disabled={downloading || selectedCount === 0}
-                className="group relative px-6 py-2 bg-gradient-to-r from-violet-500/30 to-purple-500/30 hover:from-violet-500/40 hover:to-purple-500/40 border border-violet-400/40 hover:border-violet-300/60 text-violet-200 hover:text-violet-100 rounded-xl font-semibold text-sm transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
-              >
-                {downloading ? (
+              {/* Download Actions */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-white/5 rounded-lg">Download</span>
+                
+                {/* Download Button - Special Design */}
+                <Button
+                  onClick={openFolderDialog}
+                  disabled={downloading || selectedCount === 0}
+                  className="group relative px-6 py-2 bg-gradient-to-r from-violet-500/30 to-purple-500/30 hover:from-violet-500/40 hover:to-purple-500/40 border border-violet-400/40 hover:border-violet-300/60 text-violet-200 hover:text-violet-100 rounded-xl font-semibold text-sm transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 backdrop-blur-sm"
+                >
+                  {downloading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <span className="hidden sm:inline">Downloading{attemptCount > 0 ? ` (${attemptCount})` : '...'}</span>
+                      <span className="sm:hidden">...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">Download {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+                      <span className="sm:hidden">DL</span>
+                    </>
+                  )}
+                </Button>
+                
+                {/* Cancel and Skip buttons - only visible during download */}
+                {downloading && (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    <span className="hidden sm:inline">Downloading{attemptCount > 0 ? ` (${attemptCount})` : '...'}</span>
-                    <span className="sm:hidden">...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Download {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
-                    <span className="sm:hidden">DL</span>
+                    <Button
+                      onClick={handleSkipToYtdlp}
+                      className="px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 border border-yellow-500/30 hover:border-yellow-400/50 text-yellow-300 hover:text-yellow-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-yellow-500/25 backdrop-blur-sm"
+                      title="Skip to yt-dlp (YouTube direct download)"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m5 3 14 9-14 9V3z"/>
+                        <path d="m19 3 0 18"/>
+                      </svg>
+                      <span className="hidden sm:inline">Skip to yt-dlp</span>
+                      <span className="sm:hidden">Skip</span>
+                    </Button>
+                    
+                    <Button
+                      onClick={handleCancelDownload}
+                      className="px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 backdrop-blur-sm"
+                      title="Cancel download"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">Cancel</span>
+                      <span className="sm:hidden">✕</span>
+                    </Button>
                   </>
                 )}
-              </Button>
-              
-              {/* Cancel and Skip buttons - only visible during download */}
-              {downloading && (
-                <>
-                  <Button
-                    onClick={handleSkipToYtdlp}
-                    className="px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 border border-yellow-500/30 hover:border-yellow-400/50 text-yellow-300 hover:text-yellow-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-yellow-500/25 backdrop-blur-sm"
-                    title="Skip to yt-dlp (YouTube direct download)"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="m5 3 14 9-14 9V3z"/>
-                      <path d="m19 3 0 18"/>
-                    </svg>
-                    <span className="hidden sm:inline">Skip to yt-dlp</span>
-                    <span className="sm:hidden">Skip</span>
-                  </Button>
-                  
-                  <Button
-                    onClick={handleCancelDownload}
-                    className="px-4 py-2 bg-gradient-to-r from-red-500/20 to-pink-500/20 hover:from-red-500/30 hover:to-pink-500/30 border border-red-500/30 hover:border-red-400/50 text-red-300 hover:text-red-200 rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 backdrop-blur-sm"
-                    title="Cancel download"
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Cancel</span>
-                    <span className="sm:hidden">✕</span>
-                  </Button>
-                </>
-              )}
-
+              </div>
             </div>
 
             {/* Overall Progress */}
             {(completedCount > 0 || failedCount > 0) && (
               <div className="mt-4 space-y-3">
-                  <Progress value={overallProgress} className="h-2" />
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-6 text-sm font-medium">
-                      {completedCount > 0 && (
-                        <span className="text-success flex items-center gap-2">
-                          <Check className="w-4 h-4" />
-                          {completedCount} completed
-                        </span>
-                      )}
-                      {failedCount > 0 && (
-                        <span className="text-destructive flex items-center gap-2">
-                          <X className="w-4 h-4" />
-                          {failedCount} failed
-                        </span>
-                      )}
-                      <span className="text-muted-foreground">
-                        {Math.round(overallProgress)}% complete
+                <Progress value={overallProgress} className="h-2" />
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-6 text-sm font-medium">
+                    {completedCount > 0 && (
+                      <span className="text-success flex items-center gap-2">
+                        <Check className="w-4 h-4" />
+                        {completedCount} completed
                       </span>
-                    </div>
-                    {failedCount > 0 && !downloading && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowFailedTracksDialog(true)}
-                        className="border-destructive/50 text-destructive hover:bg-destructive/10 rounded-lg"
-                      >
-                        <Terminal className="w-3 h-3 mr-1" />
-                        Show Fallback Commands
-                      </Button>
                     )}
+                    {failedCount > 0 && (
+                      <span className="text-destructive flex items-center gap-2">
+                        <X className="w-4 h-4" />
+                        {failedCount} failed
+                      </span>
+                    )}
+                    <span className="text-muted-foreground">
+                      {Math.round(overallProgress)}% complete
+                    </span>
                   </div>
+                  {failedCount > 0 && !downloading && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowFailedTracksDialog(true)}
+                      className="border-destructive/50 text-destructive hover:bg-destructive/10 rounded-lg"
+                    >
+                      <Terminal className="w-3 h-3 mr-1" />
+                      Show Fallback Commands
+                    </Button>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
