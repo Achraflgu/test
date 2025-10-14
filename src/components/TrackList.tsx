@@ -85,6 +85,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [liveRoomId, setLiveRoomId] = useState<string | null>(null);
   const [liveListenerCount, setLiveListenerCount] = useState(0);
   
+  // 🔄 Reorder state
+  const [showReorderDialog, setShowReorderDialog] = useState(false);
+  const [reorderPosition, setReorderPosition] = useState<number>(1);
+  
   // Keyboard shortcut: "F" to toggle fullscreen
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -2236,6 +2240,48 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const completedCount = tracks.filter(t => t.downloadStatus === 'completed').length;
   const failedCount = tracks.filter(t => t.downloadStatus === 'failed').length;
   const overallProgress = (completedCount / tracks.length) * 100;
+  
+  // 🔄 Reorder selected tracks
+  const handleReorderTracks = () => {
+    if (selectedCount === 0) {
+      toast.error('Please select tracks to reorder');
+      return;
+    }
+    
+    // Set initial position to 1
+    setReorderPosition(1);
+    setShowReorderDialog(true);
+  };
+  
+  const confirmReorder = () => {
+    const selectedTracks = tracks.filter(t => t.selected);
+    const unselectedTracks = tracks.filter(t => !t.selected);
+    
+    // Validate position
+    const targetPosition = Math.max(1, Math.min(reorderPosition, tracks.length));
+    
+    // Calculate actual index (0-based)
+    const targetIndex = targetPosition - 1;
+    
+    // Create new array with reordered tracks
+    const newTracks = [...unselectedTracks];
+    
+    // Insert selected tracks at target position
+    newTracks.splice(targetIndex, 0, ...selectedTracks);
+    
+    setTracks(newTracks);
+    
+    // Update parent component if callback exists
+    if (onTracksUpdate) {
+      onTracksUpdate(newTracks);
+    }
+    
+    // Save to storage
+    saveCurrentTrackList(newTracks);
+    
+    toast.success(`✅ Moved ${selectedCount} track${selectedCount > 1 ? 's' : ''} to position ${targetPosition}`);
+    setShowReorderDialog(false);
+  };
 
   // Sort tracks: completed first, then downloading, then pending, then failed
   const sortedTracks = [...tracks].sort((a, b) => {
@@ -2434,6 +2480,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 <span className="xl:hidden relative z-10 hidden sm:inline">Clean</span>
               </Button>
               )}
+
+              {/* Reorder Selected */}
+              <Button
+                onClick={handleReorderTracks}
+                disabled={downloading || selectedCount === 0}
+                variant="outline"
+                className="group relative h-11 border-2 border-blue-500/40 text-blue-500 hover:bg-blue-500 hover:text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
+                title="Reorder selected tracks to a specific position"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/20 to-blue-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                <GripVertical className="w-4 h-4 mr-1.5 relative z-10" />
+                <span className="hidden xl:inline relative z-10">Reorder</span>
+                <span className="xl:hidden relative z-10 hidden sm:inline">Move</span>
+              </Button>
 
               {/* Remove Selected - Hidden in Preview Mode */}
               {!isPrivateMode && (
@@ -4194,6 +4254,87 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           onEndSession={handleEndLiveSession}
         />
       )}
+
+      {/* Reorder Tracks Dialog */}
+      <Dialog open={showReorderDialog} onOpenChange={setShowReorderDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GripVertical className="w-5 h-5 text-blue-500" />
+              Reorder Selected Tracks
+            </DialogTitle>
+            <DialogDescription>
+              Move {selectedCount} selected track{selectedCount > 1 ? 's' : ''} to a specific position in the playlist.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Selected Tracks Preview */}
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <p className="text-sm font-medium mb-2 text-muted-foreground">Selected Tracks:</p>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {tracks.filter(t => t.selected).map((track, index) => (
+                  <div key={track.id} className="text-sm flex items-center gap-2 py-1">
+                    <span className="text-primary font-semibold">{index + 1}.</span>
+                    <span className="truncate">{track.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Position Input */}
+            <div className="space-y-2">
+              <Label htmlFor="reorder-position" className="text-sm font-medium">
+                Move to position:
+              </Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="reorder-position"
+                  type="number"
+                  min={1}
+                  max={tracks.length}
+                  value={reorderPosition}
+                  onChange={(e) => setReorderPosition(parseInt(e.target.value) || 1)}
+                  className="flex-1 text-center text-lg font-semibold"
+                />
+                <span className="text-sm text-muted-foreground">
+                  of {tracks.length}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                💡 Tip: Enter the position number where you want these tracks to appear
+              </p>
+            </div>
+
+            {/* Visual Preview */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-sm text-blue-400 flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                <span>
+                  Selected tracks will be moved to position <strong>#{reorderPosition}</strong>
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowReorderDialog(false)}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmReorder}
+              className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <GripVertical className="w-4 h-4 mr-2" />
+              Reorder Tracks
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
