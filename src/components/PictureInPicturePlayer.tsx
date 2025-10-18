@@ -31,6 +31,7 @@ export const PictureInPicturePlayer = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const animationFrameRef = useRef<number>();
   const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -270,6 +271,14 @@ export const PictureInPicturePlayer = ({
   const togglePip = async () => {
     if (!videoRef.current) return;
 
+    // Check if video is ready
+    if (!isVideoReady) {
+      toast.info('Please wait...', {
+        description: 'Video player is initializing',
+      });
+      return;
+    }
+
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
@@ -286,6 +295,35 @@ export const PictureInPicturePlayer = ({
       });
     }
   };
+
+  // Handle video ready state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleLoadedMetadata = () => {
+      console.log('✅ Video metadata loaded - PiP ready');
+      setIsVideoReady(true);
+    };
+
+    const handleCanPlay = () => {
+      console.log('✅ Video can play - PiP ready');
+      setIsVideoReady(true);
+    };
+
+    // Check if already loaded
+    if (video.readyState >= 2) {
+      setIsVideoReady(true);
+    }
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('canplay', handleCanPlay);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('canplay', handleCanPlay);
+    };
+  }, []);
 
   // Handle PiP events
   useEffect(() => {
@@ -364,7 +402,24 @@ export const PictureInPicturePlayer = ({
     const stream = canvas.captureStream(30); // 30 FPS
     video.srcObject = stream;
     video.muted = true;
-    video.play().catch(err => console.error('Video play error:', err));
+    video.loop = true;
+    
+    // Ensure video loads and plays
+    video.load();
+    video.play()
+      .then(() => {
+        console.log('✅ Video playing - PiP ready');
+        setIsVideoReady(true);
+      })
+      .catch(err => {
+        console.error('Video play error:', err);
+        // Try again after a delay
+        setTimeout(() => {
+          video.play()
+            .then(() => setIsVideoReady(true))
+            .catch(e => console.error('Retry failed:', e));
+        }, 500);
+      });
   }, []);
 
   if (!isPipSupported) {
@@ -393,10 +448,17 @@ export const PictureInPicturePlayer = ({
         size="sm"
         variant="ghost"
         onClick={togglePip}
-        className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
-        title={isPipActive ? 'Exit Picture-in-Picture' : 'Enter Picture-in-Picture'}
+        disabled={!isVideoReady}
+        className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''} ${!isVideoReady ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title={
+          !isVideoReady 
+            ? 'Initializing player...' 
+            : isPipActive 
+              ? 'Exit Picture-in-Picture' 
+              : 'Enter Picture-in-Picture'
+        }
       >
-        <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
+        <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''} ${!isVideoReady ? 'animate-spin' : ''}`} />
       </Button>
     </>
   );
