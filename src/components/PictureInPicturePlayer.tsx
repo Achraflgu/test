@@ -35,7 +35,6 @@ export const PictureInPicturePlayer = ({
 }: PictureInPicturePlayerProps) => {
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
-  const [hasUserOpened, setHasUserOpened] = useState(false);
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
 
@@ -298,41 +297,36 @@ console.log('✅ PiP initialized');
       closePip();
       toast.info('Picture-in-Picture closed');
     } else {
-      setHasUserOpened(true);
       openPip().then(() => {
         toast.success('PiP opened! 🎵', {
-          description: 'Will auto-open when you switch tabs'
+          description: 'Auto-open/close enabled'
         });
       });
     }
   };
 
-  // Auto open/close with visibility API
+  // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, UserOpened: ${hasUserOpened}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}`);
       
-      // Auto-open when tab hidden (only if user has opened PiP manually at least once)
-      if (document.hidden && isPlaying && !isPipActive && hasUserOpened) {
+      // Auto-open when tab hidden and playing
+      if (document.hidden && isPlaying && !isPipActive) {
         timeout = setTimeout(() => {
-          console.log('🎵 Auto-opening PiP (user activated)');
+          console.log('🎵 Auto-opening PiP');
           openPip();
         }, 300);
       } 
       // Auto-close when tab visible
       else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
-          console.log('🔴 Auto-closing PiP (tab focused)');
+          console.log('🔴 Auto-closing PiP');
           closePip();
         }, 300);
-      }
-      // First time - need user to click
-      else if (document.hidden && !isPipActive && !hasUserOpened && isPlaying) {
-        console.log('ℹ️ Click PiP button once to enable auto-open on tab switch');
       }
     };
 
@@ -342,7 +336,7 @@ console.log('✅ PiP initialized');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
     };
-  }, [isPlaying, isPipActive, hasUserOpened]);
+  }, [isPlaying, isPipActive]);
 
   // Send updates
   useEffect(() => {
@@ -466,9 +460,7 @@ console.log('✅ PiP initialized');
         title={
           isPipActive
             ? 'Close Picture-in-Picture'
-            : hasUserOpened
-              ? 'Open PiP (Auto-open on tab switch)'
-              : 'Open PiP (Click once to enable auto-open)'
+            : 'Open Picture-in-Picture (Auto-open/close enabled)'
         }
     >
       <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
