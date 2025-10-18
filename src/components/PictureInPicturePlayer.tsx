@@ -35,6 +35,7 @@ export const PictureInPicturePlayer = ({
 }: PictureInPicturePlayerProps) => {
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
+  const [hasUserOpened, setHasUserOpened] = useState(false);
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
 
@@ -74,35 +75,60 @@ export const PictureInPicturePlayer = ({
     const progressPercent = ((currentTime / duration) * 100) || 0;
     
     return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><style>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 body{font-family:-apple-system,sans-serif;overflow:hidden;width:100vw;height:100vh;background:#121212;position:relative}
-.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.4)blur(20px);transform:scale(1.1)}
+.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.6)blur(8px);transform:scale(1.05)}
 .overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.3),rgba(0,0,0,0.8))}
-.container{position:relative;width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-end;z-index:1;padding:20px 20px 15px}
-.info{margin-bottom:12px}
-.title{font-size:16px;font-weight:700;color:#fff;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.artist{font-size:13px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.progress{margin-bottom:12px;cursor:pointer;padding:4px 0}
-.bar{width:100%;height:4px;background:rgba(255,255,255,0.3);border-radius:2px;position:relative;transition:height 0.2s;cursor:pointer}
-.container:hover .bar{height:6px}
+.container{position:relative;width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-end;z-index:1;padding:clamp(10px,4vw,20px) clamp(10px,4vw,20px) clamp(8px,3vw,15px)}
+.info{margin-bottom:clamp(6px,2.5vh,12px)}
+.title{font-size:clamp(12px,4vw,16px);font-weight:700;color:#fff;margin-bottom:clamp(2px,1vh,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.artist{font-size:clamp(10px,3vw,13px);color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.progress{margin-bottom:clamp(6px,2vh,12px);cursor:pointer;padding:4px 0}
+.bar{width:100%;height:clamp(3px,1vw,4px);background:rgba(255,255,255,0.3);border-radius:2px;position:relative;transition:height 0.2s;cursor:pointer}
+.container:hover .bar{height:clamp(4px,1.2vw,6px)}
 .fill{position:absolute;left:0;top:0;height:100%;background:#1DB954;border-radius:2px;width:${progressPercent}%;pointer-events:none;transition:width 0.1s linear}
-.thumb{position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#fff;border-radius:50%;opacity:0;transition:opacity 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:none}
+.thumb{position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:clamp(8px,2.5vw,12px);height:clamp(8px,2.5vw,12px);background:#fff;border-radius:50%;opacity:0;transition:opacity 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:none}
 .container:hover .thumb{opacity:1}
-.time{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.9);margin-top:6px;font-family:monospace;opacity:1;pointer-events:none}
-.controls{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.left,.right{display:flex;align-items:center;gap:10px;flex:1}
-.center{display:flex;align-items:center;gap:14px}
+.time{display:flex;justify-content:space-between;font-size:clamp(9px,2vw,11px);color:rgba(255,255,255,0.9);margin-top:clamp(3px,1vh,6px);font-family:monospace;opacity:1;pointer-events:none}
+.controls{display:flex;align-items:center;justify-content:space-between;gap:clamp(6px,2vw,12px)}
+.left,.right{display:flex;align-items:center;gap:clamp(4px,1.5vw,10px);flex:1}
+.center{display:flex;align-items:center;gap:clamp(6px,2vw,14px)}
 .right{justify-content:flex-end}
-.btn{background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;padding:6px;transition:all 0.2s;display:flex;border-radius:50%}
+.btn{background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;padding:clamp(4px,1vw,6px);transition:all 0.2s;display:flex;border-radius:50%;width:clamp(24px,6vw,32px);height:clamp(24px,6vw,32px);align-items:center;justify-content:center}
 .btn:hover{color:#fff;background:rgba(255,255,255,0.1);transform:scale(1.05);cursor:pointer}
 .btn.active{color:#1DB954}
-.play{width:38px;height:38px;background:#fff;color:#000;border-radius:50%;box-shadow:0 4px 12px rgba(0,0,0,0.3);cursor:pointer}
+.btn svg{width:clamp(12px,3vw,18px);height:clamp(12px,3vw,18px)}
+.play{width:clamp(32px,8vw,38px);height:clamp(32px,8vw,38px);background:#fff;color:#000;border-radius:50%;box-shadow:0 4px 12px rgba(0,0,0,0.3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border:none}
 .play:hover{transform:scale(1.08);cursor:pointer}
-.vol{display:flex;align-items:center;gap:8px;opacity:1;pointer-events:auto}
-.slider{width:70px;height:4px;background:rgba(255,255,255,0.3);border-radius:2px;position:relative;cursor:pointer}
+.play svg{width:clamp(14px,3.5vw,18px);height:clamp(14px,3.5vw,18px)}
+.vol{display:flex;align-items:center;gap:clamp(4px,1.5vw,8px);opacity:1;pointer-events:auto}
+.slider{width:clamp(40px,15vw,70px);height:clamp(3px,1vw,4px);background:rgba(255,255,255,0.3);border-radius:2px;position:relative;cursor:pointer}
 .slider:hover{cursor:pointer}
 .vfill{position:absolute;left:0;top:0;height:100%;background:#fff;border-radius:2px;width:${volume}%;pointer-events:none}
+@media(max-width:350px){
+.info{margin-bottom:4px}
+.title{font-size:11px}
+.artist{font-size:9px}
+.progress{margin-bottom:4px}
+.controls{gap:4px}
+.left,.right{gap:2px}
+.center{gap:4px}
+.btn{padding:3px;width:20px;height:20px}
+.btn svg{width:10px;height:10px}
+.play{width:28px;height:28px}
+.play svg{width:12px;height:12px}
+.vol{gap:3px}
+.slider{width:30px}
+}
+@media(max-width:280px){
+.left .btn:nth-child(2),.vol{display:none}
+}
+@media(max-height:220px){
+.info{margin-bottom:3px}
+.progress{margin-bottom:3px}
+.time{margin-top:2px;font-size:8px}
+}
 </style></head><body>
 <img src="${track.imageUrl}" class="bg" alt="" crossorigin="anonymous" onerror="this.style.opacity='0.3'; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22500%22 height=%22500%22><rect fill=%22%231DB954%22 width=%22500%22 height=%22500%22/><text x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>♪</text></svg>'">
 <div class="overlay"></div>
@@ -118,18 +144,18 @@ body{font-family:-apple-system,sans-serif;overflow:hidden;width:100vw;height:100
 <div class="controls">
 <div class="left">
 <button class="btn ${isShuffled ? 'active' : ''}" id="sh" title="Shuffle">
-<svg width="18" height="18" viewBox="0 0 16 16"><path fill="currentColor" d="M13.151.922a.75.75 0 10-1.06 1.06L13.109 3H11.16a3.75 3.75 0 00-2.873 1.34l-6.173 7.356A2.25 2.25 0 01.39 12.5H0V14h.391a3.75 3.75 0 002.873-1.34l6.173-7.356a2.25 2.25 0 011.724-.804h1.947l-1.017 1.018a.75.75 0 001.06 1.06L15.98 3.75 13.15.922z"/></svg>
+<svg viewBox="0 0 16 16"><path fill="currentColor" d="M13.151.922a.75.75 0 10-1.06 1.06L13.109 3H11.16a3.75 3.75 0 00-2.873 1.34l-6.173 7.356A2.25 2.25 0 01.39 12.5H0V14h.391a3.75 3.75 0 002.873-1.34l6.173-7.356a2.25 2.25 0 011.724-.804h1.947l-1.017 1.018a.75.75 0 001.06 1.06L15.98 3.75 13.15.922z"/></svg>
 </button>
 <button class="btn ${repeatMode !== 'off' ? 'active' : ''}" id="rp" title="Repeat">
-<svg width="18" height="18" viewBox="0 0 16 16"><path fill="currentColor" d="M0 4.75A3.75 3.75 0 013.75 1h8.5A3.75 3.75 0 0116 4.75v5a3.75 3.75 0 01-3.75 3.75H9.81l1.018 1.018a.75.75 0 11-1.06 1.06L6.939 12.75l2.829-2.828a.75.75 0 111.06 1.06L9.811 12h2.439a2.25 2.25 0 002.25-2.25v-5a2.25 2.25 0 00-2.25-2.25h-8.5a2.25 2.25 0 00-2.25 2.25v5A2.25 2.25 0 003.75 12H5v1.5H3.75A3.75 3.75 0 010 9.75v-5z"/>${repeatMode === 'one' ? '<path fill="currentColor" d="M7 8V5h1.5v5H7V8z"/>' : ''}</svg>
+<svg viewBox="0 0 16 16"><path fill="currentColor" d="M0 4.75A3.75 3.75 0 013.75 1h8.5A3.75 3.75 0 0116 4.75v5a3.75 3.75 0 01-3.75 3.75H9.81l1.018 1.018a.75.75 0 11-1.06 1.06L6.939 12.75l2.829-2.828a.75.75 0 111.06 1.06L9.811 12h2.439a2.25 2.25 0 002.25-2.25v-5a2.25 2.25 0 00-2.25-2.25h-8.5a2.25 2.25 0 00-2.25 2.25v5A2.25 2.25 0 003.75 12H5v1.5H3.75A3.75 3.75 0 010 9.75v-5z"/>${repeatMode === 'one' ? '<path fill="currentColor" d="M7 8V5h1.5v5H7V8z"/>' : ''}</svg>
 </button>
 </div>
 <div class="center">
 <button class="btn" id="pr" title="Previous">
-<svg width="18" height="18" viewBox="0 0 16 16"><path fill="currentColor" d="M3.3 1a.7.7 0 01.7.7v5.15l9.95-5.744a.7.7 0 011.05.606v12.575a.7.7 0 01-1.05.607L4 9.149V14.3a.7.7 0 01-.7.7H1.7a.7.7 0 01-.7-.7V1.7a.7.7 0 01.7-.7h1.6z"/></svg>
+<svg viewBox="0 0 16 16"><path fill="currentColor" d="M3.3 1a.7.7 0 01.7.7v5.15l9.95-5.744a.7.7 0 011.05.606v12.575a.7.7 0 01-1.05.607L4 9.149V14.3a.7.7 0 01-.7.7H1.7a.7.7 0 01-.7-.7V1.7a.7.7 0 01.7-.7h1.6z"/></svg>
 </button>
 <button class="play" id="pp" title="${isPlaying ? 'Pause' : 'Play'}">
-<svg width="18" height="18" viewBox="0 0 16 16" id="playicon">
+<svg viewBox="0 0 16 16" id="playicon">
 ${isPlaying 
   ? '<path fill="currentColor" d="M2.7 1a.7.7 0 00-.7.7v12.6a.7.7 0 00.7.7h2.6a.7.7 0 00.7-.7V1.7a.7.7 0 00-.7-.7H2.7zm8 0a.7.7 0 00-.7.7v12.6a.7.7 0 00.7.7h2.6a.7.7 0 00.7-.7V1.7a.7.7 0 00-.7-.7h-2.6z"/>'
   : '<path fill="currentColor" d="M3 1.713a.7.7 0 011.05-.607l10.89 6.288a.7.7 0 010 1.212L4.05 14.894A.7.7 0 013 14.288V1.713z"/>'
@@ -137,13 +163,13 @@ ${isPlaying
 </svg>
 </button>
 <button class="btn" id="nx" title="Next">
-<svg width="18" height="18" viewBox="0 0 16 16"><path fill="currentColor" d="M12.7 1a.7.7 0 00-.7.7v5.15L2.05 1.107A.7.7 0 001 1.712v12.575a.7.7 0 001.05.607L12 9.149V14.3a.7.7 0 00.7.7h1.6a.7.7 0 00.7-.7V1.7a.7.7 0 00-.7-.7h-1.6z"/></svg>
+<svg viewBox="0 0 16 16"><path fill="currentColor" d="M12.7 1a.7.7 0 00-.7.7v5.15L2.05 1.107A.7.7 0 001 1.712v12.575a.7.7 0 001.05.607L12 9.149V14.3a.7.7 0 00.7.7h1.6a.7.7 0 00.7-.7V1.7a.7.7 0 00-.7-.7h-1.6z"/></svg>
 </button>
 </div>
 <div class="right">
 <div class="vol">
 <button class="btn" id="vm" title="Volume">
-<svg width="18" height="18" viewBox="0 0 16 16" id="volicon">${getVolumeIcon(volume)}</svg>
+<svg viewBox="0 0 16 16" id="volicon">${getVolumeIcon(volume)}</svg>
 </button>
 <div class="slider" id="vs"><div class="vfill" id="vfill"></div></div>
 </div>
@@ -274,9 +300,10 @@ console.log('✅ PiP initialized');
       closePip();
       toast.info('Picture-in-Picture closed');
     } else {
+      setHasUserOpened(true);
       openPip().then(() => {
         toast.success('PiP opened! 🎵', {
-          description: 'Drag sliders to adjust volume and seek'
+          description: 'Will auto-open when you switch tabs'
         });
       });
     }
@@ -289,13 +316,15 @@ console.log('✅ PiP initialized');
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, UserOpened: ${hasUserOpened}`);
       
-      if (document.hidden && isPlaying && !isPipActive) {
+      if (document.hidden && isPlaying && !isPipActive && hasUserOpened) {
         timeout = setTimeout(() => {
-          console.log('🎵 Auto-opening PiP');
+          console.log('🎵 Auto-opening PiP (user activated)');
           openPip();
         }, 500);
+      } else if (document.hidden && isPlaying && !isPipActive && !hasUserOpened) {
+        console.log('ℹ️ Click PiP button once to enable auto-open');
       } else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
@@ -310,7 +339,7 @@ console.log('✅ PiP initialized');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
     };
-  }, [isPlaying, isPipActive]);
+  }, [isPlaying, isPipActive, hasUserOpened]);
 
   // Send updates
   useEffect(() => {
@@ -431,7 +460,13 @@ console.log('✅ PiP initialized');
       variant="ghost"
       onClick={togglePip}
       className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
-      title={isPipActive ? 'Close PiP' : 'Open PiP (Auto on tab switch)'}
+      title={
+        isPipActive 
+          ? 'Close Picture-in-Picture' 
+          : hasUserOpened
+            ? 'Open PiP (Will auto-open on tab switch)'
+            : 'Open PiP (Click once to enable auto-open)'
+      }
     >
       <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
     </Button>
