@@ -35,7 +35,6 @@ export const PictureInPicturePlayer = ({
 }: PictureInPicturePlayerProps) => {
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
-  const [hasUserOpened, setHasUserOpened] = useState(false);
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
 
@@ -78,7 +77,7 @@ export const PictureInPicturePlayer = ({
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 *{margin:0;padding:0;box-sizing:border-box;user-select:none}
 body{font-family:-apple-system,sans-serif;overflow:hidden;width:100vw;height:100vh;background:#121212;position:relative}
-.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.6)blur(8px);transform:scale(1.05)}
+.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.8)blur(4px);transform:scale(1.02)}
 .overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.3),rgba(0,0,0,0.8))}
 .container{position:relative;width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-end;z-index:1;padding:clamp(10px,4vw,20px) clamp(10px,4vw,20px) clamp(8px,3vw,15px)}
 .info{margin-bottom:clamp(6px,2.5vh,12px)}
@@ -111,23 +110,21 @@ body{font-family:-apple-system,sans-serif;overflow:hidden;width:100vw;height:100
 .title{font-size:11px}
 .artist{font-size:9px}
 .progress{margin-bottom:4px}
-.controls{gap:4px}
+.controls{gap:3px}
 .left,.right{gap:2px}
 .center{gap:4px}
-.btn{padding:3px;width:20px;height:20px}
-.btn svg{width:10px;height:10px}
-.play{width:28px;height:28px}
-.play svg{width:12px;height:12px}
-.vol{gap:3px}
-.slider{width:30px}
+.btn{padding:2px;width:18px;height:18px}
+.btn svg{width:9px;height:9px}
+.play{width:26px;height:26px}
+.play svg{width:11px;height:11px}
+.vol{gap:2px}
+.slider{width:25px}
 }
-@media(max-width:280px){
-.left .btn:nth-child(2),.vol{display:none}
-}
-@media(max-height:220px){
-.info{margin-bottom:3px}
-.progress{margin-bottom:3px}
-.time{margin-top:2px;font-size:8px}
+@media(max-height:200px){
+.info{margin-bottom:2px}
+.progress{margin-bottom:2px}
+.time{margin-top:1px;font-size:7px}
+.controls{gap:2px}
 }
 </style></head><body>
 <img src="${track.imageUrl}" class="bg" alt="" crossorigin="anonymous" onerror="this.style.opacity='0.3'; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22500%22 height=%22500%22><rect fill=%22%231DB954%22 width=%22500%22 height=%22500%22/><text x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>♪</text></svg>'">
@@ -300,36 +297,31 @@ console.log('✅ PiP initialized');
       closePip();
       toast.info('Picture-in-Picture closed');
     } else {
-      setHasUserOpened(true);
       openPip().then(() => {
         toast.success('PiP opened! 🎵', {
-          description: 'Will auto-open when you switch tabs'
+          description: 'Auto-close enabled when you return to tab'
         });
       });
     }
   };
 
-  // Auto open/close with visibility API
+  // Auto CLOSE when returning to tab (auto-open blocked by browser security)
   useEffect(() => {
     let timeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, UserOpened: ${hasUserOpened}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}`);
       
-      if (document.hidden && isPlaying && !isPipActive && hasUserOpened) {
+      // Can only auto-CLOSE, not auto-open (browser security restriction)
+      if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
-          console.log('🎵 Auto-opening PiP (user activated)');
-          openPip();
-        }, 500);
-      } else if (document.hidden && isPlaying && !isPipActive && !hasUserOpened) {
-        console.log('ℹ️ Click PiP button once to enable auto-open');
-      } else if (!document.hidden && isPipActive) {
-        timeout = setTimeout(() => {
-          console.log('🔴 Auto-closing PiP');
+          console.log('🔴 Auto-closing PiP (tab focused)');
           closePip();
         }, 500);
+      } else if (document.hidden && !isPipActive && isPlaying) {
+        console.log('ℹ️ Browser security prevents auto-opening PiP. Click PiP button manually.');
       }
     };
 
@@ -339,7 +331,7 @@ console.log('✅ PiP initialized');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
     };
-  }, [isPlaying, isPipActive, hasUserOpened]);
+  }, [isPlaying, isPipActive]);
 
   // Send updates
   useEffect(() => {
@@ -460,13 +452,11 @@ console.log('✅ PiP initialized');
       variant="ghost"
       onClick={togglePip}
       className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
-      title={
-        isPipActive 
-          ? 'Close Picture-in-Picture' 
-          : hasUserOpened
-            ? 'Open PiP (Will auto-open on tab switch)'
-            : 'Open PiP (Click once to enable auto-open)'
-      }
+        title={
+          isPipActive
+            ? 'Close Picture-in-Picture'
+            : 'Open Picture-in-Picture (Auto-close when you return)'
+        }
     >
       <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
     </Button>
