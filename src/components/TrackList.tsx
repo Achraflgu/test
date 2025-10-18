@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
 import { Download, Play, Check, X, Loader2, ChevronDown, ChevronUp, Music2, FolderOpen, ExternalLink, Youtube, Music, Copy, Terminal, CheckCircle2, Pause, Volume2, VolumeX, SkipForward, SkipBack, Minimize2, Maximize2, List, Repeat, Repeat1, Shuffle, GripVertical, Info, Save, GripHorizontal, Trash2, AlertCircle, RotateCcw, Maximize, Radio, Users } from "lucide-react";
 import { FullScreenPlayer } from "@/components/FullScreenPlayer";
+import { PictureInPicturePlayer } from "@/components/PictureInPicturePlayer";
 import { LiveListeningDialog, ShareLiveRoomDialog } from "@/components/LiveListeningDialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -4208,6 +4209,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           onPlayTrack={(track) => {
             playTrack(track);
             // Keep fullscreen open when changing tracks from queue
+          }}
+        />
+      )}
+
+      {/* Picture-in-Picture Player (shows on alt-tab / window blur) */}
+      {currentPlayingTrack && !showFullScreenPlayer && (
+        <PictureInPicturePlayer
+          track={currentPlayingTrack}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          isShuffled={isShuffled}
+          repeatMode={repeatMode}
+          onPlayPause={togglePlayPause}
+          onNext={playNext}
+          onPrevious={playPrevious}
+          onClose={() => {
+            // Optional: Stop playback or minimize player
+            setIsPlaying(false);
           }}
         />
       )}
