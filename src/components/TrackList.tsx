@@ -3735,6 +3735,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     </Button>
                   )}
 
+                  {/* Picture-in-Picture Toggle */}
+                  <PictureInPicturePlayer
+                    track={currentPlayingTrack}
+                    isPlaying={isPlaying}
+                    currentTime={currentTime}
+                    duration={duration}
+                    isShuffled={isShuffled}
+                    repeatMode={repeatMode}
+                    onPlayPause={togglePlayPause}
+                    onNext={playNext}
+                    onPrevious={playPrevious}
+                  />
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -3954,6 +3967,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       </Button>
                     )}
                     
+                    {/* Picture-in-Picture Toggle */}
+                    <PictureInPicturePlayer
+                      track={currentPlayingTrack}
+                      isPlaying={isPlaying}
+                      currentTime={currentTime}
+                      duration={duration}
+                      isShuffled={isShuffled}
+                      repeatMode={repeatMode}
+                      onPlayPause={togglePlayPause}
+                      onNext={playNext}
+                      onPrevious={playPrevious}
+                    />
+
                     {/* Fullscreen Toggle */}
                     <Button
                       size="sm"
@@ -4209,25 +4235,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           onPlayTrack={(track) => {
             playTrack(track);
             // Keep fullscreen open when changing tracks from queue
-          }}
-        />
-      )}
-
-      {/* Picture-in-Picture Player (shows on alt-tab / window blur) */}
-      {currentPlayingTrack && !showFullScreenPlayer && (
-        <PictureInPicturePlayer
-          track={currentPlayingTrack}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          isShuffled={isShuffled}
-          repeatMode={repeatMode}
-          onPlayPause={togglePlayPause}
-          onNext={playNext}
-          onPrevious={playPrevious}
-          onClose={() => {
-            // Optional: Stop playback or minimize player
-            setIsPlaying(false);
           }}
         />
       )}
