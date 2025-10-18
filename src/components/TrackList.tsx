@@ -3741,11 +3741,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     isPlaying={isPlaying}
                     currentTime={currentTime}
                     duration={duration}
+                    volume={volume}
                     isShuffled={isShuffled}
                     repeatMode={repeatMode}
                     onPlayPause={togglePlayPause}
                     onNext={playNext}
                     onPrevious={playPrevious}
+                    onSeek={seekTo}
+                    onVolumeChange={changeVolume}
                   />
 
                   <Button
@@ -3973,11 +3976,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       isPlaying={isPlaying}
                       currentTime={currentTime}
                       duration={duration}
+                      volume={volume}
                       isShuffled={isShuffled}
                       repeatMode={repeatMode}
                       onPlayPause={togglePlayPause}
                       onNext={playNext}
                       onPrevious={playPrevious}
+                      onSeek={seekTo}
+                      onVolumeChange={changeVolume}
                     />
 
                     {/* Fullscreen Toggle */}
