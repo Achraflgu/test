@@ -35,7 +35,6 @@ export const PictureInPicturePlayer = ({
 }: PictureInPicturePlayerProps) => {
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
-  const [isPipHidden, setIsPipHidden] = useState(false); // Track if PiP is visually hidden
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
   const hasActivationRef = useRef<boolean>(true); // Track if we have user activation
@@ -270,7 +269,6 @@ console.log('✅ PiP initialized');
 
       pipWindow.addEventListener('pagehide', () => {
         setIsPipActive(false);
-        setIsPipHidden(false);
         pipWindowRef.current = null;
         console.log('🔴 PiP closed');
       });
@@ -332,47 +330,31 @@ console.log('✅ PiP initialized');
     };
   }, []);
 
-  // Auto open/close with visibility API - KEEP-OPEN MODE
+  // Auto open/close with visibility API - TRUE CLOSE MODE
   useEffect(() => {
     let timeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, Hidden: ${isPipHidden}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing
-      if (document.hidden && isPlaying && !isPipActive) {
+      // Auto-open when tab hidden and playing (only if we have activation)
+      if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
         timeout = setTimeout(() => {
           console.log('🎵 Auto-opening PiP');
           openPip();
         }, 300);
       } 
-      // Hide PiP when tab visible (keep open for activation)
-      else if (!document.hidden && isPipActive && !isPipHidden) {
+      // Auto-close when tab visible
+      else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
-          console.log('👻 Hiding PiP (keeping open for activation)');
-          setIsPipHidden(true);
-          
-          // Hide the PiP window visually
-          if (pipWindowRef.current) {
-            pipWindowRef.current.document.body.style.opacity = '0.01';
-            pipWindowRef.current.document.body.style.pointerEvents = 'none';
-          }
+          console.log('🔴 Auto-closing PiP');
+          closePip();
+          // Mark that we need new activation
+          hasActivationRef.current = false;
+          console.log('⏳ Waiting for user interaction...');
         }, 300);
-      }
-      // Show PiP when tab hidden again
-      else if (document.hidden && isPipActive && isPipHidden) {
-        timeout = setTimeout(() => {
-          console.log('👁️ Showing PiP');
-          setIsPipHidden(false);
-          
-          // Show the PiP window
-          if (pipWindowRef.current) {
-            pipWindowRef.current.document.body.style.opacity = '1';
-            pipWindowRef.current.document.body.style.pointerEvents = 'auto';
-          }
-        }, 100);
       }
     };
 
@@ -382,7 +364,7 @@ console.log('✅ PiP initialized');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
     };
-  }, [isPlaying, isPipActive, isPipHidden]);
+  }, [isPlaying, isPipActive]);
 
   // Send updates
   useEffect(() => {
@@ -502,13 +484,11 @@ console.log('✅ PiP initialized');
       size="sm"
       variant="ghost"
       onClick={togglePip}
-      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''} ${isPipHidden ? 'animate-pulse text-blue-500' : ''}`}
+      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
       title={
         isPipActive
-          ? isPipHidden
-            ? 'PiP is hidden (keeps activation) - Click to close'
-            : 'Close Picture-in-Picture'
-          : 'Open Picture-in-Picture (Auto-hide/show enabled)'
+          ? 'Close Picture-in-Picture'
+          : 'Open Picture-in-Picture (Auto-open/close enabled)'
       }
     >
       <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
