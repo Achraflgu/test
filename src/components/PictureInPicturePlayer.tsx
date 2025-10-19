@@ -330,28 +330,14 @@ console.log('✅ PiP initialized');
     };
   }, []);
 
-  // Capture activation when user presses Alt/Tab (before switching)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Capture Alt, Tab, or Meta key as user activation
-      if (e.key === 'Alt' || e.key === 'Tab' || e.metaKey || e.altKey) {
-        if (!hasActivationRef.current) {
-          console.log('✅ Keyboard activation captured (Alt/Tab)');
-          hasActivationRef.current = true;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, []);
-
   // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
+    let toastTimeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
+      clearTimeout(toastTimeout);
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
@@ -370,6 +356,13 @@ console.log('✅ PiP initialized');
           // Mark that we need new activation
           hasActivationRef.current = false;
           console.log('⏳ Waiting for user interaction...');
+          
+          // Show helpful toast after a moment
+          toastTimeout = setTimeout(() => {
+            toast.info('Click anywhere to enable auto-open PiP', {
+              duration: 2000,
+            });
+          }, 500);
         }, 300);
       }
     };
@@ -379,6 +372,7 @@ console.log('✅ PiP initialized');
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
+      clearTimeout(toastTimeout);
     };
   }, [isPlaying, isPipActive]);
 
