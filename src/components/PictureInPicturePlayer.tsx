@@ -37,6 +37,7 @@ export const PictureInPicturePlayer = ({
   const [isPipSupported, setIsPipSupported] = useState(false);
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
+  const hasActivationRef = useRef<boolean>(true); // Track if we have user activation
 
   // Check support
   useEffect(() => {
@@ -274,10 +275,13 @@ console.log('✅ PiP initialized');
 
       setIsPipActive(true);
       console.log('🟢 PiP opened');
+      // Keep activation flag - successful open means we still have activation
     } catch (err: any) {
       console.error('PiP error:', err);
       if (err.name === 'NotAllowedError') {
-        toast.error('PiP blocked - Click the PiP button to open');
+        // Mark that we need activation
+        hasActivationRef.current = false;
+        console.log('⏳ Need user interaction to enable auto-open');
       }
     }
   };
@@ -305,40 +309,51 @@ console.log('✅ PiP initialized');
     }
   };
 
-  // Hidden activation button for continuous auto-open
-  const activationButtonRef = useRef<HTMLButtonElement>(null);
+  // Listen for ANY user interaction to refresh activation
+  useEffect(() => {
+    const captureActivation = () => {
+      if (!hasActivationRef.current) {
+        console.log('✅ User activation captured');
+        hasActivationRef.current = true;
+      }
+    };
+
+    // Listen for ANY user interaction
+    document.addEventListener('click', captureActivation, true);
+    document.addEventListener('keydown', captureActivation, true);
+    document.addEventListener('mousedown', captureActivation, true);
+
+    return () => {
+      document.removeEventListener('click', captureActivation, true);
+      document.removeEventListener('keydown', captureActivation, true);
+      document.removeEventListener('mousedown', captureActivation, true);
+    };
+  }, []);
 
   // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    let activationTimeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
-      clearTimeout(activationTimeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing
-      if (document.hidden && isPlaying && !isPipActive) {
+      // Auto-open when tab hidden and playing (only if we have activation)
+      if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
         timeout = setTimeout(() => {
           console.log('🎵 Auto-opening PiP');
           openPip();
         }, 300);
       } 
-      // Auto-close when tab visible + refresh activation
+      // Auto-close when tab visible
       else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
           closePip();
-          
-          // Click hidden button to refresh user activation for next auto-open
-          activationTimeout = setTimeout(() => {
-            if (activationButtonRef.current) {
-              console.log('🔄 Refreshing activation');
-              activationButtonRef.current.click();
-            }
-          }, 100);
+          // Mark that we need new activation
+          hasActivationRef.current = false;
+          console.log('⏳ Waiting for user interaction...');
         }, 300);
       }
     };
@@ -348,7 +363,6 @@ console.log('✅ PiP initialized');
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
-      clearTimeout(activationTimeout);
     };
   }, [isPlaying, isPipActive]);
 
@@ -465,39 +479,23 @@ console.log('✅ PiP initialized');
     );
   }
 
+  const needsActivation = !hasActivationRef.current && !isPipActive;
+  
   return (
-    <>
-      {/* Hidden button to refresh user activation */}
-      <button
-        ref={activationButtonRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          // Silent click - just provides activation context
-        }}
-        style={{
-          position: 'absolute',
-          opacity: 0,
-          pointerEvents: 'none',
-          width: 1,
-          height: 1,
-        }}
-        tabIndex={-1}
-        aria-hidden="true"
-      />
-      
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={togglePip}
-        className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
-        title={
-          isPipActive
-            ? 'Close Picture-in-Picture'
-            : 'Open Picture-in-Picture (Auto-open/close enabled)'
-        }
-      >
-        <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
-      </Button>
-    </>
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={togglePip}
+      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''} ${needsActivation ? 'animate-pulse text-yellow-500' : ''}`}
+      title={
+        isPipActive
+          ? 'Close Picture-in-Picture'
+          : needsActivation
+          ? 'Click to enable auto-open PiP (needs user interaction)'
+          : 'Picture-in-Picture (Auto-open/close enabled)'
+      }
+    >
+      <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
+    </Button>
   );
 };
