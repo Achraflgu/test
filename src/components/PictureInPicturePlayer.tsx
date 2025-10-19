@@ -38,6 +38,7 @@ export const PictureInPicturePlayer = ({
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
   const hasActivationRef = useRef<boolean>(true); // Track if we have user activation
+  const lastActivationTimeRef = useRef<number>(Date.now()); // Track when user last interacted
   const retryCountRef = useRef<number>(0); // Track retry attempts
 
   // Check support
@@ -330,17 +331,8 @@ console.log('✅ PiP initialized');
               }
             }
             
-            // Method 3: Try to trigger audio context
-            try {
-              const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const oscillator = audioContext.createOscillator();
-              oscillator.connect(audioContext.destination);
-              oscillator.start();
-              oscillator.stop(audioContext.currentTime + 0.001);
-              console.log('🔊 Audio context refresh attempted');
-            } catch (e) {
-              console.log('⚠️ Audio context refresh failed');
-            }
+            // Method 3: Try to trigger audio context (REMOVED - was causing unwanted audio)
+            // Audio context refresh removed to prevent unwanted audio messages
             
             // Clean up
             document.body.removeChild(button);
@@ -402,6 +394,8 @@ console.log('✅ PiP initialized');
         console.log('✅ User activation captured');
         hasActivationRef.current = true;
       }
+      // Always update the last activation time
+      lastActivationTimeRef.current = Date.now();
     };
 
     // Debug: Track activation changes
@@ -434,14 +428,9 @@ console.log('✅ PiP initialized');
       if (event.data.action === 'activation') {
         console.log('✅ Activation signal from PiP');
         hasActivationRef.current = true;
+        lastActivationTimeRef.current = Date.now();
         
-        // Test: Try to open PiP immediately after getting activation
-        setTimeout(() => {
-          if (!isPipActive && isPlaying && hasActivationRef.current) {
-            console.log('🧪 Testing immediate PiP open after activation...');
-            openPip();
-          }
-        }, 100);
+        // Activation captured - PiP will auto-open on tab switch if conditions are met
       }
     };
 
@@ -458,12 +447,18 @@ console.log('✅ PiP initialized');
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing (only if we have activation)
+      // Auto-open when tab hidden and playing (only if we have activation and recent user interaction)
       if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
-        timeout = setTimeout(() => {
-          console.log('🎵 Auto-opening PiP');
-          openPip();
-        }, 300);
+        // Check if we have recent user activation (within last 5 seconds)
+        const timeSinceLastActivation = Date.now() - (lastActivationTimeRef.current || 0);
+        if (timeSinceLastActivation < 5000) {
+          timeout = setTimeout(() => {
+            console.log('🎵 Auto-opening PiP (recent activation)');
+            openPip();
+          }, 300);
+        } else {
+          console.log('⏸️ Skipping PiP auto-open - no recent user activation');
+        }
       } 
       // When tab becomes visible, try to capture activation from PiP before closing
       else if (!document.hidden && isPipActive) {
