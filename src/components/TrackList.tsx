@@ -221,6 +221,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
         
+        // 🔥 CRITICAL FIX: Set duration from saved track data immediately
+        if (savedSession.currentTrack.duration && savedSession.currentTrack.duration > 0) {
+          setDuration(savedSession.currentTrack.duration);
+          console.log('📊 Duration set from saved track data:', savedSession.currentTrack.duration + 's');
+        }
+        
         // Professional player restoration with enhanced stability
         const restorePlayer = async () => {
           try {
@@ -343,6 +349,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                         setDuration(duration);
                         console.log('⏱️ Duration loaded:', duration + 's');
                         setPlayerLoadProgress(90);
+                        
+                        // 🔥 CRITICAL FIX: Also update the track duration in the current track
+                        if (currentPlayingTrack) {
+                          const updatedTrack = { ...currentPlayingTrack, duration: duration };
+                          setCurrentPlayingTrack(updatedTrack);
+                          console.log('📊 Updated track duration from YouTube API:', duration + 's');
+                        }
                       }
                       
                       // Seek to saved position with stability check
@@ -391,21 +404,23 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   
                   // Wait for video metadata with retry logic
                   const waitForMetadata = (attempts = 0) => {
-                    if (attempts > 10) {
+                    if (attempts > 15) { // Increased attempts for better reliability
                       console.warn('⚠️ Metadata timeout, proceeding anyway');
                       setupPlayer();
                       return;
                     }
                     
                     const duration = event.target.getDuration();
-                    if (duration && duration > 0) {
+                    if (duration && duration > 0 && duration !== Infinity) {
+                      console.log('✅ Metadata ready, duration:', duration + 's');
                       setupPlayer();
                     } else {
-                      setTimeout(() => waitForMetadata(attempts + 1), 200);
+                      console.log(`⏳ Waiting for metadata... attempt ${attempts + 1}/15`);
+                      setTimeout(() => waitForMetadata(attempts + 1), 300); // Slightly longer wait
                     }
                   };
                   
-                  setTimeout(() => waitForMetadata(), 1000);
+                  setTimeout(() => waitForMetadata(), 500); // Start checking sooner
                 },
                 onStateChange: (event: any) => {
                   const playerState = event.data;
