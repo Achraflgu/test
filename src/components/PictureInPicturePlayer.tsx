@@ -330,6 +330,22 @@ console.log('✅ PiP initialized');
     };
   }, []);
 
+  // Capture activation when user presses Alt/Tab (before switching)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Capture Alt, Tab, or Meta key as user activation
+      if (e.key === 'Alt' || e.key === 'Tab' || e.metaKey || e.altKey) {
+        if (!hasActivationRef.current) {
+          console.log('✅ Keyboard activation captured (Alt/Tab)');
+          hasActivationRef.current = true;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, []);
+
   // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
