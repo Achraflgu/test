@@ -502,18 +502,12 @@ console.log('✅ PiP initialized');
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing (only with recent activation)
+      // Auto-open when tab hidden and playing (always if we have activation)
       if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
-        // Check if we have recent user activation (within last 3 seconds)
-        const timeSinceLastActivation = Date.now() - (lastActivationTimeRef.current || 0);
-        if (timeSinceLastActivation < 3000) {
-          timeout = setTimeout(() => {
-            console.log('🎵 Auto-opening PiP (recent activation)');
-            openPip();
-          }, 300);
-        } else {
-          console.log('⏸️ Skipping PiP auto-open - no recent user activation');
-        }
+        timeout = setTimeout(() => {
+          console.log('🎵 Auto-opening PiP');
+          openPip();
+        }, 300);
       } 
       // When tab becomes visible, try to capture activation from PiP before closing
       else if (!document.hidden && isPipActive) {
