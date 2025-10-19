@@ -316,10 +316,19 @@ console.log('✅ PiP initialized');
             button.style.left = '-9999px';
             button.style.opacity = '0';
             button.style.pointerEvents = 'none';
+            button.textContent = 'Activation Button';
             document.body.appendChild(button);
             
             // Try to click the button programmatically
             button.click();
+            
+            // Also try to dispatch a click event
+            const clickEvent = new MouseEvent('click', {
+              bubbles: true,
+              cancelable: true,
+              view: window
+            });
+            button.dispatchEvent(clickEvent);
             
             // Method 2: Try to trigger media session
             if (navigator.mediaSession) {
@@ -493,12 +502,18 @@ console.log('✅ PiP initialized');
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing (if we have activation)
+      // Auto-open when tab hidden and playing (only with recent activation)
       if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
-        timeout = setTimeout(() => {
-          console.log('🎵 Auto-opening PiP');
-          openPip();
-        }, 300);
+        // Check if we have recent user activation (within last 3 seconds)
+        const timeSinceLastActivation = Date.now() - (lastActivationTimeRef.current || 0);
+        if (timeSinceLastActivation < 3000) {
+          timeout = setTimeout(() => {
+            console.log('🎵 Auto-opening PiP (recent activation)');
+            openPip();
+          }, 300);
+        } else {
+          console.log('⏸️ Skipping PiP auto-open - no recent user activation');
+        }
       } 
       // When tab becomes visible, try to capture activation from PiP before closing
       else if (!document.hidden && isPipActive) {

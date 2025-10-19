@@ -1589,7 +1589,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const toggleMute = () => {
-    if (!playerRef.current) return;
+    console.log('🎹 M key pressed - toggleMute called');
+    if (!playerRef.current) {
+      console.log('⚠️ No player ref available');
+      return;
+    }
     
     if (typeof playerRef.current.mute !== 'function' || 
         typeof playerRef.current.unMute !== 'function') {
@@ -1599,9 +1603,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     try {
       if (isMuted) {
+        console.log('🔊 Unmuting player');
         playerRef.current.unMute();
         setIsMuted(false);
       } else {
+        console.log('🔇 Muting player');
         playerRef.current.mute();
         setIsMuted(true);
       }
@@ -1706,6 +1712,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         
         case 'KeyM':
           e.preventDefault();
+          console.log('🎹 M key detected in keyboard handler');
           toggleMute();
           break;
         
