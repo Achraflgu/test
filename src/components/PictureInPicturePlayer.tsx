@@ -298,9 +298,65 @@ console.log('✅ PiP initialized');
     } catch (err: any) {
       console.error('PiP error:', err);
       if (err.name === 'NotAllowedError') {
-        // Don't reset activation - it might still be valid
-        console.log('⚠️ NotAllowedError - activation may still be valid');
-        console.log(`🔍 Current activation state: ${hasActivationRef.current}`);
+        console.log('⚠️ NotAllowedError - trying to refresh activation...');
+        
+        // Try to refresh activation by simulating user interaction
+        setTimeout(() => {
+          console.log('🔄 Attempting activation refresh...');
+          
+          // Method 1: Try to trigger a real user gesture
+          const button = document.createElement('button');
+          button.style.position = 'absolute';
+          button.style.left = '-9999px';
+          button.style.opacity = '0';
+          button.style.pointerEvents = 'none';
+          document.body.appendChild(button);
+          
+          // Try to click the button programmatically
+          button.click();
+          
+          // Method 2: Try to trigger media session
+          if (navigator.mediaSession) {
+            try {
+              navigator.mediaSession.setActionHandler('play', () => {});
+              console.log('🎵 Media session refresh attempted');
+            } catch (e) {
+              console.log('⚠️ Media session refresh failed');
+            }
+          }
+          
+          // Method 3: Try to trigger audio context
+          try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.001);
+            console.log('🔊 Audio context refresh attempted');
+          } catch (e) {
+            console.log('⚠️ Audio context refresh failed');
+          }
+          
+          // Clean up
+          document.body.removeChild(button);
+          
+          // Check if activation was refreshed
+          setTimeout(() => {
+            if (hasActivationRef.current) {
+              console.log('✅ Activation refreshed - retrying PiP open...');
+              // Retry opening PiP
+              setTimeout(() => {
+                if (!isPipActive && isPlaying) {
+                  console.log('🔄 Retrying PiP open with refreshed activation...');
+                  openPip();
+                }
+              }, 100);
+            } else {
+              console.log('❌ Activation refresh failed - manual interaction needed');
+              hasActivationRef.current = false;
+            }
+          }, 200);
+        }, 100);
       }
     }
   };
