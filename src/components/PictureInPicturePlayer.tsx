@@ -305,12 +305,17 @@ console.log('✅ PiP initialized');
     }
   };
 
+  // Hidden activation button for continuous auto-open
+  const activationButtonRef = useRef<HTMLButtonElement>(null);
+
   // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
+    let activationTimeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
+      clearTimeout(activationTimeout);
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}`);
       
@@ -321,11 +326,19 @@ console.log('✅ PiP initialized');
           openPip();
         }, 300);
       } 
-      // Auto-close when tab visible
+      // Auto-close when tab visible + refresh activation
       else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
           closePip();
+          
+          // Click hidden button to refresh user activation for next auto-open
+          activationTimeout = setTimeout(() => {
+            if (activationButtonRef.current) {
+              console.log('🔄 Refreshing activation');
+              activationButtonRef.current.click();
+            }
+          }, 100);
         }, 300);
       }
     };
@@ -335,6 +348,7 @@ console.log('✅ PiP initialized');
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
+      clearTimeout(activationTimeout);
     };
   }, [isPlaying, isPipActive]);
 
@@ -452,18 +466,38 @@ console.log('✅ PiP initialized');
   }
 
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={togglePip}
-      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
+    <>
+      {/* Hidden button to refresh user activation */}
+      <button
+        ref={activationButtonRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          // Silent click - just provides activation context
+        }}
+        style={{
+          position: 'absolute',
+          opacity: 0,
+          pointerEvents: 'none',
+          width: 1,
+          height: 1,
+        }}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={togglePip}
+        className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''}`}
         title={
           isPipActive
             ? 'Close Picture-in-Picture'
             : 'Open Picture-in-Picture (Auto-open/close enabled)'
         }
-    >
-      <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
-    </Button>
+      >
+        <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
+      </Button>
+    </>
   );
 };
