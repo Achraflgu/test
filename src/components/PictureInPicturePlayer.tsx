@@ -181,17 +181,19 @@ let isDraggingVolume=false;
 
 function msg(a,v){window.opener&&window.opener.postMessage({action:a,value:v},'*')}
 
-// Progress bar drag
+// Progress bar drag with activation refresh
 const pbar=document.getElementById('pbar');
 pbar.addEventListener('mousedown',e=>{
   isDraggingProgress=true;
   updateProgress(e);
+  msg('activation'); // Send activation signal
 });
 document.addEventListener('mousemove',e=>{
   if(isDraggingProgress) updateProgress(e);
 });
 document.addEventListener('mouseup',()=>{
   isDraggingProgress=false;
+  msg('activation'); // Send activation signal on release
 });
 function updateProgress(e){
   const r=pbar.getBoundingClientRect();
@@ -200,17 +202,19 @@ function updateProgress(e){
   msg('seek',p*DURATION);
 }
 
-// Volume slider drag
+// Volume slider drag with activation refresh
 const vs=document.getElementById('vs');
 vs.addEventListener('mousedown',e=>{
   isDraggingVolume=true;
   updateVolume(e);
+  msg('activation'); // Send activation signal
 });
 document.addEventListener('mousemove',e=>{
   if(isDraggingVolume) updateVolume(e);
 });
 document.addEventListener('mouseup',()=>{
   isDraggingVolume=false;
+  msg('activation'); // Send activation signal on release
 });
 function updateVolume(e){
   const r=vs.getBoundingClientRect();
@@ -219,11 +223,23 @@ function updateVolume(e){
   msg('volume',p);
 }
 
-// Buttons
-document.getElementById('pp').onclick=()=>msg('playPause');
-document.getElementById('nx').onclick=()=>msg('next');
-document.getElementById('pr').onclick=()=>msg('previous');
-document.getElementById('vm').onclick=()=>msg('toggleMute');
+// Buttons with activation refresh
+document.getElementById('pp').onclick=()=>{
+  msg('playPause');
+  msg('activation'); // Send activation signal to parent
+};
+document.getElementById('nx').onclick=()=>{
+  msg('next');
+  msg('activation');
+};
+document.getElementById('pr').onclick=()=>{
+  msg('previous');
+  msg('activation');
+};
+document.getElementById('vm').onclick=()=>{
+  msg('toggleMute');
+  msg('activation');
+};
 
 // Updates from parent
 window.addEventListener('message',e=>{
@@ -328,6 +344,19 @@ console.log('✅ PiP initialized');
       document.removeEventListener('keydown', captureActivation, true);
       document.removeEventListener('mousedown', captureActivation, true);
     };
+  }, []);
+
+  // Listen for activation signals from PiP window
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.action === 'activation') {
+        console.log('✅ Activation signal from PiP');
+        hasActivationRef.current = true;
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   // Auto open/close with visibility API - TRUE CLOSE MODE
