@@ -298,9 +298,9 @@ console.log('✅ PiP initialized');
     } catch (err: any) {
       console.error('PiP error:', err);
       if (err.name === 'NotAllowedError') {
-        // Mark that we need activation
-        hasActivationRef.current = false;
-        console.log('⏳ Need user interaction to enable auto-open');
+        // Don't reset activation - it might still be valid
+        console.log('⚠️ NotAllowedError - activation may still be valid');
+        console.log(`🔍 Current activation state: ${hasActivationRef.current}`);
       }
     }
   };
@@ -337,15 +337,27 @@ console.log('✅ PiP initialized');
       }
     };
 
+    // Debug: Track activation changes
+    const originalRef = hasActivationRef.current;
+    const checkActivation = () => {
+      if (hasActivationRef.current !== originalRef) {
+        console.log(`🔄 Activation changed: ${originalRef} → ${hasActivationRef.current}`);
+      }
+    };
+
     // Listen for ANY user interaction
     document.addEventListener('click', captureActivation, true);
     document.addEventListener('keydown', captureActivation, true);
     document.addEventListener('mousedown', captureActivation, true);
 
+    // Check activation every second
+    const interval = setInterval(checkActivation, 1000);
+
     return () => {
       document.removeEventListener('click', captureActivation, true);
       document.removeEventListener('keydown', captureActivation, true);
       document.removeEventListener('mousedown', captureActivation, true);
+      clearInterval(interval);
     };
   }, []);
 
