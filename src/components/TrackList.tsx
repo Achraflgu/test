@@ -1589,18 +1589,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const toggleMute = () => {
-    if (!playerRef.current) return;
+    console.log('🎹 toggleMute called, isMuted:', isMuted);
+    if (!playerRef.current) {
+      console.log('⚠️ No player ref available');
+      return;
+    }
     
     if (typeof playerRef.current.mute !== 'function' || 
         typeof playerRef.current.unMute !== 'function') {
+      console.log('⚠️ Mute methods not available');
       return;
     }
     
     try {
       if (isMuted) {
+        console.log('🔊 Unmuting player');
         playerRef.current.unMute();
         setIsMuted(false);
       } else {
+        console.log('🔇 Muting player');
         playerRef.current.mute();
         setIsMuted(true);
       }
@@ -1724,6 +1731,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         case 'KeyM':
         case 'm':
           e.preventDefault();
+          console.log('🎹 M key pressed - calling toggleMute');
           toggleMute();
           break;
         
@@ -3168,6 +3176,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <Music2 className="w-6 h-6 text-primary" />
               {listenMode === 'choose' ? 'Listen to Track' : selectedTrack?.name || 'Now Playing'}
             </DialogTitle>
+            <DialogDescription>
+              {listenMode === 'choose' ? 'Choose how you want to listen to this track' : 'Currently playing track'}
+            </DialogDescription>
             <DialogDescription className="text-muted-foreground">
               {listenMode === 'choose' 
                 ? 'Choose where you\'d like to listen' 
@@ -3351,6 +3362,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <FolderOpen className="w-6 h-6 text-primary" />
               Choose Download Folder
             </DialogTitle>
+            <DialogDescription>
+              Select the folder where you want to download the tracks
+            </DialogDescription>
             <DialogDescription className="text-muted-foreground">
               Enter a name for the folder where your music will be saved. Files will be saved to your Downloads directory.
             </DialogDescription>
