@@ -35,6 +35,7 @@ export const PictureInPicturePlayer = ({
 }: PictureInPicturePlayerProps) => {
   const [isPipActive, setIsPipActive] = useState(false);
   const [isPipSupported, setIsPipSupported] = useState(false);
+  const [isPipHidden, setIsPipHidden] = useState(false); // Track if PiP is visually hidden
   const pipWindowRef = useRef<Window | null>(null);
   const lastTrackIdRef = useRef<string>('');
   const hasActivationRef = useRef<boolean>(true); // Track if we have user activation
@@ -269,41 +270,9 @@ console.log('✅ PiP initialized');
 
       pipWindow.addEventListener('pagehide', () => {
         setIsPipActive(false);
+        setIsPipHidden(false);
         pipWindowRef.current = null;
         console.log('🔴 PiP closed');
-        
-        // Try auto-activation after PiP closes
-        setTimeout(() => {
-          console.log('🤖 Attempting auto-activation...');
-          
-          // Method 1: Dispatch synthetic click on document
-          const clickEvent = new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            button: 0,
-          });
-          document.body.dispatchEvent(clickEvent);
-          
-          // Method 2: Dispatch mousedown (sometimes more effective)
-          const mousedownEvent = new MouseEvent('mousedown', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            button: 0,
-          });
-          document.body.dispatchEvent(mousedownEvent);
-          
-          // Check after a moment
-          setTimeout(() => {
-            if (hasActivationRef.current) {
-              console.log('✅ Auto-activation successful!');
-            } else {
-              console.log('❌ Auto-activation failed (browser security). Manual click needed.');
-              hasActivationRef.current = false;
-            }
-          }, 100);
-        }, 200);
       });
 
       setIsPipActive(true);
@@ -363,28 +332,47 @@ console.log('✅ PiP initialized');
     };
   }, []);
 
-  // Auto open/close with visibility API - FULLY AUTOMATIC
+  // Auto open/close with visibility API - KEEP-OPEN MODE
   useEffect(() => {
     let timeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
       
-      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
+      console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, Hidden: ${isPipHidden}`);
       
-      // Auto-open when tab hidden and playing (only if we have activation)
-      if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
+      // Auto-open when tab hidden and playing
+      if (document.hidden && isPlaying && !isPipActive) {
         timeout = setTimeout(() => {
           console.log('🎵 Auto-opening PiP');
           openPip();
         }, 300);
       } 
-      // Auto-close when tab visible
-      else if (!document.hidden && isPipActive) {
+      // Hide PiP when tab visible (keep open for activation)
+      else if (!document.hidden && isPipActive && !isPipHidden) {
         timeout = setTimeout(() => {
-          console.log('🔴 Auto-closing PiP');
-          closePip();
+          console.log('👻 Hiding PiP (keeping open for activation)');
+          setIsPipHidden(true);
+          
+          // Hide the PiP window visually
+          if (pipWindowRef.current) {
+            pipWindowRef.current.document.body.style.opacity = '0.01';
+            pipWindowRef.current.document.body.style.pointerEvents = 'none';
+          }
         }, 300);
+      }
+      // Show PiP when tab hidden again
+      else if (document.hidden && isPipActive && isPipHidden) {
+        timeout = setTimeout(() => {
+          console.log('👁️ Showing PiP');
+          setIsPipHidden(false);
+          
+          // Show the PiP window
+          if (pipWindowRef.current) {
+            pipWindowRef.current.document.body.style.opacity = '1';
+            pipWindowRef.current.document.body.style.pointerEvents = 'auto';
+          }
+        }, 100);
       }
     };
 
@@ -394,7 +382,7 @@ console.log('✅ PiP initialized');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
     };
-  }, [isPlaying, isPipActive]);
+  }, [isPlaying, isPipActive, isPipHidden]);
 
   // Send updates
   useEffect(() => {
@@ -509,20 +497,18 @@ console.log('✅ PiP initialized');
     );
   }
 
-  const needsActivation = !hasActivationRef.current && !isPipActive;
-  
   return (
     <Button
       size="sm"
       variant="ghost"
       onClick={togglePip}
-      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''} ${needsActivation ? 'animate-pulse text-yellow-500' : ''}`}
+      className={`hover:bg-primary/20 ${isPipActive ? 'text-primary' : ''} ${isPipHidden ? 'animate-pulse text-blue-500' : ''}`}
       title={
         isPipActive
-          ? 'Close Picture-in-Picture'
-          : needsActivation
-          ? 'Click to enable auto-open PiP (needs user interaction)'
-          : 'Picture-in-Picture (Auto-open/close enabled)'
+          ? isPipHidden
+            ? 'PiP is hidden (keeps activation) - Click to close'
+            : 'Close Picture-in-Picture'
+          : 'Open Picture-in-Picture (Auto-hide/show enabled)'
       }
     >
       <PictureInPicture2 className={`w-4 h-4 ${isPipActive ? 'animate-pulse' : ''}`} />
