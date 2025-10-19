@@ -1589,25 +1589,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const toggleMute = () => {
-    console.log('🎹 M key pressed - toggleMute called');
-    if (!playerRef.current) {
-      console.log('⚠️ No player ref available');
-      return;
-    }
+    if (!playerRef.current) return;
     
     if (typeof playerRef.current.mute !== 'function' || 
         typeof playerRef.current.unMute !== 'function') {
-      console.log('⚠️ Mute methods not ready');
       return;
     }
     
     try {
       if (isMuted) {
-        console.log('🔊 Unmuting player');
         playerRef.current.unMute();
         setIsMuted(false);
       } else {
-        console.log('🔇 Muting player');
         playerRef.current.mute();
         setIsMuted(true);
       }
@@ -1676,22 +1669,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Comprehensive keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Debug: Log all key presses
-      console.log(`🎹 Key pressed: ${e.code} (${e.key})`);
-      
       // Only trigger if not typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        console.log('🎹 Ignoring key - user is typing in input');
         return;
       }
       
       // Only handle if we have a current track
-      if (!currentPlayingTrack) {
-        console.log('🎹 Ignoring key - no current track');
-        return;
-      }
-      
-      console.log(`🎹 Processing key: ${e.code}`);
+      if (!currentPlayingTrack) return;
       
       switch (e.code) {
         case 'Space':
@@ -1707,7 +1691,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               const currentTime = playerRef.current.getCurrentTime();
               const newTime = Math.min(currentTime + 10, duration);
               seekTo(newTime);
-              console.log(`⏩ Seeking forward to ${newTime}s`);
             } catch (error) {
               console.error('Error seeking forward:', error);
             }
@@ -1722,7 +1705,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               const currentTime = playerRef.current.getCurrentTime();
               const newTime = Math.max(currentTime - 10, 0);
               seekTo(newTime);
-              console.log(`⏪ Seeking backward to ${newTime}s`);
             } catch (error) {
               console.error('Error seeking backward:', error);
             }
@@ -1742,7 +1724,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         case 'KeyM':
         case 'm':
           e.preventDefault();
-          console.log('🎹 M key detected in keyboard handler');
           toggleMute();
           break;
         
@@ -1765,7 +1746,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           if (e.ctrlKey) {
             e.preventDefault();
             togglePiP();
-            console.log('🎹 PiP toggle requested via Ctrl+P');
           }
           break;
         
@@ -1812,25 +1792,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       }
     };
     
-    // Also add a key-based handler as fallback
-    const handleKeyPressFallback = (e: KeyboardEvent) => {
-      // Only handle M key as fallback
-      if (e.key === 'm' || e.key === 'M') {
-        console.log(`🎹 Fallback M key handler: ${e.key}`);
-        if (!currentPlayingTrack) return;
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-        
-        e.preventDefault();
-        toggleMute();
-      }
-    };
-
     window.addEventListener('keydown', handleKeyPress);
-    window.addEventListener('keydown', handleKeyPressFallback);
-    return () => {
-      window.removeEventListener('keydown', handleKeyPress);
-      window.removeEventListener('keydown', handleKeyPressFallback);
-    };
+    return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentPlayingTrack, volume, duration, isPipSupported, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
 
   const cyclePlayerPosition = () => {
