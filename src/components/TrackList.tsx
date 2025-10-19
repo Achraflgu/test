@@ -195,6 +195,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Note: Track list restoration is now handled by parent component (Index.tsx)
     // This ensures the playlist header also gets restored with the correct info
     
+    // Set up global YouTube API ready handler
+    const handleYouTubeAPIReady = () => {
+      console.log('🎬 YouTube IFrame API Ready - Global handler');
+      // This will be called when the YouTube API is loaded
+    };
+    
+    // Set the global handler
+    (window as any).onYouTubeIframeAPIReady = handleYouTubeAPIReady;
+    
     // Restore player session (queue, current track, position)
     const savedSession = loadPlayerSession();
     if (savedSession) {
@@ -252,11 +261,33 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             
             console.log('✅ [2/6] YouTube ID extracted:', youtubeId);
             
-            // Verify YouTube API
-            if (!(window as any).YT || !(window as any).YT.Player) {
-              throw new Error('YouTube API not loaded');
-            }
-            console.log('✅ [3/6] YouTube API verified');
+            // 🔥 CRITICAL FIX: Wait for YouTube API to be loaded
+            setPlayerLoadProgress(40);
+            console.log('⏳ [3/6] Waiting for YouTube API...');
+            
+            const waitForYouTubeAPI = () => {
+              return new Promise<void>((resolve, reject) => {
+                let attempts = 0;
+                const maxAttempts = 50; // 10 seconds max wait
+                
+                const checkAPI = () => {
+                  attempts++;
+                  
+                  if ((window as any).YT && (window as any).YT.Player) {
+                    console.log('✅ [3/6] YouTube API verified after', attempts, 'attempts');
+                    resolve();
+                  } else if (attempts >= maxAttempts) {
+                    reject(new Error('YouTube API failed to load after 10 seconds'));
+                  } else {
+                    setTimeout(checkAPI, 200);
+                  }
+                };
+                
+                checkAPI();
+              });
+            };
+            
+            await waitForYouTubeAPI();
             setPlayerLoadProgress(40);
             
             // Clean up old player
@@ -585,6 +616,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             setIsPlayerReady(false);
             setIsRestoringPlayer(false);
             setPlayerLoadProgress(0);
+            
+            // Check if it's a YouTube API loading issue
+            if (err.message.includes('YouTube API')) {
+              console.log('🔄 YouTube API not ready, will retry when available...');
+              
+              // Set up a retry mechanism when YouTube API becomes available
+              const retryRestoration = () => {
+                if ((window as any).YT && (window as any).YT.Player) {
+                  console.log('🔄 YouTube API now available, retrying restoration...');
+                  restorePlayer();
+                } else {
+                  // Check again in 500ms
+                  setTimeout(retryRestoration, 500);
+                }
+              };
+              
+              // Start retry mechanism
+              setTimeout(retryRestoration, 1000);
+              
+              toast.info('⏳ Loading YouTube Player...', {
+                description: 'Please wait while the player initializes',
+                duration: 3000
+              });
+              
+              return; // Exit early, retry will handle restoration
+            }
             
             // Check if it's a Spotify track
             const isSpotifyTrack = savedSession.currentTrack.url && 
