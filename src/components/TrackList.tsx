@@ -79,6 +79,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
   const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
   
+  // 🎵 Player Loading States
+  const [isPlayerLoading, setIsPlayerLoading] = useState(false);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [isRestoringPlayer, setIsRestoringPlayer] = useState(false);
+  const [playerLoadProgress, setPlayerLoadProgress] = useState(0);
+  
   // 🎧 Live Listening state
   const [showLiveDialog, setShowLiveDialog] = useState(false);
   const [showShareLiveDialog, setShowShareLiveDialog] = useState(false);
@@ -206,16 +212,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Keep player paused (do NOT auto-play)
         setIsPlaying(false);
         
-        // Professional player restoration with retry logic
+        // Professional player restoration with enhanced stability
         const restorePlayer = async () => {
           try {
-            console.log('🎬 [1/5] Starting player restoration...');
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
+            setIsRestoringPlayer(true);
+            setIsPlayerLoading(true);
+            setPlayerLoadProgress(10);
+            console.log('🎬 [1/6] Starting enhanced player restoration...');
+            
             const restoredTrack = savedSession.currentTrack;
             
             // Extract YouTube ID using the same logic as playTrack
             let youtubeId = getYouTubeId(restoredTrack.url);
+            setPlayerLoadProgress(20);
             
             // If no URL, try using the track's youtubeId or id directly
             if (!youtubeId) {
@@ -223,45 +232,50 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             
               // Remove "search-" prefix if present (from YouTube search results)
               if (youtubeId && youtubeId.startsWith('search-')) {
-              youtubeId = youtubeId.replace('search-', '');
-                console.log('🔧 [2/5] Cleaned search ID:', youtubeId);
+                youtubeId = youtubeId.replace('search-', '');
+                console.log('🔧 [2/6] Cleaned search ID:', youtubeId);
               }
             }
             
             // 🔥 FIX: Check YouTube ID cache for Spotify tracks
             if (!youtubeId && youtubeIdCache.has(restoredTrack.id)) {
               youtubeId = youtubeIdCache.get(restoredTrack.id) || null;
-              console.log('⚡ [2/5] YouTube ID from cache:', youtubeId);
+              console.log('⚡ [2/6] YouTube ID from cache:', youtubeId);
             }
+            
+            setPlayerLoadProgress(30);
             
             // Validate the YouTube ID
             if (!youtubeId || !isValidYouTubeId(youtubeId)) {
               throw new Error('Invalid video id: ' + (youtubeId || 'none') + ' (Spotify tracks need YouTube ID - click play to search)');
             }
             
-            console.log('✅ [2/5] YouTube ID extracted:', youtubeId);
+            console.log('✅ [2/6] YouTube ID extracted:', youtubeId);
             
             // Verify YouTube API
             if (!(window as any).YT || !(window as any).YT.Player) {
               throw new Error('YouTube API not loaded');
             }
-            console.log('✅ [3/5] YouTube API verified');
+            console.log('✅ [3/6] YouTube API verified');
+            setPlayerLoadProgress(40);
             
             // Clean up old player
             if (playerRef.current) {
               try {
                 playerRef.current.destroy();
-                console.log('🗑️ [4/5] Old player destroyed');
+                console.log('🗑️ [4/6] Old player destroyed');
               } catch (err) {
                 console.log('⚠️ Old player cleanup skipped');
               }
               playerRef.current = null;
             }
             
-            await new Promise(resolve => setTimeout(resolve, 500));
+            setPlayerLoadProgress(50);
+            await new Promise(resolve => setTimeout(resolve, 800));
             
             // Create new player with enhanced error handling
-            console.log('✨ [5/5] Creating player with video:', youtubeId);
+            console.log('✨ [5/6] Creating player with video:', youtubeId);
+            setPlayerLoadProgress(60);
             
             playerRef.current = new (window as any).YT.Player('youtube-player', {
               videoId: youtubeId,
@@ -276,7 +290,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               },
               events: {
                 onReady: (event: any) => {
-                  console.log('🎬 [5/5] Player ready! Setting up...');
+                  console.log('🎬 [5/6] Player ready! Setting up...');
+                  setPlayerLoadProgress(70);
                   
                   // Apply volume settings
                   event.target.setVolume(volumeRef.current);
@@ -286,41 +301,79 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   
                   // Load video
                   event.target.loadVideoById(youtubeId);
+                  setPlayerLoadProgress(80);
                   
-                  // Wait for video metadata, then seek
-                  setTimeout(() => {
+                  // Enhanced restoration with better timing and stability
+                  const setupPlayer = () => {
                     try {
                       const duration = event.target.getDuration();
                       
                       if (duration && duration > 0) {
                         setDuration(duration);
                         console.log('⏱️ Duration loaded:', duration + 's');
+                        setPlayerLoadProgress(90);
                       }
                       
-                      // Seek to saved position
-                      if (savedTime > 0) {
+                      // Seek to saved position with stability check
+                      if (savedTime > 0 && savedTime < duration) {
                         event.target.seekTo(savedTime, true);
                         console.log('⏩ Seeking to:', savedTime + 's');
                       }
                       
-                      // Ensure paused state
+                      // CRITICAL: Ensure player is paused and stable
                       event.target.pauseVideo();
                       
-                      console.log('✅ Player restoration complete!', {
-                        track: restoredTrack.name,
-                        time: savedTime + 's',
-                        duration: duration + 's'
-                      });
+                      // Wait a bit more to ensure stability
+                      setTimeout(() => {
+                        // Double-check player is paused
+                        if (event.target.getPlayerState() !== (window as any).YT.PlayerState.PAUSED) {
+                          event.target.pauseVideo();
+                        }
+                        
+                        setPlayerLoadProgress(100);
+                        setIsPlayerLoading(false);
+                        setIsPlayerReady(true);
+                        setIsRestoringPlayer(false);
+                        
+                        console.log('✅ Enhanced player restoration complete!', {
+                          track: restoredTrack.name,
+                          time: savedTime + 's',
+                          duration: duration + 's',
+                          state: 'PAUSED'
+                        });
+                        
+                        toast.success('🎵 Player Ready!', {
+                          description: `${restoredTrack.name.substring(0, 30)}...`,
+                          duration: 2000
+                        });
+                      }, 500);
                       
-                      toast.success('🎵 Player Ready!', {
-                        description: `${restoredTrack.name.substring(0, 30)}...`,
-                        duration: 2000
-                      });
                     } catch (err) {
                       console.error('❌ Error in final setup:', err);
+                      setIsPlayerLoading(false);
+                      setIsPlayerReady(false);
+                      setIsRestoringPlayer(false);
                       toast.error('Player loaded but position reset');
                     }
-                  }, 1500);
+                  };
+                  
+                  // Wait for video metadata with retry logic
+                  const waitForMetadata = (attempts = 0) => {
+                    if (attempts > 10) {
+                      console.warn('⚠️ Metadata timeout, proceeding anyway');
+                      setupPlayer();
+                      return;
+                    }
+                    
+                    const duration = event.target.getDuration();
+                    if (duration && duration > 0) {
+                      setupPlayer();
+                    } else {
+                      setTimeout(() => waitForMetadata(attempts + 1), 200);
+                    }
+                  };
+                  
+                  setTimeout(() => waitForMetadata(), 1000);
                 },
                 onStateChange: (event: any) => {
                   const playerState = event.data;
@@ -526,6 +579,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             });
           } catch (err: any) {
             console.error('❌ Player restoration failed:', err.message);
+            
+            // Reset loading states on error
+            setIsPlayerLoading(false);
+            setIsPlayerReady(false);
+            setIsRestoringPlayer(false);
+            setPlayerLoadProgress(0);
             
             // Check if it's a Spotify track
             const isSpotifyTrack = savedSession.currentTrack.url && 
@@ -823,7 +882,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     console.log('🎵 playTrack called for:', track.name);
     
     // If same track, toggle play/pause
-    if (currentPlayingTrack?.id === track.id && playerRef.current) {
+    if (currentPlayingTrack?.id === track.id && playerRef.current && isPlayerReady) {
       if (isPlaying) {
         playerRef.current.pauseVideo();
         setIsPlaying(false);
@@ -833,6 +892,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       }
       return;
     }
+    
+    // Set loading state
+    setIsPlayerLoading(true);
+    setIsPlayerReady(false);
+    setPlayerLoadProgress(10);
 
     let youtubeId = getYouTubeId(track.url);
     
@@ -914,6 +978,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     const trackWithYoutubeId = { ...track, youtubeId };
     setCurrentPlayingTrack(trackWithYoutubeId);
     setIsPlaying(true);
+    setPlayerLoadProgress(90);
     
     // 🔥 FIX: Don't reset time if we have a pending seek (Spotify restoration)
     if (pendingSeekTimeRef.current === null) {
@@ -1072,6 +1137,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         },
         events: {
           onReady: (event: any) => {
+            setPlayerLoadProgress(70);
             event.target.setVolume(volumeRef.current);
             if (isMutedRef.current) {
               event.target.mute();
@@ -1287,9 +1353,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             toast.error(errorMessage);
             setIsPlaying(false);
             setCurrentPlayingTrack(null);
+            setIsPlayerLoading(false);
+            setIsPlayerReady(false);
+            setPlayerLoadProgress(0);
           },
         },
       });
+      
+      // Set player as ready after successful creation
+      setTimeout(() => {
+        setPlayerLoadProgress(100);
+        setIsPlayerLoading(false);
+        setIsPlayerReady(true);
+      }, 1000);
     }
   };
 
@@ -3576,6 +3652,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <span className="text-xs font-bold uppercase tracking-wider">LIVE · {liveListenerCount} Listening</span>
             </div>
           )}
+          
+          {/* Player Loading Indicator */}
+          {isRestoringPlayer && (
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-1 rounded-t-lg flex items-center gap-2 shadow-lg">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span className="text-xs font-bold uppercase tracking-wider">RESTORING PLAYER · {playerLoadProgress}%</span>
+            </div>
+          )}
           <div className="container mx-auto px-4 py-3">
             {/* Minimized View */}
             {isPlayerMinimized ? (
@@ -3634,7 +3718,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     size="sm"
                     variant="ghost"
                     onClick={playPrevious}
-                    className="hover:bg-primary/20 h-8 w-8 p-0"
+                    disabled={isPlayerLoading || !isPlayerReady}
+                    className="hover:bg-primary/20 h-8 w-8 p-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <SkipBack className="w-4 h-4" />
                   </Button>
@@ -3642,9 +3727,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <Button
                     size="sm"
                     onClick={togglePlayPause}
-                    className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 hover:scale-110 transition-all p-0"
+                    disabled={isPlayerLoading || !isPlayerReady}
+                    className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 hover:scale-110 transition-all p-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    {isPlaying ? (
+                    {isPlayerLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : isPlaying ? (
                       <Pause className="w-5 h-5" />
                     ) : (
                       <Play className="w-5 h-5 ml-0.5" />
@@ -3655,7 +3743,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     size="sm"
                     variant="ghost"
                     onClick={playNext}
-                    className="hover:bg-primary/20 h-8 w-8 p-0"
+                    disabled={isPlayerLoading || !isPlayerReady}
+                    className="hover:bg-primary/20 h-8 w-8 p-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <SkipForward className="w-4 h-4" />
                   </Button>
@@ -3851,7 +3940,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                         size="sm"
                         variant="ghost"
                         onClick={playPrevious}
-                        className="hover:bg-primary/20 hover:scale-110 transition-transform"
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       >
                         <SkipBack className="w-5 h-5" />
                       </Button>
@@ -3859,9 +3949,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       <Button
                         size="lg"
                         onClick={togglePlayPause}
-                        className="w-14 h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all"
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="w-14 h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       >
-                        {isPlaying ? (
+                        {isPlayerLoading ? (
+                          <Loader2 className="w-7 h-7 animate-spin" />
+                        ) : isPlaying ? (
                           <Pause className="w-7 h-7" />
                         ) : (
                           <Play className="w-7 h-7 ml-0.5" />
@@ -3872,7 +3965,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                         size="sm"
                         variant="ghost"
                         onClick={playNext}
-                        className="hover:bg-primary/20 hover:scale-110 transition-transform"
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       >
                         <SkipForward className="w-5 h-5" />
                       </Button>
