@@ -271,6 +271,39 @@ console.log('✅ PiP initialized');
         setIsPipActive(false);
         pipWindowRef.current = null;
         console.log('🔴 PiP closed');
+        
+        // Try auto-activation after PiP closes
+        setTimeout(() => {
+          console.log('🤖 Attempting auto-activation...');
+          
+          // Method 1: Dispatch synthetic click on document
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 0,
+          });
+          document.body.dispatchEvent(clickEvent);
+          
+          // Method 2: Dispatch mousedown (sometimes more effective)
+          const mousedownEvent = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 0,
+          });
+          document.body.dispatchEvent(mousedownEvent);
+          
+          // Check after a moment
+          setTimeout(() => {
+            if (hasActivationRef.current) {
+              console.log('✅ Auto-activation successful!');
+            } else {
+              console.log('❌ Auto-activation failed (browser security). Manual click needed.');
+              hasActivationRef.current = false;
+            }
+          }, 100);
+        }, 200);
       });
 
       setIsPipActive(true);
@@ -333,11 +366,9 @@ console.log('✅ PiP initialized');
   // Auto open/close with visibility API - FULLY AUTOMATIC
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    let clickTimeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
-      clearTimeout(clickTimeout);
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
@@ -348,44 +379,11 @@ console.log('✅ PiP initialized');
           openPip();
         }, 300);
       } 
-      // Auto-close when tab visible + try auto-click for activation
+      // Auto-close when tab visible
       else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
           closePip();
-          
-          // Try to simulate click for activation (may not work due to browser security)
-          clickTimeout = setTimeout(() => {
-            console.log('🤖 Attempting auto-activation...');
-            
-            // Method 1: Dispatch synthetic click on document
-            const clickEvent = new MouseEvent('click', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              button: 0,
-            });
-            document.body.dispatchEvent(clickEvent);
-            
-            // Method 2: Dispatch mousedown (sometimes more effective)
-            const mousedownEvent = new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              button: 0,
-            });
-            document.body.dispatchEvent(mousedownEvent);
-            
-            // Check after a moment
-            setTimeout(() => {
-              if (hasActivationRef.current) {
-                console.log('✅ Auto-activation successful!');
-              } else {
-                console.log('❌ Auto-activation failed (browser security). Manual click needed.');
-                hasActivationRef.current = false;
-              }
-            }, 100);
-          }, 100);
         }, 300);
       }
     };
@@ -395,7 +393,6 @@ console.log('✅ PiP initialized');
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
-      clearTimeout(clickTimeout);
     };
   }, [isPlaying, isPipActive]);
 
