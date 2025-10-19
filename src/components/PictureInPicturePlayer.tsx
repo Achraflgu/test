@@ -331,6 +331,14 @@ console.log('✅ PiP initialized');
               }
             }
             
+            // Method 3: Try to trigger user activation via focus
+            try {
+              window.focus();
+              document.body.focus();
+            } catch (e) {
+              console.log('⚠️ Focus refresh failed');
+            }
+            
             // Method 3: Try to trigger audio context (REMOVED - was causing unwanted audio)
             // Audio context refresh removed to prevent unwanted audio messages
             
@@ -357,7 +365,7 @@ console.log('✅ PiP initialized');
           }, 100);
         } else {
           console.log('❌ Max retries reached - manual interaction required');
-          hasActivationRef.current = false;
+          // Don't reset activation - keep it for next attempt
           retryCountRef.current = 0; // Reset retry count
         }
       }
@@ -410,6 +418,8 @@ console.log('✅ PiP initialized');
     document.addEventListener('click', captureActivation, true);
     document.addEventListener('keydown', captureActivation, true);
     document.addEventListener('mousedown', captureActivation, true);
+    document.addEventListener('touchstart', captureActivation, true);
+    document.addEventListener('pointerdown', captureActivation, true);
 
     // Check activation every second
     const interval = setInterval(checkActivation, 1000);
@@ -418,6 +428,8 @@ console.log('✅ PiP initialized');
       document.removeEventListener('click', captureActivation, true);
       document.removeEventListener('keydown', captureActivation, true);
       document.removeEventListener('mousedown', captureActivation, true);
+      document.removeEventListener('touchstart', captureActivation, true);
+      document.removeEventListener('pointerdown', captureActivation, true);
       clearInterval(interval);
     };
   }, []);
@@ -438,7 +450,7 @@ console.log('✅ PiP initialized');
     return () => window.removeEventListener('message', handleMessage);
   }, [isPipActive, isPlaying]);
 
-  // Listen for keyboard shortcuts
+  // Listen for keyboard shortcuts and custom events
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       // Only trigger if not typing in an input
@@ -456,8 +468,20 @@ console.log('✅ PiP initialized');
       }
     };
 
+    const handleTogglePiP = () => {
+      if (isPipActive) {
+        closePip();
+      } else {
+        openPip();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    window.addEventListener('togglePiP', handleTogglePiP);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('togglePiP', handleTogglePiP);
+    };
   }, [isPipActive]);
 
   // Auto open/close with visibility API - PRE-CAPTURE MODE

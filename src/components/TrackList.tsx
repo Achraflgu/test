@@ -108,107 +108,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setIsPipSupported(isSupported);
   }, []);
   
-  // Comprehensive keyboard shortcuts
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Only trigger if not typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-      
-      // Only handle if we have a current track
-      if (!currentPlayingTrack) return;
-      
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          togglePlayPause();
-          break;
-        
-        case 'ArrowRight':
-          e.preventDefault();
-          playNext();
-          break;
-        
-        case 'ArrowLeft':
-          e.preventDefault();
-          playPrevious();
-          break;
-        
-        case 'ArrowUp':
-          e.preventDefault();
-          changeVolume(Math.min(100, volume + 5));
-          break;
-        
-        case 'ArrowDown':
-          e.preventDefault();
-          changeVolume(Math.max(0, volume - 5));
-          break;
-        
-        case 'KeyM':
-          e.preventDefault();
-          toggleMute();
-          break;
-        
-        case 'KeyS':
-          e.preventDefault();
-          toggleShuffle();
-          break;
-        
-        case 'KeyR':
-          e.preventDefault();
-          toggleRepeatMode();
-          break;
-        
-        case 'KeyF':
-          e.preventDefault();
-          setShowFullScreenPlayer(prev => !prev);
-          break;
-        
-        case 'KeyP':
-          if (e.ctrlKey) {
-            e.preventDefault();
-            // Toggle PiP if supported - handled by PiP component
-            console.log('🎹 PiP toggle requested via Ctrl+P');
-          }
-          break;
-        
-        case 'KeyN':
-          e.preventDefault();
-          playNext();
-          break;
-        
-        case 'KeyB':
-          e.preventDefault();
-          playPrevious();
-          break;
-        
-        case 'Digit0':
-          e.preventDefault();
-          seekTo(0);
-          break;
-        
-        case 'Digit1':
-        case 'Digit2':
-        case 'Digit3':
-        case 'Digit4':
-        case 'Digit5':
-        case 'Digit6':
-        case 'Digit7':
-        case 'Digit8':
-        case 'Digit9':
-          e.preventDefault();
-          const percentage = parseInt(e.code.replace('Digit', '')) * 10;
-          if (duration > 0) {
-            seekTo((percentage / 100) * duration);
-          }
-          break;
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPlayingTrack, volume, duration, isPipSupported]);
+  // Keyboard shortcuts will be added after function declarations
   
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -1758,6 +1658,116 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setIsShuffled(!isShuffled);
     toast.success(isShuffled ? 'Shuffle off' : 'Shuffle on');
   };
+
+  // PiP toggle function
+  const togglePiP = () => {
+    if (isPipSupported) {
+      // Send message to PiP component to toggle
+      window.dispatchEvent(new CustomEvent('togglePiP'));
+    }
+  };
+
+  // Comprehensive keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // Only handle if we have a current track
+      if (!currentPlayingTrack) return;
+      
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        
+        case 'ArrowRight':
+          e.preventDefault();
+          playNext();
+          break;
+        
+        case 'ArrowLeft':
+          e.preventDefault();
+          playPrevious();
+          break;
+        
+        case 'ArrowUp':
+          e.preventDefault();
+          changeVolume(Math.min(100, volume + 5));
+          break;
+        
+        case 'ArrowDown':
+          e.preventDefault();
+          changeVolume(Math.max(0, volume - 5));
+          break;
+        
+        case 'KeyM':
+          e.preventDefault();
+          toggleMute();
+          break;
+        
+        case 'KeyS':
+          e.preventDefault();
+          toggleShuffle();
+          break;
+        
+        case 'KeyR':
+          e.preventDefault();
+          toggleRepeatMode();
+          break;
+        
+        case 'KeyF':
+          e.preventDefault();
+          setShowFullScreenPlayer(prev => !prev);
+          break;
+        
+        case 'KeyP':
+          if (e.ctrlKey) {
+            e.preventDefault();
+            togglePiP();
+            console.log('🎹 PiP toggle requested via Ctrl+P');
+          }
+          break;
+        
+        case 'KeyN':
+          e.preventDefault();
+          playNext();
+          break;
+        
+        case 'KeyB':
+          e.preventDefault();
+          playPrevious();
+          break;
+        
+        case 'Digit0':
+          e.preventDefault();
+          seekTo(0);
+          break;
+        
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+        case 'Digit4':
+        case 'Digit5':
+        case 'Digit6':
+        case 'Digit7':
+        case 'Digit8':
+        case 'Digit9':
+          e.preventDefault();
+          const percentage = parseInt(e.code.replace('Digit', '')) * 10;
+          if (duration > 0) {
+            seekTo((percentage / 100) * duration);
+          }
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPlayingTrack, volume, duration, isPipSupported, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
 
   const cyclePlayerPosition = () => {
     const positions: Array<'bottom' | 'bottom-left' | 'bottom-right'> = ['bottom', 'bottom-left', 'bottom-right'];
