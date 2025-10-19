@@ -370,7 +370,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                           track: restoredTrack.name,
                           time: savedTime + 's',
                           duration: duration + 's',
-                          state: 'PAUSED'
+                          state: 'PAUSED',
+                          loadingStatesCleared: true
                         });
                         
                         toast.success('🎵 Player Ready!', {
@@ -498,6 +499,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   // Update playing state
                   if (playerState === (window as any).YT.PlayerState.PLAYING) {
                     setIsPlaying(true);
+                    // 🔥 CRITICAL FIX: Clear loading states when music starts playing
+                    setIsPlayerLoading(false);
+                    setIsPlayerReady(true);
+                    setIsRestoringPlayer(false);
+                    setPlayerLoadProgress(100);
+                    
                     const duration = event.target.getDuration();
                     if (duration && duration > 0 && duration !== Infinity) {
                       setDuration(duration);
@@ -1319,6 +1326,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               }
             } else if (event.data === (window as any).YT.PlayerState.PLAYING) {
               setIsPlaying(true);
+              // 🔥 CRITICAL FIX: Clear loading states when music starts playing
+              setIsPlayerLoading(false);
+              setIsPlayerReady(true);
+              setIsRestoringPlayer(false);
+              setPlayerLoadProgress(100);
+              
               setDuration(event.target.getDuration());
               // Ensure volume is correctly set when playback starts
               event.target.setVolume(volumeRef.current);
@@ -1417,12 +1430,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         },
       });
       
-      // Set player as ready after successful creation
+      // Set player as ready after successful creation with fallback timeout
       setTimeout(() => {
         setPlayerLoadProgress(100);
         setIsPlayerLoading(false);
         setIsPlayerReady(true);
+        setIsRestoringPlayer(false);
+        console.log('✅ Player ready - loading states cleared (timeout fallback)');
       }, 1000);
+      
+      // Additional fallback to clear loading states after 3 seconds
+      setTimeout(() => {
+        if (isPlayerLoading) {
+          console.log('⚠️ Clearing loading states after 3s timeout');
+          setIsPlayerLoading(false);
+          setIsPlayerReady(true);
+          setIsRestoringPlayer(false);
+          setPlayerLoadProgress(100);
+        }
+      }, 3000);
     }
   };
 
