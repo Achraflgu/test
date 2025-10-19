@@ -287,6 +287,9 @@ console.log('✅ PiP initialized');
         setIsPipActive(false);
         pipWindowRef.current = null;
         console.log('🔴 PiP closed');
+        
+        // Don't reset activation here - let it persist for next auto-open
+        console.log(`🔒 Activation state preserved: ${hasActivationRef.current}`);
       });
 
       setIsPipActive(true);
@@ -352,12 +355,20 @@ console.log('✅ PiP initialized');
       if (event.data.action === 'activation') {
         console.log('✅ Activation signal from PiP');
         hasActivationRef.current = true;
+        
+        // Test: Try to open PiP immediately after getting activation
+        setTimeout(() => {
+          if (!isPipActive && isPlaying && hasActivationRef.current) {
+            console.log('🧪 Testing immediate PiP open after activation...');
+            openPip();
+          }
+        }, 100);
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [isPipActive, isPlaying]);
 
   // Auto open/close with visibility API - PRE-CAPTURE MODE
   useEffect(() => {
@@ -380,17 +391,21 @@ console.log('✅ PiP initialized');
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
           
-          // Try to capture any pending activation from PiP interactions
-          setTimeout(() => {
-            if (hasActivationRef.current) {
-              console.log('✅ Activation preserved from PiP interactions');
-            } else {
-              console.log('❌ No activation captured - will need manual interaction');
-              hasActivationRef.current = false;
-            }
-          }, 50);
+          // Check activation before closing
+          if (hasActivationRef.current) {
+            console.log('✅ Activation confirmed before close');
+          } else {
+            console.log('❌ No activation - will need manual interaction');
+          }
           
           closePip();
+          
+          // Reset activation only after a delay to allow for PiP interactions
+          setTimeout(() => {
+            if (!hasActivationRef.current) {
+              console.log('⏳ Activation reset - manual interaction needed');
+            }
+          }, 1000);
         }, 300);
       }
     };
