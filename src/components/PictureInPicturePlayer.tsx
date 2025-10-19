@@ -438,6 +438,28 @@ console.log('✅ PiP initialized');
     return () => window.removeEventListener('message', handleMessage);
   }, [isPipActive, isPlaying]);
 
+  // Listen for keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if (e.code === 'KeyP' && e.ctrlKey) {
+        e.preventDefault();
+        if (isPipActive) {
+          closePip();
+        } else {
+          openPip();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isPipActive]);
+
   // Auto open/close with visibility API - PRE-CAPTURE MODE
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -447,18 +469,12 @@ console.log('✅ PiP initialized');
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
-      // Auto-open when tab hidden and playing (only if we have activation and recent user interaction)
+      // Auto-open when tab hidden and playing (if we have activation)
       if (document.hidden && isPlaying && !isPipActive && hasActivationRef.current) {
-        // Check if we have recent user activation (within last 5 seconds)
-        const timeSinceLastActivation = Date.now() - (lastActivationTimeRef.current || 0);
-        if (timeSinceLastActivation < 5000) {
-          timeout = setTimeout(() => {
-            console.log('🎵 Auto-opening PiP (recent activation)');
-            openPip();
-          }, 300);
-        } else {
-          console.log('⏸️ Skipping PiP auto-open - no recent user activation');
-        }
+        timeout = setTimeout(() => {
+          console.log('🎵 Auto-opening PiP');
+          openPip();
+        }, 300);
       } 
       // When tab becomes visible, try to capture activation from PiP before closing
       else if (!document.hidden && isPipActive) {

@@ -99,7 +99,16 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // 🔍 Search state
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Keyboard shortcut: "F" to toggle fullscreen
+  // 🖼️ PiP support check
+  const [isPipSupported, setIsPipSupported] = useState(false);
+  
+  // Check PiP support
+  useEffect(() => {
+    const isSupported = 'documentPictureInPicture' in window;
+    setIsPipSupported(isSupported);
+  }, []);
+  
+  // Comprehensive keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       // Only trigger if not typing in an input
@@ -107,15 +116,99 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         return;
       }
       
-      if ((e.key === 'f' || e.key === 'F') && currentPlayingTrack) {
-        e.preventDefault();
-        setShowFullScreenPlayer(prev => !prev);
+      // Only handle if we have a current track
+      if (!currentPlayingTrack) return;
+      
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        
+        case 'ArrowRight':
+          e.preventDefault();
+          playNext();
+          break;
+        
+        case 'ArrowLeft':
+          e.preventDefault();
+          playPrevious();
+          break;
+        
+        case 'ArrowUp':
+          e.preventDefault();
+          changeVolume(Math.min(100, volume + 5));
+          break;
+        
+        case 'ArrowDown':
+          e.preventDefault();
+          changeVolume(Math.max(0, volume - 5));
+          break;
+        
+        case 'KeyM':
+          e.preventDefault();
+          toggleMute();
+          break;
+        
+        case 'KeyS':
+          e.preventDefault();
+          toggleShuffle();
+          break;
+        
+        case 'KeyR':
+          e.preventDefault();
+          toggleRepeatMode();
+          break;
+        
+        case 'KeyF':
+          e.preventDefault();
+          setShowFullScreenPlayer(prev => !prev);
+          break;
+        
+        case 'KeyP':
+          if (e.ctrlKey) {
+            e.preventDefault();
+            // Toggle PiP if supported - handled by PiP component
+            console.log('🎹 PiP toggle requested via Ctrl+P');
+          }
+          break;
+        
+        case 'KeyN':
+          e.preventDefault();
+          playNext();
+          break;
+        
+        case 'KeyB':
+          e.preventDefault();
+          playPrevious();
+          break;
+        
+        case 'Digit0':
+          e.preventDefault();
+          seekTo(0);
+          break;
+        
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+        case 'Digit4':
+        case 'Digit5':
+        case 'Digit6':
+        case 'Digit7':
+        case 'Digit8':
+        case 'Digit9':
+          e.preventDefault();
+          const percentage = parseInt(e.code.replace('Digit', '')) * 10;
+          if (duration > 0) {
+            seekTo((percentage / 100) * duration);
+          }
+          break;
       }
     };
     
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPlayingTrack]);
+  }, [currentPlayingTrack, volume, duration, isPipSupported]);
   
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
