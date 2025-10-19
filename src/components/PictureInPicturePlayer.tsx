@@ -359,12 +359,14 @@ console.log('✅ PiP initialized');
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Auto open/close with visibility API - TRUE CLOSE MODE
+  // Auto open/close with visibility API - AUTO-ACTIVATION MODE
   useEffect(() => {
     let timeout: NodeJS.Timeout;
+    let activationTimeout: NodeJS.Timeout;
 
     const handleVisibilityChange = () => {
       clearTimeout(timeout);
+      clearTimeout(activationTimeout);
       
       console.log(`👁️ Visibility: ${document.hidden ? 'HIDDEN' : 'VISIBLE'}, Playing: ${isPlaying}, PiP: ${isPipActive}, HasActivation: ${hasActivationRef.current}`);
       
@@ -375,14 +377,74 @@ console.log('✅ PiP initialized');
           openPip();
         }, 300);
       } 
-      // Auto-close when tab visible
+      // Auto-close when tab visible + try auto-activation
       else if (!document.hidden && isPipActive) {
         timeout = setTimeout(() => {
           console.log('🔴 Auto-closing PiP');
           closePip();
-          // Mark that we need new activation
-          hasActivationRef.current = false;
-          console.log('⏳ Waiting for user interaction...');
+          
+          // Try multiple auto-activation methods
+          activationTimeout = setTimeout(() => {
+            console.log('🤖 Attempting auto-activation...');
+            
+            // Method 1: Simulate user interaction on main page
+            const simulateUserInteraction = () => {
+              // Create and dispatch multiple event types
+              const events = [
+                new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+                new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }),
+                new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }),
+                new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: ' ' }),
+                new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: ' ' }),
+              ];
+              
+              events.forEach((event, index) => {
+                setTimeout(() => {
+                  document.body.dispatchEvent(event);
+                  console.log(`🔄 Dispatched event ${index + 1}/5`);
+                }, index * 10);
+              });
+            };
+            
+            simulateUserInteraction();
+            
+            // Method 2: Try to trigger media session interaction
+            setTimeout(() => {
+              if (navigator.mediaSession) {
+                try {
+                  navigator.mediaSession.setActionHandler('play', () => {});
+                  navigator.mediaSession.setActionHandler('pause', () => {});
+                  console.log('🎵 Media session handlers set');
+                } catch (e) {
+                  console.log('⚠️ Media session setup failed');
+                }
+              }
+            }, 50);
+            
+            // Method 3: Try to interact with audio context
+            setTimeout(() => {
+              try {
+                const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                oscillator.connect(audioContext.destination);
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.001);
+                console.log('🔊 Audio context interaction');
+              } catch (e) {
+                console.log('⚠️ Audio context interaction failed');
+              }
+            }, 100);
+            
+            // Check if any method worked
+            setTimeout(() => {
+              if (hasActivationRef.current) {
+                console.log('✅ Auto-activation successful!');
+              } else {
+                console.log('❌ Auto-activation failed - manual interaction needed');
+                hasActivationRef.current = false;
+              }
+            }, 200);
+          }, 100);
         }, 300);
       }
     };
@@ -392,6 +454,7 @@ console.log('✅ PiP initialized');
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearTimeout(timeout);
+      clearTimeout(activationTimeout);
     };
   }, [isPlaying, isPipActive]);
 
