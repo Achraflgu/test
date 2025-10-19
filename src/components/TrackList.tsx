@@ -1589,25 +1589,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const toggleMute = () => {
-    console.log('🎹 toggleMute called, isMuted:', isMuted);
-    if (!playerRef.current) {
-      console.log('⚠️ No player ref available');
-      return;
-    }
+    if (!playerRef.current) return;
     
     if (typeof playerRef.current.mute !== 'function' || 
         typeof playerRef.current.unMute !== 'function') {
-      console.log('⚠️ Mute methods not available');
       return;
     }
     
     try {
       if (isMuted) {
-        console.log('🔊 Unmuting player');
         playerRef.current.unMute();
         setIsMuted(false);
       } else {
-        console.log('🔇 Muting player');
         playerRef.current.mute();
         setIsMuted(true);
       }
@@ -1675,25 +1668,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   // Comprehensive keyboard shortcuts
   useEffect(() => {
-    console.log('🎹 Setting up keyboard shortcuts, currentPlayingTrack:', !!currentPlayingTrack);
-    
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Debug: Log all key presses to see what's happening
-      console.log(`🎹 Key event: ${e.code} (${e.key}) - target:`, (e.target as HTMLElement)?.tagName);
-      
       // Only trigger if not typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        console.log('🎹 Ignoring key - user is typing in input');
         return;
       }
       
       // Only handle if we have a current track
-      if (!currentPlayingTrack) {
-        console.log('🎹 Ignoring key - no current track');
-        return;
-      }
-      
-      console.log(`🎹 Processing key: ${e.code}`);
+      if (!currentPlayingTrack) return;
       
       switch (e.code) {
         case 'Space':
@@ -1741,8 +1723,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         
         case 'KeyM':
         case 'm':
+        case 'Semicolon':
           e.preventDefault();
-          console.log('🎹 M key pressed - calling toggleMute');
           toggleMute();
           break;
         
@@ -1811,19 +1793,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       }
     };
     
-    // Add global keydown listener for debugging
-    const globalKeyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'm' || e.key === 'M') {
-        console.log('🌍 Global M key detected:', e.key, 'target:', (e.target as HTMLElement)?.tagName);
-      }
-    };
-
     window.addEventListener('keydown', handleKeyPress);
-    window.addEventListener('keydown', globalKeyHandler);
-    return () => {
-      window.removeEventListener('keydown', handleKeyPress);
-      window.removeEventListener('keydown', globalKeyHandler);
-    };
+    return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentPlayingTrack, volume, duration, isPipSupported, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
 
   const cyclePlayerPosition = () => {
