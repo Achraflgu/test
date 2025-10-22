@@ -99,6 +99,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // 🔍 Search state
   const [searchQuery, setSearchQuery] = useState('');
   
+  // 🎯 Multi-select state
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  
   // 🖼️ PiP support check
   const [isPipSupported, setIsPipSupported] = useState(false);
   
@@ -2022,10 +2025,43 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setTracks(prev => prev.map(track => ({ ...track, selected: !allSelected })));
   };
 
-  const toggleTrackSelection = (trackId: string) => {
-    setTracks(prev => prev.map(track => 
-      track.id === trackId ? { ...track, selected: !track.selected } : track
-    ));
+  const toggleTrackSelection = (trackId: string, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }, visibleTracks?: Track[]) => {
+    // Use visible tracks (filtered/sorted) if provided, otherwise use all tracks
+    const trackList = visibleTracks || tracks;
+    const currentIndex = trackList.findIndex(t => t.id === trackId);
+    if (currentIndex === -1) return;
+
+    // Shift+Click: Select range in visible order
+    if (event?.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, currentIndex);
+      const end = Math.max(lastSelectedIndex, currentIndex);
+      
+      // Get IDs of tracks in the range (from visible list)
+      const rangeTrackIds = new Set(
+        trackList.slice(start, end + 1).map(t => t.id)
+      );
+      
+      // Update tracks by ID
+      setTracks(prev => prev.map(track => ({
+        ...track,
+        selected: rangeTrackIds.has(track.id) ? true : track.selected
+      })));
+      setLastSelectedIndex(currentIndex);
+    }
+    // Ctrl+Click (or Cmd+Click on Mac): Toggle individual
+    else if (event?.ctrlKey || event?.metaKey) {
+      setTracks(prev => prev.map(track => 
+        track.id === trackId ? { ...track, selected: !track.selected } : track
+      ));
+      setLastSelectedIndex(currentIndex);
+    }
+    // Normal click: Toggle individual (default behavior)
+    else {
+      setTracks(prev => prev.map(track => 
+        track.id === trackId ? { ...track, selected: !track.selected } : track
+      ));
+      setLastSelectedIndex(currentIndex);
+    }
   };
 
   // Remove selected tracks from list
@@ -3056,11 +3092,22 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     )}
                     
                     {/* Checkbox */}
-                    <Checkbox
-                      checked={track.selected}
-                      onCheckedChange={() => toggleTrackSelection(track.id)}
-                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all"
-                    />
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTrackSelection(track.id, {
+                          shiftKey: e.shiftKey,
+                          ctrlKey: e.ctrlKey,
+                          metaKey: e.metaKey
+                        }, sortedTracks);
+                      }}
+                    >
+                      <Checkbox
+                        checked={track.selected}
+                        onCheckedChange={() => {}} // Handled by wrapper div
+                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all"
+                      />
+                    </div>
 
                     {/* Track Number with Badge */}
                     <div className={`flex items-center justify-center w-9 h-9 rounded-lg font-bold text-sm transition-all ${
@@ -4661,7 +4708,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       {/* Full Screen Player */}
       {showFullScreenPlayer && currentPlayingTrack && (
         <FullScreenPlayer
-          key={`fullscreen-${playlistQueue.length}`}
           track={currentPlayingTrack}
           isPlaying={isPlaying}
           currentTime={currentTime}

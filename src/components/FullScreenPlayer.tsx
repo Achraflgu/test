@@ -734,11 +734,38 @@ export const FullScreenPlayer = ({
                       }`}
                     >
                       <div className="text-sm text-muted-foreground w-6">{index + 1}</div>
-                      <img
-                        src={queueTrack.imageUrl}
-                        alt={queueTrack.name}
-                        className="w-12 h-12 rounded object-cover"
-                      />
+                      
+                      {/* Album Art with Enhanced Play Button Effect */}
+                      <div className="relative flex-shrink-0 group/art">
+                        <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-md ring-1 ring-border/30 group-hover/art:ring-primary/50 transition-all">
+                          <img
+                            src={queueTrack.imageUrl}
+                            alt={queueTrack.name}
+                            className="w-full h-full object-cover transition-all group-hover/art:scale-110"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/placeholder.svg';
+                            }}
+                          />
+                          <div className={`absolute inset-0 flex items-center justify-center transition-all ${
+                            queueTrack.id === track.id && isPlaying
+                              ? 'bg-black/40'
+                              : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
+                          }`}>
+                            <div className={`w-6 h-6 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center transition-all ${
+                              queueTrack.id === track.id && isPlaying
+                                ? 'scale-100 opacity-100'
+                                : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
+                            }`}>
+                              {queueTrack.id === track.id && isPlaying ? (
+                                <Pause className="w-3 h-3 text-white" />
+                              ) : (
+                                <Play className="w-3 h-3 text-white ml-0.5" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{queueTrack.name}</p>
                         <p className="text-sm text-muted-foreground truncate">{queueTrack.artist}</p>
@@ -931,21 +958,38 @@ export const FullScreenPlayer = ({
                     {index + 1}
                   </div>
 
-                  {/* Album Art */}
-                  <div className="relative flex-shrink-0">
-                    <img
-                      src={queueTrack.imageUrl}
-                      alt={queueTrack.name}
-                      className="w-12 h-12 rounded-lg object-cover shadow-md"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = '/placeholder.svg';
-                      }}
-                    />
-                    {queueTrack.id === track.id && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-                        <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                  {/* Album Art with Enhanced Play Button Effect */}
+                  <div className="relative flex-shrink-0 group/art">
+                    <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-md ring-1 ring-border/30 group-hover/art:ring-primary/50 transition-all">
+                      <img
+                        src={queueTrack.imageUrl}
+                        alt={queueTrack.name}
+                        className="w-full h-full object-cover transition-all group-hover/art:scale-110"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.svg';
+                        }}
+                      />
+                      <div className={`absolute inset-0 flex items-center justify-center transition-all ${
+                        queueTrack.id === track.id && isPlaying
+                          ? 'bg-black/40'
+                          : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
+                      }`}>
+                        <div className={`w-6 h-6 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center transition-all ${
+                          queueTrack.id === track.id && isPlaying
+                            ? 'scale-100 opacity-100'
+                            : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
+                        }`}>
+                          {queueTrack.id === track.id && isPlaying ? (
+                            <Pause className="w-3 h-3 text-white" />
+                          ) : (
+                            <Play className="w-3 h-3 text-white ml-0.5" />
+                          )}
+                        </div>
+                        {queueTrack.id === track.id && !isPlaying && (
+                          <div className="w-3 h-3 bg-primary rounded-full animate-pulse" />
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Track Info */}
@@ -974,13 +1018,13 @@ export const FullScreenPlayer = ({
             <div className="p-2">
               <div className="flex flex-col gap-1">
                 {/* Current Playing Track (First) */}
-                <div className="w-8 h-8 rounded-lg overflow-hidden ring-2 ring-primary shadow-lg relative group cursor-pointer" title={track.name}>
+                <div className="w-8 h-8 rounded-lg overflow-hidden ring-2 ring-primary shadow-lg relative group/current cursor-pointer hover:ring-primary/80 transition-all" title={track.name}>
                   <img
                     src={track.imageUrl}
                     alt=""
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover/current:scale-110 transition-transform"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover/current:bg-black/60 transition-colors">
                     <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
                   </div>
                 </div>
@@ -989,7 +1033,7 @@ export const FullScreenPlayer = ({
                 {queue.slice(0, 2).map((queueTrack, index) => (
                    <div
                      key={`mini-${queueTrack.id}-${index}`}
-                     className="w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                     className="relative w-8 h-8 rounded-lg overflow-hidden opacity-70 hover:opacity-100 hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer group/mini"
                      title={queueTrack.name}
                      onClick={(e) => {
                        e.stopPropagation();
@@ -999,8 +1043,13 @@ export const FullScreenPlayer = ({
                     <img
                       src={queueTrack.imageUrl}
                       alt=""
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover/mini:scale-110 transition-transform"
                     />
+                    <div className="absolute inset-0 bg-gradient-to-br from-black/0 to-black/0 group-hover/mini:from-black/60 group-hover/mini:to-black/40 transition-all flex items-center justify-center">
+                      <div className="w-3 h-3 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center scale-0 opacity-0 group-hover/mini:scale-100 group-hover/mini:opacity-100 transition-all">
+                        <Play className="w-1.5 h-1.5 text-white ml-[1px]" />
+                      </div>
+                    </div>
                   </div>
                 ))}
                 
