@@ -3528,7 +3528,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               Failed Tracks - Alternative Download Methods
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {failedTracks.length} track{failedTracks.length !== 1 ? 's' : ''} failed after 4 retries. Use these commands to download manually.
+              {failedTracks.length > 0 ? `${failedTracks.length} track${failedTracks.length !== 1 ? 's' : ''} could not be downloaded after multiple attempts. ` : 'No failed tracks. '}
+              Use these commands to download manually if needed.
             </DialogDescription>
           </DialogHeader>
           

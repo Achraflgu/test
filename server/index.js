@@ -510,18 +510,23 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     }
   };
   
-  // ===== STRATEGY 1: Advanced Bot Detection Bypass (0-1) =====
+  // ===== STRATEGY 1: Advanced Bot Detection Bypass (0-1) - BEST FOR FIRST ATTEMPTS =====
   if (strategy === 0) {
-    console.log('🤖 Strategy: Advanced Bot Detection Bypass');
+    console.log('🤖 Strategy: Advanced Bot Detection Bypass (Optimized)');
     
+    // Use most effective clients in order: web_embedded, android_embedded, ios_embedded
     const client = clientTypes.effective[attempt % clientTypes.effective.length];
-    const userAgent = userAgents.android[0];
+    const userAgent = userAgents.android[attempt % userAgents.android.length];
     
     args.push('--user-agent', userAgent);
     args.push('--extractor-args', `youtube:player_client=${client}`);
     args.push('--extractor-args', 'youtube:player_skip=webpage,configs,js');
     args.push('--no-check-certificate');
     args.push('--geo-bypass');
+    
+    // Add best timeout settings for first attempts
+    args.push('--socket-timeout', '30');
+    args.push('--retries', '5');
     
     // 🔥 BOT DETECTION BYPASS METHODS
     // Method 1: Secure fake cookies (handled by addAdvancedBotBypass)
@@ -3489,13 +3494,14 @@ async function fetchYouTubeMetadata(searchQuery, youtubeLink = null) {
   });
 }
 
-// Try yt-dlp fallback for failed tracks - WITH PARALLEL DOWNLOADS
+// Try yt-dlp fallback for failed tracks - WITH PARALLEL DOWNLOADS (8 threads)
 async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, downloadId, youtubeLinks = {}, settings = {}, attemptNumber = 0) {
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
   console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
-  const parallelDownloads = settings.threads || 8;
-  console.log(`⚡ Using ${parallelDownloads} parallel downloads`);
+  // Always use 8 parallel downloads for maximum speed
+  const parallelDownloads = 8;
+  console.log(`⚡ Using ${parallelDownloads} parallel downloads (optimized for speed)`);
   
   // Get list of already downloaded files
   const files = await fs.readdir(outputFolder);
@@ -4204,7 +4210,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
          socket.emit('download:status', {
            downloadId,
            status: 'downloading',
-           message: `📥 ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts} • Retrying...`
+           message: `📥 ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts}`
          });
         }
       } catch (error) {
@@ -5100,7 +5106,8 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     return res.status(404).json({ error: 'Download not found' });
   }
 
-  if (downloadInfo.status !== 'completed') {
+  // Allow both 'completed' and 'partial' status to show failed tracks
+  if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial') {
     return res.status(400).json({ error: 'Download not completed yet' });
   }
 
