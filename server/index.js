@@ -4032,11 +4032,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
   let attempt = 0;
   let totalSuccess = 0;
   let totalFailed = 0;
-  const maxAttempts = 20; // 🆕 Increased to 20 to allow all 10 strategies (2 attempts each)
+  const maxAttempts = 8; // Reduced to 8 attempts for faster completion
   let shouldContinue = true;
   let failedTracks = new Set(); // Track which tracks consistently fail
   let lastFailCount = 0;
   let youtubeLinks = {}; // Store YouTube links found by spotdl for fallback
+  let consecutiveFailures = 0; // Track consecutive attempts with no progress
 
   while (attempt < maxAttempts && shouldContinue) {
     // Check if download was cancelled before starting new attempt
@@ -4048,11 +4049,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     
     attempt++;
     
-    console.log(`\n=== DOWNLOAD ATTEMPT ${attempt} ===`);
+    console.log(`\n=== DOWNLOAD ATTEMPT ${attempt}/${maxAttempts} ===`);
     socket.emit('download:attempt', {
       downloadId,
       attempt,
-      message: `🔄 Attempt ${attempt} of ${maxAttempts} - Downloading ${tracks.length} tracks...`
+      maxAttempts,
+      message: `🔄 Attempt ${attempt}/${maxAttempts} - Downloading ${tracks.length} tracks...`
     });
 
     // Get track URLs (only selected tracks)
@@ -4108,35 +4110,81 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
         );
         
-        console.log(`\n📊 Downloaded ${musicFiles.length}/${tracks.length} tracks`);
+        const currentSuccess = musicFiles.length;
+        const totalTracks = tracks.length;
+        const successRate = currentSuccess / totalTracks;
         
-        if (musicFiles.length >= tracks.length) {
-          console.log('✅ ALL TRACKS DOWNLOADED - Complete!\n');
-          downloadInfo.status = 'completed';
-          downloadInfo.totalSuccess = tracks.length;
-          downloadInfo.totalFailed = 0;
+        console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
+        
+        // Track progress between attempts
+        if (currentSuccess > lastFailCount) {
+          consecutiveFailures = 0; // Reset on progress
+          lastFailCount = currentSuccess;
+        } else {
+          consecutiveFailures++;
+        }
+        
+        // Complete if: all tracks downloaded OR reasonable threshold met after enough attempts
+        const shouldComplete = currentSuccess >= totalTracks || 
+                              (attempt >= 5 && currentSuccess > 0 && successRate >= 0.7) ||
+                              (attempt >= 3 && consecutiveFailures >= 3 && currentSuccess > 0);
+        
+        if (shouldComplete) {
+          const status = currentSuccess >= totalTracks ? 'completed' : 'partial';
+          const statusEmoji = currentSuccess >= totalTracks ? '✅ ALL' : '⚠️ PARTIAL';
+          console.log(`${statusEmoji} DOWNLOAD COMPLETE: ${currentSuccess}/${totalTracks} tracks\n`);
+          
+          downloadInfo.status = status;
+          downloadInfo.totalSuccess = currentSuccess;
+          downloadInfo.totalFailed = totalTracks - currentSuccess;
           downloadInfo.attempts = attempt;
           
           const elapsedTime = formatElapsedTime(downloadInfo.startTime);
           console.log(`⏱️  Total download time: ${elapsedTime}`);
           
+          // Build failed tracks list
+          const failedTracksList = tracks.filter(track => {
+            const trackExists = musicFiles.some(file => 
+              file.includes(track.name) || file.includes(track.artist)
+            );
+            return !trackExists;
+          }).map(t => t.name);
+          
+          if (failedTracksList.length > 0) {
+            console.log(`\n❌ Failed tracks (${failedTracksList.length}):`);
+            failedTracksList.forEach(name => console.log(`   - ${name}`));
+          }
+          
           socket.emit('download:complete', {
             downloadId,
             outputFolder,
-            totalSuccess: tracks.length,
-            totalFailed: 0,
+            totalSuccess: currentSuccess,
+            totalFailed: totalTracks - currentSuccess,
             attempts: attempt,
-            downloadUrl: `/api/download/archive/${downloadId}`,
-            message: `🎉 All ${tracks.length} YouTube tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+            failedTracks: failedTracksList,
+            message: currentSuccess >= totalTracks
+              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+              : currentSuccess > 0
+                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
           
           shouldContinue = false;
           continue;
         } else {
-          console.log(`⚠️ Some tracks missing (${tracks.length - musicFiles.length}/${tracks.length})`);
+          console.log(`⚠️ Some tracks missing (${totalTracks - currentSuccess}/${totalTracks})`);
+          console.log(`   Consecutive failures: ${consecutiveFailures}`);
+          
+          socket.emit('download:status', {
+            downloadId,
+            status: 'downloading',
+            message: `📥 Progress: ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) - Attempt ${attempt}/${maxAttempts}`
+          });
         }
       } catch (error) {
         console.error('Error checking files:', error);
+        consecutiveFailures++;
       }
       
       const retryDelay = attempt > 1 ? 5000 : 2000;
@@ -4668,11 +4716,60 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           
           // Check if we're making progress or stuck on same failures
           const progressMade = remaining < lastFailCount || lastFailCount === 0;
-          lastFailCount = remaining;
           
-          // If no progress after 9 attempts, these tracks are unavailable
-          // (need 18 attempts to try all 10 strategies: each strategy gets 2 attempts)
-          const giveUp = !progressMade && attempt >= 18;
+          // Track consecutive failures
+          if (progressMade) {
+            consecutiveFailures = 0;
+            lastFailCount = remaining;
+          } else {
+            consecutiveFailures++;
+          }
+          
+          // Calculate success metrics
+          const successfulTracks = tracks.length - remaining;
+          const successRate = successfulTracks / tracks.length;
+          
+          // Give up conditions:
+          // 1. No progress after 6 attempts (reduced from 18)
+          // 2. 3 consecutive attempts with no progress
+          // 3. After 5 attempts with 70%+ success rate
+          const giveUp = (!progressMade && attempt >= 6) || 
+                        (consecutiveFailures >= 3) ||
+                        (attempt >= 5 && successRate >= 0.7);
+          
+          // Complete with partial results if we have some successful downloads
+          if (giveUp && successfulTracks > 0) {
+            console.log(`\n⚠️ Completing with partial results: ${successfulTracks}/${tracks.length} tracks (${Math.round(successRate * 100)}%)`);
+            console.log(`   Reason: ${!progressMade && attempt >= 6 ? 'No progress after 6 attempts' : 
+                                     consecutiveFailures >= 3 ? `${consecutiveFailures} consecutive failures` :
+                                     'Success threshold reached'}`);
+            
+            downloadInfo.status = 'partial';
+            downloadInfo.totalSuccess = successfulTracks;
+            downloadInfo.totalFailed = remaining;
+            downloadInfo.attempts = attempt;
+
+            const elapsedTime = formatElapsedTime(downloadInfo.startTime);
+            
+            // Build failed tracks list
+            const failedTracksList = missingTracks.map(t => `${t.artist} - ${t.name}`);
+            console.log(`\n❌ Failed tracks (${failedTracksList.length}):`);
+            failedTracksList.forEach(name => console.log(`   - ${name}`));
+
+            socket.emit('download:complete', {
+              downloadId,
+              outputFolder,
+              totalSuccess: successfulTracks,
+              totalFailed: remaining,
+              attempts: attempt,
+              downloadUrl: `/api/download/archive/${downloadId}`,
+              failedTracks: failedTracksList,
+              message: `✅ Downloaded ${successfulTracks}/${tracks.length} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${remaining} track(s) could not be downloaded\n📦 Click to download available tracks!`
+            });
+
+            resolve('complete');
+            return;
+          }
           
           if (remaining > 0 && attempt < maxAttempts && !giveUp) {
             totalFailed = remaining;
