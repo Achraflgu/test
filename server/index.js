@@ -12,6 +12,7 @@ import fetch from 'node-fetch';
 import sharp from 'sharp';
 import archiver from 'archiver';
 import { proxyManager } from './proxy-manager.js';
+import youtubedl from 'youtube-dl-exec';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3659,6 +3660,156 @@ async function fetchYouTubeMetadata(searchQuery, youtubeLink = null) {
 }
 
 // ====================================
+// 🆕 YOUTUBE-DL-EXEC METHOD (Cookie-less, from GitHub)
+// ====================================
+// Uses youtube-dl-exec wrapper around yt-dlp
+// Source: https://github.com/microlinkhq/youtube-dl-exec
+// ====================================
+
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
+  try {
+    console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
+    
+    const youtubeUrl = track.url;
+    if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
+      console.log('  ❌ No YouTube URL available');
+      return false;
+    }
+    
+    const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
+    if (!videoId) {
+      console.log('  ❌ Invalid YouTube URL');
+      return false;
+    }
+    
+    console.log(`  📺 Video ID: ${videoId}`);
+    console.log(`  🔄 Starting download...`);
+    
+    // Create safe filename
+    const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+    const outputPath = path.join(outputFolder, `${safeFilename}`);
+    
+    // Download with youtube-dl-exec
+    await youtubedl(youtubeUrl, {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      audioQuality: '320K',
+      output: `${outputPath}.%(ext)s`,
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+      ],
+      noPlaylist: true
+    });
+    
+    console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name}`);
+    return true;
+    
+  } catch (err) {
+    console.log(`  ❌ youtube-dl-exec failed: ${err.message}`);
+    return false;
+  }
+}
+
+// ====================================
+// 🆕 PIPED API METHOD (Cookie-less)
+// ====================================
+// Uses public Piped instances as proxy
+// Source: https://github.com/TeamPiped/Piped
+// ====================================
+
+async function tryPipedAPI(track, outputFolder, socket, downloadId) {
+  try {
+    console.log(`\n🔧 Trying Piped API for: ${track.name}`);
+    
+    const youtubeUrl = track.url;
+    if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
+      console.log('  ❌ No YouTube URL available');
+      return false;
+    }
+    
+    const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
+    if (!videoId) {
+      console.log('  ❌ Invalid YouTube URL');
+      return false;
+    }
+    
+    console.log(`  📺 Video ID: ${videoId}`);
+    
+    // Try different Piped instances
+    for (const instance of PIPED_INSTANCES) {
+      try {
+        console.log(`  🔄 Trying instance: ${instance}`);
+        
+        const apiUrl = `${instance}/streams/${videoId}`;
+        const response = await fetch(apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          timeout: 10000
+        });
+        
+        if (!response.ok) {
+          console.log(`  ⚠️ Instance returned ${response.status}`);
+          continue;
+        }
+        
+        const data = await response.json();
+        
+        // Find best audio stream
+        const audioStreams = data.audioStreams || [];
+        if (audioStreams.length === 0) {
+          console.log('  ❌ No audio streams found');
+          continue;
+        }
+        
+        // Get highest quality audio
+        const bestAudio = audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+        console.log(`  ✅ Found audio stream: ${bestAudio.bitrate || 'unknown'} bps`);
+        
+        // Download the audio
+        const audioUrl = bestAudio.url;
+        const audioResponse = await fetch(audioUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        
+        if (!audioResponse.ok) {
+          console.log(`  ❌ Audio download failed: ${audioResponse.status}`);
+          continue;
+        }
+        
+        // Create safe filename
+        const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+        const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
+        
+        // Write to file
+        const buffer = await audioResponse.buffer();
+        await fs.writeFile(outputPath, buffer);
+        
+        console.log(`  ✅ Piped API: Successfully downloaded ${track.name}`);
+        return true;
+        
+      } catch (instanceErr) {
+        console.log(`  ⚠️ Instance ${instance} failed: ${instanceErr.message}`);
+        continue;
+      }
+    }
+    
+    console.log('  ❌ All Piped instances failed');
+    return false;
+    
+  } catch (err) {
+    console.log(`  ❌ Piped API failed: ${err.message}`);
+    return false;
+  }
+}
+
+// ====================================
 // 🆕 INVIDIOUS API METHOD (Cookie-less)
 // ====================================
 // Uses public Invidious instances as proxy
@@ -3671,6 +3822,12 @@ const INVIDIOUS_INSTANCES = [
   'https://invidious.kavin.rocks',
   'https://vid.puffyan.us',
   'https://invidious.lunar.icu'
+];
+
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://api.piped.video',
+  'https://pipedapi.tokhmi.xyz'
 ];
 
 async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
@@ -3896,10 +4053,62 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     // ====================================
-    // 🆕 TRY METHOD 1: Invidious API (Cookie-less)
+    // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub)
+    // ====================================
+    if (track.url && track.url.includes('youtube.com') && attemptNumber < 2) {
+      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
+      try {
+        const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId);
+        if (ytdlExecSuccess) {
+          console.log(`✅ youtube-dl-exec SUCCESS: ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+          });
+          
+          return; // Success! No need to try other methods
+        }
+      } catch (err) {
+        console.log(`  ⚠️ youtube-dl-exec failed, trying next method...`);
+      }
+    }
+    
+    // ====================================
+    // 🆕 TRY METHOD 2: Piped API (Cookie-less, GitHub)
     // ====================================
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
-      console.log(`\n🎯 METHOD 1: Trying Invidious API (GitHub method)...`);
+      console.log(`\n🎯 METHOD 2: Trying Piped API (3 instances)...`);
+      try {
+        const pipedSuccess = await tryPipedAPI(track, outputFolder, socket, downloadId);
+        if (pipedSuccess) {
+          console.log(`✅ Piped API SUCCESS: ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via Piped API: ${track.name}`
+          });
+          
+          return; // Success! No need to try other methods
+        }
+      } catch (err) {
+        console.log(`  ⚠️ Piped API failed, trying next method...`);
+      }
+    }
+    
+    // ====================================
+    // 🆕 TRY METHOD 3: Invidious API (Cookie-less)
+    // ====================================
+    if (track.url && track.url.includes('youtube.com') && attemptNumber < 5) {
+      console.log(`\n🎯 METHOD 3: Trying Invidious API (5 instances)...`);
       try {
         const invidiousSuccess = await tryInvidiousAPI(track, outputFolder, socket, downloadId);
         if (invidiousSuccess) {
@@ -3922,9 +4131,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🔄 METHOD 2: yt-dlp (with auto-cookies)
+    // 🔄 METHOD 4: yt-dlp (with auto-cookies)
     // ====================================
-    console.log(`\n🎯 METHOD 2: Trying yt-dlp (with auto-cookies & proxies)...`);
+    console.log(`\n🎯 METHOD 4: Trying yt-dlp (with auto-cookies & proxies)...`);
     
     socket.emit('download:status', {
       downloadId,
