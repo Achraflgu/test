@@ -3867,20 +3867,29 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
   try {
     console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
     
-    const youtubeUrl = track.url;
-    if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
-      console.log('  ❌ No YouTube URL available');
-      return false;
-    }
+    let youtubeUrl = track.url;
     
-    const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
-    if (!videoId) {
-      console.log('  ❌ Invalid YouTube URL');
-      return false;
+    // Handle Spotify search - use ytsearch format
+    if (track.isSpotifySearch && track.searchTerm) {
+      youtubeUrl = `ytsearch1:${track.searchTerm}`;
+      console.log(`  🎵 Using YouTube search: "${track.searchTerm}"`);
+      console.log(`  🔄 Starting download...`);
+    } else {
+      // Regular YouTube URL
+      if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
+        console.log('  ❌ No YouTube URL available');
+        return false;
+      }
+      
+      const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
+      if (!videoId) {
+        console.log('  ❌ Invalid YouTube URL');
+        return false;
+      }
+      
+      console.log(`  📺 Video ID: ${videoId}`);
+      console.log(`  🔄 Starting download...`);
     }
-    
-    console.log(`  📺 Video ID: ${videoId}`);
-    console.log(`  🔄 Starting download...`);
     
     // Create safe filename (removes "Unknown Artist" prefix)
     const safeFilename = createSafeFilename(track);
@@ -4349,28 +4358,69 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub) ⭐ WORKS BEST!
+    // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub) ⭐ ALWAYS FIRST!
     // ====================================
-    if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
+    // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
+    if (attemptNumber < 6) { // Increased attempts for better success
       console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
-      try {
-        const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
-        if (ytdlExecSuccess) {
-          console.log(`✅ youtube-dl-exec SUCCESS: ${track.name}`);
-          successCount++;
-          
-          socket.emit('download:progress', {
-            downloadId,
-            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
-          });
-          
-          return; // Success! No need to try other methods
+      
+      // For Spotify tracks without YouTube URL, use search format
+      if (!track.url || track.url.includes('spotify.com')) {
+        const searchTerm = track.artist === 'Unknown Artist' 
+          ? track.name.trim()
+          : `${track.artist} ${track.name}`.trim();
+        
+        console.log(`  🎵 Spotify track → YouTube search: "${searchTerm}"`);
+        
+        // Temporarily set URL to search format for youtube-dl-exec
+        const originalUrl = track.url;
+        track.url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm)}`;
+        track.isSpotifySearch = true;
+        track.searchTerm = searchTerm;
+        
+        try {
+          const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
+          if (ytdlExecSuccess) {
+            console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
+            successCount++;
+            
+            socket.emit('download:progress', {
+              downloadId,
+              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+            });
+            
+            return; // Success! No need to try other methods
+          }
+        } catch (err) {
+          console.log(`  ⚠️ youtube-dl-exec search failed: ${err.message}`);
         }
-      } catch (err) {
-        console.log(`  ⚠️ youtube-dl-exec failed, trying next method...`);
+        
+        // Restore original URL
+        track.url = originalUrl;
+      } else if (track.url && track.url.includes('youtube.com')) {
+        // YouTube direct link
+        try {
+          const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
+          if (ytdlExecSuccess) {
+            console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
+            successCount++;
+            
+            socket.emit('download:progress', {
+              downloadId,
+              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+            });
+            
+            return; // Success! No need to try other methods
+          }
+        } catch (err) {
+          console.log(`  ⚠️ youtube-dl-exec failed: ${err.message}`);
+        }
       }
     }
     
@@ -5106,33 +5156,104 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       continue;
     }
     
-    // Strategy 2: Mixed sources - download Spotify tracks FIRST, then YouTube with yt-dlp
-    // This allows failed Spotify tracks to be retried with yt-dlp in phase 2
-    if (mixedSources) {
-      console.log('🎭 Mixed sources detected - downloading intelligently...');
-      console.log(`   Step 1: Download ${spotifyTracks.length} Spotify tracks with spotdl`);
-      console.log(`   Step 2: Download ${youtubeTracks.length} YouTube tracks with yt-dlp`);
-      console.log(`   Step 3: Retry any failed Spotify tracks with yt-dlp fallback`);
+    // Strategy 2: Use youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
+    // This is MUCH FASTER than spotdl and works for both sources
+    if (mixedSources || spotifyTracks.length > 0) {
+      console.log('🚀 FAST MODE: Using youtube-dl-exec for all tracks');
+      console.log(`   🎵 Spotify tracks: ${spotifyTracks.length} (will search YouTube)`);
+      console.log(`   📺 YouTube tracks: ${youtubeTracks.length} (direct download)`);
       
       socket.emit('download:status', {
         downloadId,
         status: 'downloading',
-        message: `🎭 Mixed sources: ${spotifyTracks.length} Spotify + ${youtubeTracks.length} YouTube tracks`
+        message: `🚀 Fast Mode: youtube-dl-exec for ${tracks.length} tracks`
       });
       
-      // Phase 1: Download Spotify tracks first
-      console.log('\n🎵 Phase 1: Downloading Spotify tracks with spotdl...');
-      socket.emit('download:status', {
-        downloadId,
-        status: 'downloading',
-        message: `🎵 Phase 1: Downloading ${spotifyTracks.length} Spotify tracks...`
-      });
+      // Use yt-dlp fallback with outer attempt index to rotate strategies per retry
+      const ytdlpSuccess = await tryYtDlpFallback(tracks, outputFolder, outputPath, socket, downloadId, {}, settings, Math.max(0, attempt - 1));
       
-      // Continue with spotdl for Spotify tracks (fall through to normal spotdl logic)
-      // After spotdl completes, YouTube tracks will be downloaded in phase 2
-      tracks = spotifyTracks;
-      downloadInfo.hasYouTubeTracks = true;
-      downloadInfo.youtubeTracks = youtubeTracks;
+      // Check results
+      try {
+        const files = await fs.readdir(outputFolder);
+        const musicFiles = files.filter(f => 
+          f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
+        );
+        
+        const currentSuccess = musicFiles.length;
+        const totalTracks = tracks.length;
+        const successRate = currentSuccess / totalTracks;
+        
+        console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
+        
+        if (musicFiles.length > 0) {
+          console.log(`\n✅ Files found in folder:`);
+          musicFiles.slice(0, 5).forEach(f => console.log(`   - ${f}`));
+          if (musicFiles.length > 5) {
+            console.log(`   ... and ${musicFiles.length - 5} more`);
+          }
+        }
+        
+        // Track progress between attempts
+        if (currentSuccess > lastFailCount) {
+          consecutiveFailures = 0;
+          lastFailCount = currentSuccess;
+        } else {
+          consecutiveFailures++;
+        }
+        
+        // Complete if all tracks downloaded or reasonable threshold met
+        const shouldComplete = currentSuccess >= totalTracks || 
+                              (attempt >= 10 && currentSuccess > 0 && successRate >= 0.5) ||
+                              (attempt >= maxAttempts && currentSuccess > 0);
+        
+        if (shouldComplete) {
+          const status = currentSuccess >= totalTracks ? 'completed' : 'partial';
+          const statusEmoji = currentSuccess >= totalTracks ? '✅ ALL' : '⚠️ PARTIAL';
+          console.log(`${statusEmoji} DOWNLOAD COMPLETE: ${currentSuccess}/${totalTracks} tracks\n`);
+          
+          downloadInfo.status = status;
+          downloadInfo.totalSuccess = currentSuccess;
+          downloadInfo.totalFailed = totalTracks - currentSuccess;
+          downloadInfo.attempts = attempt;
+          
+          const elapsedTime = formatElapsedTime(downloadInfo.startTime);
+          console.log(`⏱️  Total download time: ${elapsedTime}`);
+          
+          socket.emit('download:complete', {
+            downloadId,
+            outputFolder,
+            totalSuccess: currentSuccess,
+            totalFailed: totalTracks - currentSuccess,
+            attempts: attempt,
+            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+            message: currentSuccess >= totalTracks
+              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+              : currentSuccess > 0
+                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+          });
+          
+          shouldContinue = false;
+          continue;
+        } else {
+          console.log(`⚠️ Some tracks missing (${totalTracks - currentSuccess}/${totalTracks})`);
+          console.log(`   Consecutive failures: ${consecutiveFailures}`);
+          
+          const remaining = totalTracks - currentSuccess;
+          socket.emit('download:status', {
+            downloadId,
+            status: 'downloading',
+            message: `📥 ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts}`
+          });
+        }
+      } catch (error) {
+        console.error('Error checking files:', error);
+        consecutiveFailures++;
+      }
+      
+      const retryDelay = attempt > 1 ? 5000 : 2000;
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      continue;
     }
     
     // Build spotdl command with direct URLs (for Spotify tracks only)
