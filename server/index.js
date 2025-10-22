@@ -4125,9 +4125,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         }
         
         // Complete if: all tracks downloaded OR reasonable threshold met after enough attempts
+        // More lenient completion criteria to avoid premature exits
         const shouldComplete = currentSuccess >= totalTracks || 
-                              (attempt >= 5 && currentSuccess > 0 && successRate >= 0.7) ||
-                              (attempt >= 3 && consecutiveFailures >= 3 && currentSuccess > 0);
+                              (attempt >= 6 && currentSuccess > 0 && successRate >= 0.6) ||
+                              (attempt >= maxAttempts && currentSuccess > 0);
         
         if (shouldComplete) {
           const status = currentSuccess >= totalTracks ? 'completed' : 'partial';
@@ -4176,10 +4177,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           console.log(`⚠️ Some tracks missing (${totalTracks - currentSuccess}/${totalTracks})`);
           console.log(`   Consecutive failures: ${consecutiveFailures}`);
           
+          // Send detailed progress update
+          const remaining = totalTracks - currentSuccess;
           socket.emit('download:status', {
             downloadId,
             status: 'downloading',
-            message: `📥 Progress: ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) - Attempt ${attempt}/${maxAttempts}`
+            message: `📥 ${currentSuccess}/${totalTracks} downloaded (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts}`
           });
         }
       } catch (error) {
@@ -4729,13 +4732,11 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const successfulTracks = tracks.length - remaining;
           const successRate = successfulTracks / tracks.length;
           
-          // Give up conditions:
-          // 1. No progress after 6 attempts (reduced from 18)
-          // 2. 3 consecutive attempts with no progress
-          // 3. After 5 attempts with 70%+ success rate
-          const giveUp = (!progressMade && attempt >= 6) || 
-                        (consecutiveFailures >= 3) ||
-                        (attempt >= 5 && successRate >= 0.7);
+          // Give up conditions - more lenient to allow more retries
+          // 1. No progress after max attempts
+          // 2. After 6 attempts with 60%+ success rate
+          const giveUp = (!progressMade && attempt >= maxAttempts) || 
+                        (attempt >= 6 && successRate >= 0.6);
           
           // Complete with partial results if we have some successful downloads
           if (giveUp && successfulTracks > 0) {

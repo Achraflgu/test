@@ -2280,12 +2280,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       if (data.downloadId === downloadId) {
         setAttemptCount(data.attempt);
         
-        // Show persistent progress toast
+        // Show persistent progress toast with clear info
         const progressPercent = data.maxAttempts ? Math.round((data.attempt / data.maxAttempts) * 100) : 0;
-        toast.loading(data.message || `🔄 Attempt ${data.attempt}...`, {
+        const completed = tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
+        const total = tracks.filter(t => t.selected).length;
+        
+        toast.loading(`🔄 Downloading - Attempt ${data.attempt}/${data.maxAttempts}`, {
           id: 'download-attempt',
           duration: Infinity, // Keep visible until next update
-          description: data.maxAttempts ? `Progress: ${progressPercent}% (${data.attempt}/${data.maxAttempts})` : undefined,
+          description: `${completed}/${total} tracks completed • ${progressPercent}% through attempts`,
         });
       }
     });
@@ -2397,16 +2400,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               time: Date.now() 
             }, ...prev].slice(0, 5));
             
-            // Show detailed toast
-            toast.warning(`⚠️ Partial Download Complete`, {
-              description: `✅ ${data.totalSuccess} tracks downloaded successfully\n❌ ${data.totalFailed} tracks failed\n📦 Your ZIP file is downloading...`,
+            // Show detailed toast with success rate
+            const successPercent = Math.round((data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100);
+            toast.warning(`⚠️ Partial Download (${successPercent}%)`, {
+              description: `✅ ${data.totalSuccess} successful • ❌ ${data.totalFailed} failed\n📦 ZIP file ready with available tracks`,
               duration: 15000,
               action: {
-                label: 'View Failed',
+                label: 'View Failed Tracks',
                 onClick: () => {
                   if (data.failedTracks && data.failedTracks.length > 0) {
-                    const failedMessage = data.failedTracks.join('\n');
-                    toast.error(`Failed tracks:\n\n${failedMessage}`, {
+                    const failedList = data.failedTracks.slice(0, 5).join('\n');
+                    const more = data.failedTracks.length > 5 ? `\n...and ${data.failedTracks.length - 5} more` : '';
+                    toast.error(`Failed tracks:\n\n${failedList}${more}`, {
                       duration: 20000,
                     });
                   } else {
@@ -2533,7 +2538,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       downloadProgress: track.selected ? 0 : track.downloadProgress
     })));
     
-    toast.success(`🚀 Starting download of ${selectedTracks.length} track${selectedTracks.length > 1 ? 's' : ''}...`);
+    // Show clear initial toast
+    toast.loading(`🚀 Starting download...`, {
+      id: 'download-init',
+      description: `Preparing to download ${selectedTracks.length} track${selectedTracks.length > 1 ? 's' : ''}`,
+      duration: 3000
+    });
 
     try {
       const response = await startDownload({
@@ -2547,7 +2557,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
-      toast.info(`📁 Files will be saved to: ${response.outputFolder}`);
+      // Dismiss init toast and show success
+      toast.dismiss('download-init');
+      toast.success(`✅ Download initialized!`, {
+        description: `Files will be saved to: ${response.outputFolder.split(/[\\/]/).pop()}`,
+        duration: 3000
+      });
     } catch (error: any) {
       setDownloading(false);
       toast.error(`❌ Failed to start download: ${error.message}`);
@@ -2717,14 +2732,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               </div>
               
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="font-medium">
-                  {selectedCount > 0 ? `${selectedCount} selected` : `${filteredTracks.length} tracks`}
-                </span>
-                {completedCount > 0 && (
-                  <span className="text-green-600">• {completedCount} done</span>
-                )}
-                {failedCount > 0 && (
-                  <span className="text-red-600">• {failedCount} failed</span>
+                {downloading ? (
+                  <>
+                    <span className="font-medium flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      Downloading {selectedCount} track{selectedCount !== 1 ? 's' : ''}
+                    </span>
+                    {completedCount > 0 && (
+                      <span className="text-green-600 font-medium">• ✓ {completedCount} done</span>
+                    )}
+                    {failedCount > 0 && (
+                      <span className="text-red-600 font-medium">• ✗ {failedCount} failed</span>
+                    )}
+                    <span className="text-primary font-medium">• Attempt {attemptCount}/8</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">
+                      {selectedCount > 0 ? `${selectedCount} selected` : `${filteredTracks.length} tracks`}
+                    </span>
+                    {completedCount > 0 && (
+                      <span className="text-green-600">• ✓ {completedCount} done</span>
+                    )}
+                    {failedCount > 0 && (
+                      <span className="text-red-600">• ✗ {failedCount} failed</span>
+                    )}
+                  </>
                 )}
                 <span className="text-blue-600">• {settings.format.toUpperCase()}</span>
               </div>
