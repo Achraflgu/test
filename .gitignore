@@ -16,6 +16,7 @@ build/
 youtube_cookies.txt
 server/youtube_cookies.txt
 server/.temp_cookies.txt
+server/.auto_generated_cookies.txt
 *_cookies.txt
 !*_cookies.txt.example
 
