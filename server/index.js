@@ -1157,6 +1157,8 @@ detectPythonCommand();
 let versionInfo = {
   spotdl: 'Unknown',
   ytdlp: 'Unknown',
+  youtubedlexec: 'Unknown',
+  youtubei: 'Unknown',
   lastChecked: null,
   lastUpdated: null,
   needsUpdate: false
@@ -1216,6 +1218,30 @@ async function getYtDlpVersion() {
   });
 }
 
+// Helper function to get youtube-dl-exec version
+async function getYoutubeDlExecVersion() {
+  try {
+    const packagePath = path.join(__dirname, 'node_modules', 'youtube-dl-exec', 'package.json');
+    const packageData = await fs.readFile(packagePath, 'utf8');
+    const packageJson = JSON.parse(packageData);
+    return packageJson.version || 'Unknown';
+  } catch (error) {
+    return 'Not installed';
+  }
+}
+
+// Helper function to get youtubei.js version
+async function getYoutubeiVersion() {
+  try {
+    const packagePath = path.join(__dirname, 'node_modules', 'youtubei.js', 'package.json');
+    const packageData = await fs.readFile(packagePath, 'utf8');
+    const packageJson = JSON.parse(packageData);
+    return packageJson.version || 'Unknown';
+  } catch (error) {
+    return 'Not installed';
+  }
+}
+
 // Helper function to update yt-dlp and spotdl
 async function updateDependencies() {
   // Silent update check
@@ -1243,14 +1269,20 @@ async function updateDependencies() {
 async function checkAndUpdateVersions() {
   console.log('\n🔄 Checking dependencies...');
   
+  // Check Python-based tools
   versionInfo.spotdl = await getSpotdlVersion();
   versionInfo.ytdlp = await getYtDlpVersion();
+  
+  // Check Node.js packages
+  versionInfo.youtubedlexec = await getYoutubeDlExecVersion();
+  versionInfo.youtubei = await getYoutubeiVersion();
+  
   versionInfo.lastChecked = new Date().toISOString();
   
-  // Auto-update (silent)
+  // Auto-update (silent) - only for Python tools
   await updateDependencies();
   
-  // Get updated versions
+  // Get updated versions for Python tools
   versionInfo.spotdl = await getSpotdlVersion();
   versionInfo.ytdlp = await getYtDlpVersion();
   
@@ -6264,6 +6296,8 @@ checkAndUpdateVersions().then(async () => {
 ║  Server: http://localhost:${PORT}                            ║
 ║  spotdl: ${versionInfo.spotdl.padEnd(45)}║
 ║  yt-dlp: ${versionInfo.ytdlp.padEnd(45)}║
+║  youtube-dl-exec: ${versionInfo.youtubedlexec.padEnd(36)}║
+║  youtubei.js: ${versionInfo.youtubei.padEnd(40)}║
 ║  Status: Ready to download playlists                       ║
 ╚════════════════════════════════════════════════════════════╝
     `);
