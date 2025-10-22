@@ -332,8 +332,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     event.target.mute();
                   }
                   
-                  // Load video
-                  event.target.loadVideoById(youtubeId);
+                  // 🔥 FIX: Use cueVideoById instead of loadVideoById to prevent auto-play on restoration
+                  // cueVideoById loads the video but doesn't play it (perfect for paused restoration)
+                  event.target.cueVideoById(youtubeId);
                   setPlayerLoadProgress(80);
                   
                   // Enhanced restoration with better timing and stability
