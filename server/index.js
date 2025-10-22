@@ -12,7 +12,6 @@ import fetch from 'node-fetch';
 import sharp from 'sharp';
 import archiver from 'archiver';
 import { proxyManager } from './proxy-manager.js';
-import ytdl from '@distube/ytdl-core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3660,98 +3659,6 @@ async function fetchYouTubeMetadata(searchQuery, youtubeLink = null) {
 }
 
 // ====================================
-// 🆕 YTDL-CORE METHOD (Cookie-less, from GitHub)
-// ====================================
-// Uses @distube/ytdl-core library for cookie-less downloads
-// Source: https://github.com/distubejs/ytdl-core
-// ====================================
-
-async function tryYtdlCore(track, outputFolder, socket, downloadId) {
-  try {
-    console.log(`\n🔧 Trying ytdl-core (GitHub method) for: ${track.name}`);
-    
-    const youtubeUrl = track.url;
-    if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
-      console.log('  ❌ No YouTube URL available');
-      return false;
-    }
-    
-    // Check if ytdl-core can handle this video
-    const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
-    if (!videoId) {
-      console.log('  ❌ Invalid YouTube URL');
-      return false;
-    }
-    
-    console.log(`  📺 Video ID: ${videoId}`);
-    console.log(`  🔄 Fetching video info...`);
-    
-    // Get video info
-    const info = await ytdl.getInfo(youtubeUrl);
-    
-    // Get audio format (best quality)
-    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
-    if (audioFormats.length === 0) {
-      console.log('  ❌ No audio formats found');
-      return false;
-    }
-    
-    console.log(`  ✅ Found ${audioFormats.length} audio formats`);
-    
-    // Create safe filename
-    const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
-    const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
-    
-    console.log(`  ⬇️ Downloading to: ${safeFilename}.mp3`);
-    
-    // Download audio
-    return new Promise((resolve) => {
-      const audioStream = ytdl(youtubeUrl, {
-        quality: 'highestaudio',
-        filter: 'audioonly'
-      });
-      
-      const writeStream = fsSync.createWriteStream(outputPath);
-      
-      audioStream.pipe(writeStream);
-      
-      let downloadedBytes = 0;
-      audioStream.on('data', (chunk) => {
-        downloadedBytes += chunk.length;
-        // Update progress
-        if (socket) {
-          socket.emit('download:progress', {
-            downloadId,
-            trackId: track.id,
-            trackName: track.name,
-            progress: Math.min(99, Math.floor(downloadedBytes / (1024 * 1024 * 5) * 100)) // Estimate
-          });
-        }
-      });
-      
-      writeStream.on('finish', () => {
-        console.log(`  ✅ ytdl-core: Successfully downloaded ${track.name}`);
-        resolve(true);
-      });
-      
-      writeStream.on('error', (err) => {
-        console.log(`  ❌ ytdl-core write error: ${err.message}`);
-        resolve(false);
-      });
-      
-      audioStream.on('error', (err) => {
-        console.log(`  ❌ ytdl-core download error: ${err.message}`);
-        resolve(false);
-      });
-    });
-    
-  } catch (err) {
-    console.log(`  ❌ ytdl-core failed: ${err.message}`);
-    return false;
-  }
-}
-
-// ====================================
 // 🆕 INVIDIOUS API METHOD (Cookie-less)
 // ====================================
 // Uses public Invidious instances as proxy
@@ -3989,36 +3896,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     // ====================================
-    // 🆕 TRY METHOD 1: ytdl-core (Cookie-less, GitHub)
+    // 🆕 TRY METHOD 1: Invidious API (Cookie-less)
     // ====================================
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
-      console.log(`\n🎯 METHOD 1: Trying ytdl-core (GitHub library)...`);
-      try {
-        const ytdlSuccess = await tryYtdlCore(track, outputFolder, socket, downloadId);
-        if (ytdlSuccess) {
-          console.log(`✅ ytdl-core SUCCESS: ${track.name}`);
-          successCount++;
-          
-          socket.emit('download:progress', {
-            downloadId,
-            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via ytdl-core: ${track.name}`
-          });
-          
-          return; // Success! No need to try other methods
-        }
-      } catch (err) {
-        console.log(`  ⚠️ ytdl-core failed, trying next method...`);
-      }
-    }
-    
-    // ====================================
-    // 🆕 TRY METHOD 2: Invidious API (Cookie-less)
-    // ====================================
-    if (track.url && track.url.includes('youtube.com') && attemptNumber < 5) {
-      console.log(`\n🎯 METHOD 2: Trying Invidious API...`);
+      console.log(`\n🎯 METHOD 1: Trying Invidious API (GitHub method)...`);
       try {
         const invidiousSuccess = await tryInvidiousAPI(track, outputFolder, socket, downloadId);
         if (invidiousSuccess) {
@@ -4041,9 +3922,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🔄 METHOD 3: yt-dlp (Original method with cookies)
+    // 🔄 METHOD 2: yt-dlp (with auto-cookies)
     // ====================================
-    console.log(`\n🎯 METHOD 3: Trying yt-dlp (with cookies & proxies)...`);
+    console.log(`\n🎯 METHOD 2: Trying yt-dlp (with auto-cookies & proxies)...`);
     
     socket.emit('download:status', {
       downloadId,
