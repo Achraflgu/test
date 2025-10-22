@@ -4218,36 +4218,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     // ====================================
-    // 🆕 TRY METHOD 1: YouTubei.js (Cookie-less, Modern GitHub API)
-    // ====================================
-    if (track.url && track.url.includes('youtube.com') && attemptNumber < 2) {
-      console.log(`\n🎯 METHOD 1: Trying YouTubei.js (Modern GitHub API)...`);
-      try {
-        const youtubeijsSuccess = await tryYouTubeiJS(track, outputFolder, socket, downloadId);
-        if (youtubeijsSuccess) {
-          console.log(`✅ YouTubei.js SUCCESS: ${track.name}`);
-          successCount++;
-          
-          socket.emit('download:progress', {
-            downloadId,
-            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via YouTubei.js: ${track.name}`
-          });
-          
-          return; // Success! No need to try other methods
-        }
-      } catch (err) {
-        console.log(`  ⚠️ YouTubei.js failed, trying next method...`);
-      }
-    }
-    
-    // ====================================
-    // 🆕 TRY METHOD 2: youtube-dl-exec (Cookie-less, GitHub)
+    // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub) ⭐ WORKS BEST!
     // ====================================
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
-      console.log(`\n🎯 METHOD 2: Trying youtube-dl-exec (GitHub wrapper)...`);
+      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
       try {
         const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId);
         if (ytdlExecSuccess) {
@@ -4266,6 +4240,32 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         }
       } catch (err) {
         console.log(`  ⚠️ youtube-dl-exec failed, trying next method...`);
+      }
+    }
+    
+    // ====================================
+    // 🆕 TRY METHOD 2: YouTubei.js (Cookie-less, Modern GitHub API)
+    // ====================================
+    if (track.url && track.url.includes('youtube.com') && attemptNumber < 2) {
+      console.log(`\n🎯 METHOD 2: Trying YouTubei.js (Modern GitHub API)...`);
+      try {
+        const youtubeijsSuccess = await tryYouTubeiJS(track, outputFolder, socket, downloadId);
+        if (youtubeijsSuccess) {
+          console.log(`✅ YouTubei.js SUCCESS: ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via YouTubei.js: ${track.name}`
+          });
+          
+          return; // Success! No need to try other methods
+        }
+      } catch (err) {
+        console.log(`  ⚠️ YouTubei.js failed, trying next method...`);
       }
     }
     
