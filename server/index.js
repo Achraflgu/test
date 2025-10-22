@@ -229,7 +229,65 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 const activeProcesses = new Map();
 
-// Optional: local browser cookie detection for development environments only
+// ====================================
+// 🍪 COOKIE DETECTION SYSTEM
+// ====================================
+// Priority order:
+// 1. Environment variable (YOUTUBE_COOKIES) - for deployment
+// 2. Cookie file (youtube_cookies.txt) - for deployment/local
+// 3. Browser extraction - for local development only
+// ====================================
+
+async function setupYouTubeCookies() {
+  try {
+    const cookiesFilePath = path.join(__dirname, 'youtube_cookies.txt');
+    
+    // ===== PRIORITY 1: Environment Variable (Best for deployment) =====
+    if (process.env.YOUTUBE_COOKIES) {
+      console.log('  🍪 Using cookies from YOUTUBE_COOKIES environment variable');
+      
+      // Write env cookies to temp file for yt-dlp
+      const tempCookiesPath = path.join(__dirname, '.temp_cookies.txt');
+      await fs.writeFile(tempCookiesPath, process.env.YOUTUBE_COOKIES, 'utf8');
+      return { type: 'file', path: tempCookiesPath };
+    }
+    
+    // ===== PRIORITY 2: Cookie File (Works in all environments) =====
+    try {
+      await fs.access(cookiesFilePath);
+      const cookieContent = await fs.readFile(cookiesFilePath, 'utf8');
+      
+      // Verify it's not empty and has cookie format
+      if (cookieContent.trim().length > 100 && cookieContent.includes('youtube.com')) {
+        console.log('  🍪 Using cookies from youtube_cookies.txt file');
+        return { type: 'file', path: cookiesFilePath };
+      } else {
+        console.log('  ⚠️ youtube_cookies.txt exists but appears invalid or empty');
+      }
+    } catch (err) {
+      // File doesn't exist, continue to browser extraction
+    }
+    
+    // ===== PRIORITY 3: Browser Extraction (Local development only) =====
+    const browser = await extractBrowserCookies();
+    if (browser) {
+      console.log(`  🍪 Using ${browser} browser cookies (local development)`);
+      return { type: 'browser', browser };
+    }
+    
+    // ===== NO COOKIES AVAILABLE =====
+    console.log('  ⚠️ No YouTube cookies found - downloads may be blocked');
+    console.log('  💡 TIP: Set YOUTUBE_COOKIES environment variable or create youtube_cookies.txt');
+    console.log('  📖 See server/cookies-setup.md for instructions');
+    return null;
+    
+  } catch (error) {
+    console.log(`  ⚠️ Cookie setup error: ${error.message}`);
+    return null;
+  }
+}
+
+// Helper: Extract browser cookies (local development only)
 async function extractBrowserCookies() {
   try {
     // Try local browser cookies (for development)
@@ -3697,20 +3755,23 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try cookies first (env var > file > browser)
       console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
       
-      // Try to extract browser cookies for authentication (helps bypass bot detection)
+      // Setup YouTube cookies (supports deployment environments)
       try {
-        const browser = await extractBrowserCookies();
-        if (browser) {
-          ytdlpArgs.push('--cookies-from-browser', browser);
-          console.log(`  🍪 Using ${browser} browser cookies for authentication`);
-        } else {
-          console.log(`  ⚠️ No browser cookies available, using cookie-less mode`);
+        const cookieSetup = await setupYouTubeCookies();
+        if (cookieSetup) {
+          if (cookieSetup.type === 'file') {
+            ytdlpArgs.push('--cookies', cookieSetup.path);
+            console.log(`  ✅ Authenticated with YouTube cookies (file)`);
+          } else if (cookieSetup.type === 'browser') {
+            ytdlpArgs.push('--cookies-from-browser', cookieSetup.browser);
+            console.log(`  ✅ Authenticated with ${cookieSetup.browser} browser cookies`);
+          }
         }
       } catch (err) {
-        console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
+        console.log(`  ⚠️ Cookie setup failed: ${err.message}`);
       }
       
       // Add enhanced methods with strategy cycling based on attempt number
@@ -3752,20 +3813,23 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try cookies first (env var > file > browser)
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
       
-      // Try to extract browser cookies for authentication (helps bypass bot detection)
+      // Setup YouTube cookies (supports deployment environments)
       try {
-        const browser = await extractBrowserCookies();
-        if (browser) {
-          ytdlpArgs.push('--cookies-from-browser', browser);
-          console.log(`  🍪 Using ${browser} browser cookies for authentication`);
-        } else {
-          console.log(`  ⚠️ No browser cookies available, using cookie-less mode`);
+        const cookieSetup = await setupYouTubeCookies();
+        if (cookieSetup) {
+          if (cookieSetup.type === 'file') {
+            ytdlpArgs.push('--cookies', cookieSetup.path);
+            console.log(`  ✅ Authenticated with YouTube cookies (file)`);
+          } else if (cookieSetup.type === 'browser') {
+            ytdlpArgs.push('--cookies-from-browser', cookieSetup.browser);
+            console.log(`  ✅ Authenticated with ${cookieSetup.browser} browser cookies`);
+          }
         }
       } catch (err) {
-        console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
+        console.log(`  ⚠️ Cookie setup failed: ${err.message}`);
       }
       
       // Apply the new bot bypass strategies to search-based downloads

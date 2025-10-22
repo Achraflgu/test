@@ -12,6 +12,13 @@ build/
 .env.local
 .env.production
 
+# YouTube cookies (sensitive data)
+youtube_cookies.txt
+server/youtube_cookies.txt
+server/.temp_cookies.txt
+*_cookies.txt
+!*_cookies.txt.example
+
 # Logs
 *.log
 npm-debug.log*
