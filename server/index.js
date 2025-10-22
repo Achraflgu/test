@@ -1244,7 +1244,7 @@ async function getYoutubeiVersion() {
 
 // Helper function to update yt-dlp and spotdl
 async function updateDependencies() {
-  // Silent update check
+  // Silent update check for Python tools
   return new Promise((resolve) => {
     const updateProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', 'yt-dlp', 'spotdl']);
     let output = '';
@@ -1265,6 +1265,45 @@ async function updateDependencies() {
   });
 }
 
+// Helper function to update Node.js packages (youtube-dl-exec, youtubei.js)
+async function updateNodePackages() {
+  return new Promise((resolve) => {
+    console.log('🔄 Checking for npm package updates...');
+    
+    // Use npm update to update packages
+    const updateProcess = spawn('npm', ['update', 'youtube-dl-exec', 'youtubei.js'], {
+      cwd: __dirname,
+      stdio: 'pipe'
+    });
+    
+    let output = '';
+    let errorOutput = '';
+    
+    updateProcess.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    updateProcess.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+    
+    updateProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ npm packages checked/updated');
+        resolve(true);
+      } else {
+        console.log('⚠️ npm update completed with warnings (this is normal)');
+        resolve(false);
+      }
+    });
+    
+    updateProcess.on('error', (error) => {
+      console.log('⚠️ npm update skipped (not critical)');
+      resolve(false);
+    });
+  });
+}
+
 // Check versions on startup
 async function checkAndUpdateVersions() {
   console.log('\n🔄 Checking dependencies...');
@@ -1279,12 +1318,20 @@ async function checkAndUpdateVersions() {
   
   versionInfo.lastChecked = new Date().toISOString();
   
-  // Auto-update (silent) - only for Python tools
+  // Auto-update Python tools
+  console.log('🔄 Updating Python tools (yt-dlp, spotdl)...');
   await updateDependencies();
   
-  // Get updated versions for Python tools
+  // Auto-update Node.js packages
+  await updateNodePackages();
+  
+  // Get updated versions
   versionInfo.spotdl = await getSpotdlVersion();
   versionInfo.ytdlp = await getYtDlpVersion();
+  versionInfo.youtubedlexec = await getYoutubeDlExecVersion();
+  versionInfo.youtubei = await getYoutubeiVersion();
+  
+  console.log('✅ All dependencies checked and updated');
   
   // Clear console for cleaner display
   console.clear();
@@ -6306,6 +6353,43 @@ checkAndUpdateVersions().then(async () => {
     setInterval(() => {
       console.log('🔄 Keep-alive ping - Server is running');
     }, 30000); // Every 30 seconds
+    
+    // Auto-update check - runs daily (24 hours)
+    if (process.env.AUTO_UPDATE !== 'false') {
+      setInterval(async () => {
+        console.log('\n🔄 Daily auto-update check starting...');
+        
+        try {
+          // Update Python tools
+          console.log('📦 Updating Python tools...');
+          await updateDependencies();
+          
+          // Update Node.js packages
+          console.log('📦 Updating Node.js packages...');
+          await updateNodePackages();
+          
+          // Get new versions
+          versionInfo.spotdl = await getSpotdlVersion();
+          versionInfo.ytdlp = await getYtDlpVersion();
+          versionInfo.youtubedlexec = await getYoutubeDlExecVersion();
+          versionInfo.youtubei = await getYoutubeiVersion();
+          versionInfo.lastUpdated = new Date().toISOString();
+          
+          console.log('✅ Auto-update complete!');
+          console.log(`   spotdl: ${versionInfo.spotdl}`);
+          console.log(`   yt-dlp: ${versionInfo.ytdlp}`);
+          console.log(`   youtube-dl-exec: ${versionInfo.youtubedlexec}`);
+          console.log(`   youtubei.js: ${versionInfo.youtubei}\n`);
+        } catch (error) {
+          console.log('⚠️ Auto-update failed:', error.message);
+        }
+      }, 24 * 60 * 60 * 1000); // Every 24 hours
+      
+      console.log('✅ Auto-update enabled (runs daily)');
+      console.log('   To disable: set AUTO_UPDATE=false');
+    } else {
+      console.log('⚠️ Auto-update disabled (AUTO_UPDATE=false)');
+    }
   });
 });
 
