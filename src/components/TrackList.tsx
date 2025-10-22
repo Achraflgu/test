@@ -2271,7 +2271,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     socket.on('download:status', (data: any) => {
       console.log('Download status:', data);
       if (data.downloadId === downloadId) {
-        toast.info(data.message);
+        // Show status only if it contains important info (progress indicators, retrying, etc)
+        if (data.message.includes('📥') || data.message.includes('Retrying') || data.message.includes('fallback')) {
+          toast.info(data.message, {
+            id: 'download-status', // Reuse same toast to avoid spam
+            duration: 3000,
+          });
+        }
       }
     });
 
@@ -2285,10 +2291,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         const completed = tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
         const total = tracks.filter(t => t.selected).length;
         
-        toast.loading(`🔄 Downloading - Attempt ${data.attempt}/${data.maxAttempts}`, {
+        // Show different messages based on progress
+        const emoji = completed === 0 ? '🔄' : completed < total / 2 ? '⏳' : '✅';
+        const status = completed === 0 ? 'Starting' : completed < total / 2 ? 'In Progress' : 'Almost Done';
+        
+        toast.loading(`${emoji} ${status} - Attempt ${data.attempt}/${data.maxAttempts}`, {
           id: 'download-attempt',
           duration: Infinity, // Keep visible until next update
-          description: `${completed}/${total} tracks completed • ${progressPercent}% through attempts`,
+          description: `${completed}/${total} tracks completed${completed > 0 ? ` (${Math.round((completed / total) * 100)}%)` : ''} • Trying different download strategies...`,
         });
       }
     });
@@ -2345,7 +2355,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     socket.on('download:error', (data: any) => {
       console.error('Download error:', data);
       if (data.downloadId === downloadId && data.trackName) {
-        toast.error(`❌ Failed: ${data.trackName}`);
+        // Only show toast for persistent errors, not for each retry
+        if (data.error && data.error.includes('giving up')) {
+          toast.error(`❌ Failed: ${data.trackName}`, {
+            description: 'Will continue trying other tracks...',
+            duration: 3000,
+          });
+        }
         // Don't show tab notification for individual errors, only on complete
       }
     });
@@ -2402,17 +2418,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             
             // Show detailed toast with success rate
             const successPercent = Math.round((data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100);
-            toast.warning(`⚠️ Partial Download (${successPercent}%)`, {
-              description: `✅ ${data.totalSuccess} successful • ❌ ${data.totalFailed} failed\n📦 ZIP file ready with available tracks`,
+            const emoji = successPercent >= 70 ? '✅' : successPercent >= 40 ? '⚠️' : '❌';
+            
+            toast.warning(`${emoji} Download Complete - ${data.totalSuccess}/${data.totalSuccess + data.totalFailed} tracks (${successPercent}%)`, {
+              description: `📦 ZIP ready • ${data.totalFailed} track${data.totalFailed > 1 ? 's' : ''} could not be downloaded due to YouTube blocking`,
               duration: 15000,
               action: {
-                label: 'View Failed Tracks',
+                label: 'View Failed',
                 onClick: () => {
                   if (data.failedTracks && data.failedTracks.length > 0) {
-                    const failedList = data.failedTracks.slice(0, 5).join('\n');
-                    const more = data.failedTracks.length > 5 ? `\n...and ${data.failedTracks.length - 5} more` : '';
-                    toast.error(`Failed tracks:\n\n${failedList}${more}`, {
+                    const failedList = data.failedTracks.slice(0, 8).join('\n• ');
+                    const more = data.failedTracks.length > 8 ? `\n• ...and ${data.failedTracks.length - 8} more` : '';
+                    toast.error(`Failed to download:\n\n• ${failedList}${more}`, {
                       duration: 20000,
+                      description: 'Tip: Try downloading these individually or wait and try again later',
                     });
                   } else {
                     setShowFailedTracksDialog(true);

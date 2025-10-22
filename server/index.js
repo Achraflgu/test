@@ -3691,10 +3691,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
       
-      // Cookie-less: no cookie extraction. Rely on enhanced strategies and proxies.
+      // Try to extract browser cookies for authentication (helps bypass bot detection)
+      try {
+        const browser = await extractBrowserCookies();
+        if (browser) {
+          ytdlpArgs.push('--cookies-from-browser', browser);
+          console.log(`  🍪 Using ${browser} browser cookies for authentication`);
+        } else {
+          console.log(`  ⚠️ No browser cookies available, using cookie-less mode`);
+        }
+      } catch (err) {
+        console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
+      }
       
       // Add enhanced methods with strategy cycling based on attempt number
       await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
@@ -3735,10 +3746,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // 🔥 CRITICAL FIX: Try user cookies first, then fallback to enhanced methods
+      // 🔥 CRITICAL FIX: Try browser cookies first, then fallback to enhanced methods
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
       
-      // Cookie-less: no cookie extraction. Rely on enhanced strategies and proxies.
+      // Try to extract browser cookies for authentication (helps bypass bot detection)
+      try {
+        const browser = await extractBrowserCookies();
+        if (browser) {
+          ytdlpArgs.push('--cookies-from-browser', browser);
+          console.log(`  🍪 Using ${browser} browser cookies for authentication`);
+        } else {
+          console.log(`  ⚠️ No browser cookies available, using cookie-less mode`);
+        }
+      } catch (err) {
+        console.log(`  ⚠️ Browser cookie extraction failed: ${err.message}`);
+      }
       
       // Apply the new bot bypass strategies to search-based downloads
       const enhancementResult = await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
@@ -4032,7 +4054,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
   let attempt = 0;
   let totalSuccess = 0;
   let totalFailed = 0;
-  const maxAttempts = 8; // Reduced to 8 attempts for faster completion
+  const maxAttempts = 12; // Increased to 12 attempts for better success rate
   let shouldContinue = true;
   let failedTracks = new Set(); // Track which tracks consistently fail
   let lastFailCount = 0;
@@ -4125,9 +4147,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         }
         
         // Complete if: all tracks downloaded OR reasonable threshold met after enough attempts
-        // More lenient completion criteria to avoid premature exits
+        // Very lenient completion criteria - try hard before giving up
         const shouldComplete = currentSuccess >= totalTracks || 
-                              (attempt >= 6 && currentSuccess > 0 && successRate >= 0.6) ||
+                              (attempt >= 10 && currentSuccess > 0 && successRate >= 0.5) ||
                               (attempt >= maxAttempts && currentSuccess > 0);
         
         if (shouldComplete) {
@@ -4177,13 +4199,13 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           console.log(`⚠️ Some tracks missing (${totalTracks - currentSuccess}/${totalTracks})`);
           console.log(`   Consecutive failures: ${consecutiveFailures}`);
           
-          // Send detailed progress update
-          const remaining = totalTracks - currentSuccess;
-          socket.emit('download:status', {
-            downloadId,
-            status: 'downloading',
-            message: `📥 ${currentSuccess}/${totalTracks} downloaded (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts}`
-          });
+         // Send detailed progress update
+         const remaining = totalTracks - currentSuccess;
+         socket.emit('download:status', {
+           downloadId,
+           status: 'downloading',
+           message: `📥 ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%) • ${remaining} remaining • Attempt ${attempt}/${maxAttempts} • Retrying...`
+         });
         }
       } catch (error) {
         console.error('Error checking files:', error);
@@ -4732,11 +4754,11 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const successfulTracks = tracks.length - remaining;
           const successRate = successfulTracks / tracks.length;
           
-          // Give up conditions - more lenient to allow more retries
+          // Give up conditions - very lenient to maximize success
           // 1. No progress after max attempts
-          // 2. After 6 attempts with 60%+ success rate
+          // 2. After 10 attempts with 50%+ success rate (try harder before giving up)
           const giveUp = (!progressMade && attempt >= maxAttempts) || 
-                        (attempt >= 6 && successRate >= 0.6);
+                        (attempt >= 10 && successRate >= 0.5);
           
           // Complete with partial results if we have some successful downloads
           if (giveUp && successfulTracks > 0) {
