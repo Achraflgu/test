@@ -1346,6 +1346,20 @@ function sanitizeFolderName(name) {
     .substring(0, 50);
 }
 
+// Helper function to create safe filename (removes "Unknown Artist" prefix)
+function createSafeFilename(track) {
+  const artist = track.artist || 'Unknown Artist';
+  const trackName = track.name;
+  
+  // If artist is "Unknown Artist" or "Unknown", just use track name
+  if (artist === 'Unknown Artist' || artist === 'Unknown') {
+    return trackName.replace(/[/\\?%*:|"<>]/g, '-');
+  }
+  
+  // Otherwise use "Artist - Track Name" format
+  return `${artist} - ${trackName}`.replace(/[/\\?%*:|"<>]/g, '-');
+}
+
 // Helper function to detect URL type
 function detectUrlType(url) {
   if (url.includes('spotify.com/track/')) return 'spotify-track';
@@ -3796,8 +3810,8 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
     // Decipher the URL
     const stream = await format.decipher(youtube.session.player);
     
-    // Create safe filename
-    const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+    // Create safe filename (removes "Unknown Artist" prefix)
+    const safeFilename = createSafeFilename(track);
     const extension = format.mime_type?.includes('mp4') ? 'm4a' : 'opus';
     const outputPath = path.join(outputFolder, `${safeFilename}.${extension}`);
     
@@ -3863,8 +3877,8 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
     console.log(`  📺 Video ID: ${videoId}`);
     console.log(`  🔄 Starting download...`);
     
-    // Create safe filename
-    const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+    // Create safe filename (removes "Unknown Artist" prefix)
+    const safeFilename = createSafeFilename(track);
     
     // ✅ OPTION A: Use absolute resolved path
     const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
@@ -4019,8 +4033,8 @@ async function tryPipedAPI(track, outputFolder, socket, downloadId) {
           continue;
         }
         
-        // Create safe filename
-        const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+        // Create safe filename (removes "Unknown Artist" prefix)
+        const safeFilename = createSafeFilename(track);
         const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
         
         console.log(`  📁 Saving to: ${path.basename(outputPath)}`);
@@ -4132,8 +4146,8 @@ async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
           continue;
         }
         
-        // Create safe filename
-        const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+        // Create safe filename (removes "Unknown Artist" prefix)
+        const safeFilename = createSafeFilename(track);
         const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
         
         console.log(`  📁 Saving to: ${path.basename(outputPath)}`);
