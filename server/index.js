@@ -3686,10 +3686,9 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
     console.log(`  📺 Video ID: ${videoId}`);
     console.log(`  🔄 Initializing Innertube...`);
     
-    // Initialize YouTube client
+    // Initialize YouTube client (without custom fetch to avoid node-fetch v2 issues)
     const youtube = await Innertube.create({
-      cache: new Map(), // In-memory cache
-      fetch: fetch // Use node-fetch
+      cache: new Map() // In-memory cache
     });
     
     console.log(`  ✅ Innertube initialized`);
@@ -3803,7 +3802,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
       audioQuality: '320K',
       output: `${absoluteOutputPath}.%(ext)s`,  // Use absolute path
       noCheckCertificates: true,
-      noWarnings: false,  // Enable warnings to see what's happening
+      // noWarnings removed - when omitted, warnings are shown by default
       preferFreeFormats: true,
       addHeader: [
         'referer:youtube.com',
