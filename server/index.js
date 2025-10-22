@@ -4658,6 +4658,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         
         console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
         
+        // Log files found for debugging
+        if (musicFiles.length > 0) {
+          console.log(`\n✅ Files found in folder:`);
+          musicFiles.slice(0, 5).forEach(f => console.log(`   - ${f}`));
+          if (musicFiles.length > 5) {
+            console.log(`   ... and ${musicFiles.length - 5} more`);
+          }
+        }
+        
         // Track progress between attempts
         if (currentSuccess > lastFailCount) {
           consecutiveFailures = 0; // Reset on progress
@@ -4685,13 +4694,51 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const elapsedTime = formatElapsedTime(downloadInfo.startTime);
           console.log(`⏱️  Total download time: ${elapsedTime}`);
           
-          // Build failed tracks list
-          const failedTracksList = tracks.filter(track => {
-            const trackExists = musicFiles.some(file => 
-              file.includes(track.name) || file.includes(track.artist)
-            );
-            return !trackExists;
-          }).map(t => t.name);
+        // Build failed tracks list with lenient matching
+        const normalizeForMatch = (str) => {
+          return str
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+            .replace(/[^\w\s]/g, ' ') // Replace special chars with space
+            .replace(/\s+/g, ' ') // Normalize spaces
+            .trim();
+        };
+        
+        const failedTracksList = tracks.filter(track => {
+          const trackNameNorm = normalizeForMatch(track.name);
+          const trackArtistNorm = normalizeForMatch(track.artist);
+          
+          // Extract key words from track name (ignore short words)
+          const nameWords = trackNameNorm.split(' ').filter(w => w.length > 2);
+          
+          const trackExists = musicFiles.some(file => {
+            const fileNorm = normalizeForMatch(file);
+            
+            // Method 1: Check if file contains artist AND at least 50% of track name words
+            const hasArtist = trackArtistNorm && fileNorm.includes(trackArtistNorm);
+            const matchingNameWords = nameWords.filter(word => fileNorm.includes(word));
+            const nameMatchPercent = nameWords.length > 0 ? matchingNameWords.length / nameWords.length : 0;
+            
+            if (hasArtist && nameMatchPercent >= 0.5) {
+              return true;
+            }
+            
+            // Method 2: Check if file contains at least 70% of track name words (for cases where artist might be formatted differently)
+            if (nameMatchPercent >= 0.7) {
+              return true;
+            }
+            
+            // Method 3: Direct full match (with normalization)
+            if (fileNorm.includes(trackNameNorm) && (trackArtistNorm && fileNorm.includes(trackArtistNorm))) {
+              return true;
+            }
+            
+            return false;
+          });
+          
+          return !trackExists;
+        }).map(t => t.name);
           
           if (failedTracksList.length > 0) {
             console.log(`\n❌ Failed tracks (${failedTracksList.length}):`);
