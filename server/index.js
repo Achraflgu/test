@@ -4201,9 +4201,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
   console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
-  // Always use 8 parallel downloads for maximum speed
-  const parallelDownloads = 8;
-  console.log(`⚡ Using ${parallelDownloads} parallel downloads (optimized for speed)`);
+  // Use threads from settings (1-16, default 8)
+  const parallelDownloads = settings.threads || 8;
+  console.log(`⚡ Using ${parallelDownloads} parallel downloads (from settings)`);
   
   // Get list of already downloaded files
   const files = await fs.readdir(outputFolder);
