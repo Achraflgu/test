@@ -21,6 +21,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
+// Set server timeouts for large file downloads
+httpServer.timeout = 3600000; // 1 hour (in milliseconds)
+httpServer.keepAliveTimeout = 3600000; // 1 hour
+httpServer.headersTimeout = 3610000; // Slightly higher than keepAlive
+
 // Keep process alive for Koyeb/Vercel
 process.on('SIGTERM', () => {
   console.log('🔄 SIGTERM received, keeping process alive...');
@@ -3858,7 +3863,7 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
 // Source: https://github.com/microlinkhq/youtube-dl-exec
 // ====================================
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}) {
   try {
     console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
     
@@ -3880,19 +3885,25 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
     // Create safe filename (removes "Unknown Artist" prefix)
     const safeFilename = createSafeFilename(track);
     
+    // Get format extension from settings
+    const audioFormat = settings.format || 'mp3';
+    
     // ✅ OPTION A: Use absolute resolved path
     const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
-    const expectedFilePath = `${absoluteOutputPath}.mp3`;
+    const expectedFilePath = `${absoluteOutputPath}.${audioFormat}`;
     
     console.log(`  📁 Output folder: ${outputFolder}`);
     console.log(`  📁 Expected file: ${path.basename(expectedFilePath)}`);
     console.log(`  📁 Absolute path: ${absoluteOutputPath}`);
     
+    // Parse quality setting (e.g., "320k" -> "320K")
+    const quality = settings.quality ? settings.quality.toUpperCase().replace('K', 'K') : '320K';
+    
     // ✅ OPTION B: Enhanced logging with verbose mode
     const downloadOptions = {
       extractAudio: true,
-      audioFormat: 'mp3',
-      audioQuality: '320K',
+      audioFormat: audioFormat,
+      audioQuality: quality,
       output: `${absoluteOutputPath}.%(ext)s`,  // Use absolute path
       noCheckCertificates: true,
       // noWarnings removed - when omitted, warnings are shown by default
@@ -4343,7 +4354,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
       console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
       try {
-        const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId);
+        const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
         if (ytdlExecSuccess) {
           console.log(`✅ youtube-dl-exec SUCCESS: ${track.name}`);
           successCount++;
@@ -4500,8 +4511,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs = [
         '-m', 'yt_dlp',
         '-x',
-        '--audio-format', 'mp3',
-        '--audio-quality', '320K',
+        '--audio-format', settings.format || 'mp3',
+        '--audio-quality', settings.quality || '320K',
         '--embed-thumbnail',
         '--embed-metadata',
         '--add-metadata',
@@ -4562,8 +4573,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '-m', 'yt_dlp',
         `ytsearch1:${searchQuery}`,
         '-x',
-        '--audio-format', 'mp3',
-        '--audio-quality', '320K',
+        '--audio-format', settings.format || 'mp3',
+        '--audio-quality', settings.quality || '320K',
         '--embed-thumbnail',
         '--embed-metadata',
         '--add-metadata',
@@ -4739,8 +4750,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           '-m', 'yt_dlp',
           `ytsearch1:${searchQuery}`,
           '-x',
-          '--audio-format', 'mp3',
-          '--audio-quality', '320K',
+          '--audio-format', settings.format || 'mp3',
+          '--audio-quality', settings.quality || '320K',
           '--embed-thumbnail',
           '--embed-metadata',
           '--add-metadata',
@@ -5982,6 +5993,10 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
   if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial') {
     return res.status(400).json({ error: 'Download not completed yet' });
   }
+
+  // Set longer timeout for this specific request
+  req.setTimeout(3600000); // 1 hour
+  res.setTimeout(3600000); // 1 hour
 
   const { outputFolder } = downloadInfo;
   
