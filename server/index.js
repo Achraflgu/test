@@ -13,6 +13,7 @@ import sharp from 'sharp';
 import archiver from 'archiver';
 import { proxyManager } from './proxy-manager.js';
 import youtubedl from 'youtube-dl-exec';
+import { Innertube } from 'youtubei.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3660,6 +3661,105 @@ async function fetchYouTubeMetadata(searchQuery, youtubeLink = null) {
 }
 
 // ====================================
+// 🆕 YOUTUBEI.JS METHOD (Cookie-less, GitHub)
+// ====================================
+// Uses YouTubei.js - Modern YouTube API implementation
+// Source: https://github.com/LuanRT/YouTube.js
+// ====================================
+
+async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
+  try {
+    console.log(`\n🔧 Trying YouTubei.js (GitHub method) for: ${track.name}`);
+    
+    const youtubeUrl = track.url;
+    if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
+      console.log('  ❌ No YouTube URL available');
+      return false;
+    }
+    
+    const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
+    if (!videoId) {
+      console.log('  ❌ Invalid YouTube URL');
+      return false;
+    }
+    
+    console.log(`  📺 Video ID: ${videoId}`);
+    console.log(`  🔄 Initializing Innertube...`);
+    
+    // Initialize YouTube client
+    const youtube = await Innertube.create({
+      cache: new Map(), // In-memory cache
+      fetch: fetch // Use node-fetch
+    });
+    
+    console.log(`  ✅ Innertube initialized`);
+    console.log(`  🔍 Fetching video info...`);
+    
+    // Get video info
+    const info = await youtube.getInfo(videoId);
+    
+    console.log(`  ✅ Video info retrieved: ${info.basic_info.title}`);
+    console.log(`  🎵 Choosing audio format...`);
+    
+    // Get best audio format
+    const format = info.chooseFormat({
+      type: 'audio',
+      quality: 'best'
+    });
+    
+    if (!format) {
+      console.log('  ❌ No audio format found');
+      return false;
+    }
+    
+    console.log(`  ✅ Audio format selected: ${format.mime_type} (${format.bitrate} bps)`);
+    console.log(`  🔄 Starting download...`);
+    
+    // Decipher the URL
+    const stream = await format.decipher(youtube.session.player);
+    
+    // Create safe filename
+    const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
+    const extension = format.mime_type?.includes('mp4') ? 'm4a' : 'opus';
+    const outputPath = path.join(outputFolder, `${safeFilename}.${extension}`);
+    
+    console.log(`  📁 Saving to: ${path.basename(outputPath)}`);
+    
+    // Download stream to file
+    const writer = fsSync.createWriteStream(outputPath);
+    
+    // Pipe the stream
+    for await (const chunk of stream) {
+      writer.write(chunk);
+    }
+    
+    writer.end();
+    
+    // Wait for write to finish
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+    
+    // Verify file was created
+    const stats = await fs.stat(outputPath);
+    
+    if (stats.size === 0) {
+      console.log(`  ❌ File created but is 0 bytes`);
+      return false;
+    }
+    
+    console.log(`  ✅ YouTubei.js: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+    return true;
+    
+  } catch (err) {
+    console.log(`  ❌ YouTubei.js failed: ${err.message}`);
+    console.log(`  📝 Error details:`, err.stack);
+    return false;
+  }
+}
+
+// ====================================
 // 🆕 YOUTUBE-DL-EXEC METHOD (Cookie-less, from GitHub)
 // ====================================
 // Uses youtube-dl-exec wrapper around yt-dlp
@@ -3687,53 +3787,87 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
     
     // Create safe filename
     const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
-    const outputPath = path.join(outputFolder, `${safeFilename}`);
-    const expectedFilePath = `${outputPath}.mp3`;
     
-    console.log(`  📁 Expected output: ${path.basename(expectedFilePath)}`);
+    // ✅ OPTION A: Use absolute resolved path
+    const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
+    const expectedFilePath = `${absoluteOutputPath}.mp3`;
     
-    // Download with youtube-dl-exec
-    await youtubedl(youtubeUrl, {
+    console.log(`  📁 Output folder: ${outputFolder}`);
+    console.log(`  📁 Expected file: ${path.basename(expectedFilePath)}`);
+    console.log(`  📁 Absolute path: ${absoluteOutputPath}`);
+    
+    // ✅ OPTION B: Enhanced logging with verbose mode
+    const downloadOptions = {
       extractAudio: true,
       audioFormat: 'mp3',
       audioQuality: '320K',
-      output: `${outputPath}.%(ext)s`,
+      output: `${absoluteOutputPath}.%(ext)s`,  // Use absolute path
       noCheckCertificates: true,
-      noWarnings: true,
+      noWarnings: false,  // Enable warnings to see what's happening
       preferFreeFormats: true,
       addHeader: [
         'referer:youtube.com',
         'user-agent:Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
       ],
-      noPlaylist: true
-    });
+      noPlaylist: true,
+      verbose: true,  // ✅ OPTION B: Enable verbose logging
+      print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
+    };
+    
+    console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
+    
+    // Download with youtube-dl-exec
+    const result = await youtubedl(youtubeUrl, downloadOptions);
+    
+    console.log(`  📝 youtube-dl-exec result:`, result);
     
     // Verify file was created
     const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
     if (!fileExists) {
-      // Check for other possible extensions
+      // Check for other possible extensions and partial filenames
       const folderFiles = await fs.readdir(outputFolder);
-      const possibleFile = folderFiles.find(f => 
-        f.startsWith(safeFilename) && (f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.webm'))
-      );
+      console.log(`  📂 All files in folder (${folderFiles.length}):`, folderFiles);
+      
+      const possibleFile = folderFiles.find(f => {
+        const normalized = f.toLowerCase();
+        return (normalized.includes(track.name.toLowerCase().substring(0, 10)) || 
+                normalized.includes(safeFilename.toLowerCase().substring(0, 10))) &&
+               (normalized.endsWith('.mp3') || normalized.endsWith('.m4a') || 
+                normalized.endsWith('.webm') || normalized.endsWith('.opus'));
+      });
       
       if (possibleFile) {
-        console.log(`  ⚠️ File created with different name: ${possibleFile}`);
-        // If it's not mp3, we might need to convert it, but for now just report success
-        return true;
+        const actualPath = path.join(outputFolder, possibleFile);
+        const stats = await fs.stat(actualPath);
+        console.log(`  ⚠️ File created with different name: ${possibleFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        
+        // If size is > 0, consider it a success
+        if (stats.size > 0) {
+          return true;
+        } else {
+          console.log(`  ❌ File is 0 bytes - download failed`);
+          return false;
+        }
       }
       
       console.log(`  ❌ File not found after download: ${path.basename(expectedFilePath)}`);
-      console.log(`  📂 Files in folder: ${folderFiles.length} files`);
+      console.log(`  📂 Expected in: ${outputFolder}`);
+      console.log(`  📂 Files found: ${folderFiles.join(', ')}`);
       return false;
     }
     
     const stats = await fs.stat(expectedFilePath);
+    if (stats.size === 0) {
+      console.log(`  ❌ File created but is 0 bytes`);
+      return false;
+    }
+    
     console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
     return true;
     
   } catch (err) {
     console.log(`  ❌ youtube-dl-exec failed: ${err.message}`);
+    console.log(`  📝 Error stack:`, err.stack);
     return false;
   }
 }
@@ -4085,10 +4219,36 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     // ====================================
-    // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub)
+    // 🆕 TRY METHOD 1: YouTubei.js (Cookie-less, Modern GitHub API)
     // ====================================
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 2) {
-      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
+      console.log(`\n🎯 METHOD 1: Trying YouTubei.js (Modern GitHub API)...`);
+      try {
+        const youtubeijsSuccess = await tryYouTubeiJS(track, outputFolder, socket, downloadId);
+        if (youtubeijsSuccess) {
+          console.log(`✅ YouTubei.js SUCCESS: ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via YouTubei.js: ${track.name}`
+          });
+          
+          return; // Success! No need to try other methods
+        }
+      } catch (err) {
+        console.log(`  ⚠️ YouTubei.js failed, trying next method...`);
+      }
+    }
+    
+    // ====================================
+    // 🆕 TRY METHOD 2: youtube-dl-exec (Cookie-less, GitHub)
+    // ====================================
+    if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
+      console.log(`\n🎯 METHOD 2: Trying youtube-dl-exec (GitHub wrapper)...`);
       try {
         const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId);
         if (ytdlExecSuccess) {
@@ -4111,10 +4271,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🆕 TRY METHOD 2: Piped API (Cookie-less, GitHub)
+    // 🆕 TRY METHOD 3: Piped API (Cookie-less, GitHub)
     // ====================================
-    if (track.url && track.url.includes('youtube.com') && attemptNumber < 3) {
-      console.log(`\n🎯 METHOD 2: Trying Piped API (3 instances)...`);
+    if (track.url && track.url.includes('youtube.com') && attemptNumber < 4) {
+      console.log(`\n🎯 METHOD 3: Trying Piped API (3 instances)...`);
       try {
         const pipedSuccess = await tryPipedAPI(track, outputFolder, socket, downloadId);
         if (pipedSuccess) {
@@ -4137,10 +4297,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🆕 TRY METHOD 3: Invidious API (Cookie-less)
+    // 🆕 TRY METHOD 4: Invidious API (Cookie-less)
     // ====================================
     if (track.url && track.url.includes('youtube.com') && attemptNumber < 5) {
-      console.log(`\n🎯 METHOD 3: Trying Invidious API (5 instances)...`);
+      console.log(`\n🎯 METHOD 4: Trying Invidious API (5 instances)...`);
       try {
         const invidiousSuccess = await tryInvidiousAPI(track, outputFolder, socket, downloadId);
         if (invidiousSuccess) {
@@ -4163,9 +4323,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // ====================================
-    // 🔄 METHOD 4: yt-dlp (with auto-cookies)
+    // 🔄 METHOD 5: yt-dlp (with auto-cookies)
     // ====================================
-    console.log(`\n🎯 METHOD 4: Trying yt-dlp (with auto-cookies & proxies)...`);
+    console.log(`\n🎯 METHOD 5: Trying yt-dlp (with auto-cookies & proxies)...`);
     
     socket.emit('download:status', {
       downloadId,
