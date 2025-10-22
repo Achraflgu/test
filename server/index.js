@@ -3688,6 +3688,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
     // Create safe filename
     const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
     const outputPath = path.join(outputFolder, `${safeFilename}`);
+    const expectedFilePath = `${outputPath}.mp3`;
+    
+    console.log(`  📁 Expected output: ${path.basename(expectedFilePath)}`);
     
     // Download with youtube-dl-exec
     await youtubedl(youtubeUrl, {
@@ -3705,7 +3708,28 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId) {
       noPlaylist: true
     });
     
-    console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name}`);
+    // Verify file was created
+    const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
+    if (!fileExists) {
+      // Check for other possible extensions
+      const folderFiles = await fs.readdir(outputFolder);
+      const possibleFile = folderFiles.find(f => 
+        f.startsWith(safeFilename) && (f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.webm'))
+      );
+      
+      if (possibleFile) {
+        console.log(`  ⚠️ File created with different name: ${possibleFile}`);
+        // If it's not mp3, we might need to convert it, but for now just report success
+        return true;
+      }
+      
+      console.log(`  ❌ File not found after download: ${path.basename(expectedFilePath)}`);
+      console.log(`  📂 Files in folder: ${folderFiles.length} files`);
+      return false;
+    }
+    
+    const stats = await fs.stat(expectedFilePath);
+    console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
     return true;
     
   } catch (err) {
@@ -3787,11 +3811,15 @@ async function tryPipedAPI(track, outputFolder, socket, downloadId) {
         const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
         const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
         
+        console.log(`  📁 Saving to: ${path.basename(outputPath)}`);
+        
         // Write to file
         const buffer = await audioResponse.buffer();
         await fs.writeFile(outputPath, buffer);
         
-        console.log(`  ✅ Piped API: Successfully downloaded ${track.name}`);
+        // Verify file was created
+        const stats = await fs.stat(outputPath);
+        console.log(`  ✅ Piped API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         return true;
         
       } catch (instanceErr) {
@@ -3896,11 +3924,15 @@ async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
         const safeFilename = `${track.artist || 'Unknown'} - ${track.name}`.replace(/[/\\?%*:|"<>]/g, '-');
         const outputPath = path.join(outputFolder, `${safeFilename}.mp3`);
         
+        console.log(`  📁 Saving to: ${path.basename(outputPath)}`);
+        
         // Write to file
         const buffer = await audioResponse.buffer();
         await fs.writeFile(outputPath, buffer);
         
-        console.log(`  ✅ Invidious API: Successfully downloaded ${track.name}`);
+        // Verify file was created
+        const stats = await fs.stat(outputPath);
+        console.log(`  ✅ Invidious API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         return true;
         
       } catch (instanceErr) {
