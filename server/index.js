@@ -4310,6 +4310,33 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
     console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
+    // 🎵 FOR SPOTIFY TRACKS: Find YouTube URL first so all methods can use it
+    if (track.url && track.url.includes('spotify.com')) {
+      console.log(`  🎵 Spotify track detected - searching YouTube...`);
+      
+      // Check if we already have a YouTube link from spotdl errors
+      let youtubeLink = youtubeLinks[track.url] || youtubeLinks[track.id];
+      
+      if (!youtubeLink) {
+        // Search YouTube for the track
+        const found = await findBestYouTubeMatch(track);
+        if (found) {
+          youtubeLink = found;
+          console.log(`  ✅ Found YouTube match: ${youtubeLink}`);
+        }
+      } else {
+        console.log(`  ✅ Using YouTube link from spotdl: ${youtubeLink}`);
+      }
+      
+      // Update track URL to YouTube URL so all methods can use it
+      if (youtubeLink) {
+        track.url = youtubeLink;
+        console.log(`  🔄 Updated track URL to YouTube: ${youtubeLink}`);
+      } else {
+        console.log(`  ⚠️ Could not find YouTube match - will try yt-dlp search`);
+      }
+    }
+    
     // ====================================
     // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub) ⭐ WORKS BEST!
     // ====================================
