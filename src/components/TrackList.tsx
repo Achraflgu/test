@@ -2357,7 +2357,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
       console.log('Download track update:', data);
-      if (data.downloadId === downloadId) {
+      // Accept if downloadId matches OR if downloadId not set yet (instant download case)
+      if (data.downloadId === downloadId || !downloadId || downloading) {
         setTracks(prev => prev.map((track) => {
           // Match by trackId
           if (track.id === data.trackId) {
@@ -2444,7 +2445,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     socket.on('download:complete', (data: any) => {
       console.log('Download complete:', data);
-      if (data.downloadId === downloadId) {
+      // Accept if downloadId matches OR if currently downloading (instant download case)
+      if (data.downloadId === downloadId || !downloadId || downloading) {
         setDownloading(false);
         setOutputFolder(data.outputFolder);
         resetTabTitle();
