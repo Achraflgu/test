@@ -2545,13 +2545,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
+            // Generate descriptive filename for IDM detection
+            const folderName = getFolderName(data.outputFolder);
+            const downloadFilename = `${folderName}.zip`;
+            
             // Auto-start download (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl);
+            triggerSmartDownload(fullDownloadUrl, downloadFilename);
             
             // Add to tray
             setRecentDownloads(prev => [{ 
               id: data.downloadId, 
-              name: getFolderName(data.outputFolder), 
+              name: folderName, 
               url: fullDownloadUrl, 
               time: Date.now() 
             }, ...prev].slice(0, 5));
@@ -2595,24 +2599,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
+            // Generate descriptive filename for IDM detection
+            const folderName = getFolderName(data.outputFolder);
+            const downloadFilename = data.totalSuccess === 1 
+              ? `${tracks.find(t => t.downloadStatus === 'completed')?.name || 'track'}.mp3`
+              : `${folderName}.zip`;
+            
             // Auto-start download immediately (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl);
+            triggerSmartDownload(fullDownloadUrl, downloadFilename);
             
             // Add to tray
             setRecentDownloads(prev => [{ 
               id: data.downloadId, 
-              name: getFolderName(data.outputFolder), 
+              name: folderName, 
               url: fullDownloadUrl, 
               time: Date.now() 
             }, ...prev].slice(0, 5));
             
             // Persistent richer toast with retry/open actions
-            toast.success(`🎉 ${getFolderName(data.outputFolder)} is ready!`, {
-              description: `All ${successCount} tracks downloaded successfully. Your ZIP is downloading...`,
+            const fileType = data.totalSuccess === 1 ? 'MP3' : 'ZIP';
+            toast.success(`🎉 ${folderName} is ready!`, {
+              description: `All ${successCount} tracks downloaded successfully. Your ${fileType} is downloading...`,
               duration: 10000,
               action: {
-                label: 'Open ZIP Again',
-                onClick: () => triggerSmartDownload(fullDownloadUrl),
+                label: `Open ${fileType} Again`,
+                onClick: () => triggerSmartDownload(fullDownloadUrl, downloadFilename),
               },
             });
           } else {
