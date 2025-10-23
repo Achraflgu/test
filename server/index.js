@@ -3242,6 +3242,43 @@ app.post('/api/download/start', async (req, res) => {
 
   res.json({ downloadId, outputFolder });
 
+  // For single track downloads, check if file already exists
+  if (selectedTracks.length === 1) {
+    const track = selectedTracks[0];
+    const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+    const expectedFilePath = path.join(outputFolder, expectedFileName);
+    
+    try {
+      await fs.access(expectedFilePath);
+      // File exists! Skip download and mark as complete immediately
+      console.log(`✅ File already exists: ${expectedFileName}`);
+      console.log(`⚡ Skipping download - file ready for instant download!`);
+      
+      activeDownloads.set(downloadId, {
+        ...activeDownloads.get(downloadId),
+        status: 'completed',
+        totalSuccess: 1,
+        totalFailed: 0,
+        attempts: 0,
+        startTime: Date.now()
+      });
+      
+      // Emit instant complete
+      io.emit('download:complete', {
+        downloadId,
+        status: 'completed',
+        message: '✅ File already downloaded - ready instantly!',
+        totalSuccess: 1,
+        totalFailed: 0
+      });
+      
+      return;
+    } catch (error) {
+      // File doesn't exist, proceed with download
+      console.log(`📥 File not found, starting download: ${expectedFileName}`);
+    }
+  }
+
   // Start download process asynchronously
   startDownload(downloadId, effectivePlaylistUrl, selectedTracks, settings, outputFolder);
 });
