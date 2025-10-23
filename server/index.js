@@ -3208,25 +3208,25 @@ app.post('/api/download/start', async (req, res) => {
       }
     }
 
-    // Create output folder
-    try {
-      await fs.mkdir(outputFolder, { recursive: true });
-    } catch (error) {
-      return res.status(500).json({ error: 'Failed to create output folder' });
-    }
+  // Create output folder
+  try {
+    await fs.mkdir(outputFolder, { recursive: true });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to create output folder' });
+  }
 
     // Create folder cover image for playlists
-    if (playlistImages && playlistImages.length > 0) {
-      console.log(`\n🖼️  Creating folder cover with ${playlistImages.length} playlist image(s)...`);
-      const coverPath = path.join(outputFolder, 'folder.jpg');
-      const coverCreated = await createFolderCoverImage(playlistImages, coverPath);
-      if (coverCreated) {
-        console.log('✅ Folder cover created successfully!\n');
-      } else {
-        console.log('⚠️  Folder cover creation failed - continuing without it\n');
-      }
+  if (playlistImages && playlistImages.length > 0) {
+    console.log(`\n🖼️  Creating folder cover with ${playlistImages.length} playlist image(s)...`);
+    const coverPath = path.join(outputFolder, 'folder.jpg');
+    const coverCreated = await createFolderCoverImage(playlistImages, coverPath);
+    if (coverCreated) {
+      console.log('✅ Folder cover created successfully!\n');
     } else {
-      console.log('⚠️  No playlist images provided - skipping folder cover\n');
+      console.log('⚠️  Folder cover creation failed - continuing without it\n');
+    }
+  } else {
+    console.log('⚠️  No playlist images provided - skipping folder cover\n');
     }
   }
 
@@ -3301,6 +3301,18 @@ app.post('/api/download/start', async (req, res) => {
       console.log(`📥 File not found, starting download: ${expectedFileName}`);
     }
   }
+
+  // Emit pending status for all selected tracks
+  console.log(`📤 Emitting pending status for ${selectedTracks.length} track(s)`);
+  selectedTracks.forEach(track => {
+    io.emit('download:track', {
+      downloadId,
+      trackId: track.id,
+      status: 'pending',
+      progress: 0,
+      message: `⏳ Queued: ${track.name}`
+    });
+  });
 
   // Start download process asynchronously
   startDownload(downloadId, effectivePlaylistUrl, selectedTracks, settings, outputFolder);
@@ -5312,6 +5324,30 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             console.log(`   ... and ${musicFiles.length - 5} more`);
           }
         }
+        
+        // Emit track-level status updates
+        tracks.forEach(track => {
+          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const trackDownloaded = musicFiles.some(f => f === expectedFileName);
+          
+          if (trackDownloaded) {
+            socket.emit('download:track', {
+              downloadId,
+              trackId: track.id,
+              status: 'completed',
+              progress: 100,
+              message: `✅ ${track.name}`
+            });
+          } else {
+            socket.emit('download:track', {
+              downloadId,
+              trackId: track.id,
+              status: 'failed',
+              progress: 0,
+              message: `❌ ${track.name}`
+            });
+          }
+        });
         
         // Track progress between attempts
         if (currentSuccess > lastFailCount) {
