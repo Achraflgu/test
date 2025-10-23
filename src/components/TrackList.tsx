@@ -2357,11 +2357,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
       console.log('Download track update:', data);
-      // Always accept track updates if we're downloading OR if track is pending
+      // Always accept track updates - match by trackId only
       setTracks(prev => {
         const updatedTracks = prev.map((track) => {
-          // Match by trackId and only update if track is pending/downloading
-          if (track.id === data.trackId && (track.downloadStatus === 'pending' || track.downloadStatus === 'downloading' || downloading)) {
+          // Match by trackId - update ANY track regardless of current status
+          if (track.id === data.trackId) {
             console.log(`Updating track ${track.name} from ${track.downloadStatus} to ${data.status}`);
             return {
               ...track,
