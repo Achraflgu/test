@@ -3231,17 +3231,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                           toast.warning('Please wait for current download to complete');
                           return;
                         }
-                        // Select only this track and start download
-                        const updatedTracks = tracks.map(t => ({
-                          ...t,
-                          selected: t.id === track.id
-                        }));
-                        setTracks(updatedTracks);
-                        setTimeout(() => openFolderDialog(), 100);
+                        // Download this track directly without folder dialog
+                        downloadSingleTrack(track);
                       }}
                       disabled={downloading || track.downloadStatus === 'downloading'}
                       className="h-9 w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                      title={track.downloadStatus === 'completed' ? 'Already downloaded' : 'Download this track'}
+                      title={track.downloadStatus === 'completed' ? 'Already downloaded' : 'Download this track instantly'}
                     >
                       <Download className="w-4 h-4" />
                     </Button>

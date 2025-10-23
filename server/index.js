@@ -3172,11 +3172,25 @@ app.post('/api/download/start', async (req, res) => {
   console.log('Selected track URLs:', selectedTracks.map(t => ({ name: t.name, url: t.url })));
 
   const downloadId = `download_${Date.now()}`;
-  const outputFolder = path.join(
-    os.homedir(), 
-    'Downloads', 
-    sanitizeFolderName(folderName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`)
-  );
+  const baseFolderName = sanitizeFolderName(folderName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`);
+  
+  // Find available folder name with Windows-style incremental suffix
+  let outputFolder;
+  let counter = 0;
+  
+  while (true) {
+    const folderName = counter === 0 
+      ? baseFolderName 
+      : `${baseFolderName} (${counter})`;
+    outputFolder = path.join(os.homedir(), 'Downloads', folderName);
+    
+    try {
+      await fs.access(outputFolder);
+      counter++; // Folder exists, try next number
+    } catch {
+      break; // Folder doesn't exist, use this name
+    }
+  }
 
   // Create output folder
   try {
