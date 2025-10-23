@@ -207,15 +207,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       if (savedSession.currentQueue && savedSession.currentQueue.length > 0) {
         setPlaylistQueue(savedSession.currentQueue);
-        setIsPlayingAll(true);
+        // Don't set isPlayingAll(true) on restore - player is paused!
+        // User needs to manually click play to resume
+        setIsPlayingAll(false);
       }
       
       if (savedSession.currentTrack) {
         setCurrentPlayingTrack(savedSession.currentTrack);
         const savedTime = savedSession.currentTime || 0;
         setCurrentTime(savedTime);
-        // Keep player paused (do NOT auto-play)
+        // Keep player paused (do NOT auto-play) - prevents stuck player on reload
         setIsPlaying(false);
+        console.log('🔇 Player restored in PAUSED state (no auto-play)');
         
         // 🔥 CRITICAL FIX: Set duration from saved track data immediately
         if (savedSession.currentTrack.duration && savedSession.currentTrack.duration > 0) {
