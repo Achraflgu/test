@@ -170,6 +170,36 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   useEffect(() => {
     isShuffledRef.current = isShuffled;
   }, [isShuffled]);
+
+  // ============ SMART DOWNLOAD FUNCTION ============
+  // Works with IDM (Internet Download Manager) AND regular browsers
+  const triggerSmartDownload = (url: string, filename?: string) => {
+    console.log('📥 Triggering smart download:', url);
+    
+    try {
+      // Create a temporary download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || ''; // download attribute signals this is a download (IDM intercepts this!)
+      link.target = '_blank'; // Fallback for browsers that don't support download attribute
+      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up after a short delay
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 100);
+      
+      console.log('✅ Download triggered successfully (IDM should intercept if installed)');
+    } catch (error) {
+      console.error('❌ Download link method failed, using fallback:', error);
+      // Fallback: Open in new window (works everywhere but IDM won't intercept)
+      window.open(url, '_blank');
+    }
+  };
   
   useEffect(() => {
     volumeRef.current = volume;
@@ -2515,8 +2545,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
-            // Auto-start download in a new tab for successful tracks
-            window.open(fullDownloadUrl, '_blank');
+            // Auto-start download (works with IDM and regular browsers)
+            triggerSmartDownload(fullDownloadUrl);
             
             // Add to tray
             setRecentDownloads(prev => [{ 
@@ -2565,8 +2595,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
             
-            // Auto-start download in a new tab immediately
-            window.open(fullDownloadUrl, '_blank');
+            // Auto-start download immediately (works with IDM and regular browsers)
+            triggerSmartDownload(fullDownloadUrl);
             
             // Add to tray
             setRecentDownloads(prev => [{ 
@@ -2582,7 +2612,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               duration: 10000,
               action: {
                 label: 'Open ZIP Again',
-                onClick: () => window.open(fullDownloadUrl, '_blank'),
+                onClick: () => triggerSmartDownload(fullDownloadUrl),
               },
             });
           } else {
