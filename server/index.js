@@ -3146,9 +3146,10 @@ async function createFolderCoverImage(imageUrls, outputPath) {
 
 // Start download
 app.post('/api/download/start', async (req, res) => {
-  const { playlistUrl, tracks, settings, folderName, playlistImages } = req.body;
+  const { playlistUrl, tracks, settings, folderName, playlistImages, socketId } = req.body;
 
   console.log('\n=== DOWNLOAD REQUEST ===');
+  console.log('Client Socket ID:', socketId); // Log which client initiated this
   console.log('Received tracks count:', tracks?.length);
   console.log('Tracks data:', JSON.stringify(tracks, null, 2));
 
@@ -3237,10 +3238,22 @@ app.post('/api/download/start', async (req, res) => {
     settings,
     outputFolder,
     status: 'starting',
-    progress: {}
+    progress: {},
+    socketId // Store which client initiated this download
   });
 
   res.json({ downloadId, outputFolder });
+
+  // Get the specific client socket to send events only to that client
+  const clientSocketId = socketId;
+  const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
+  const emitSocket = clientSocket || io; // Fallback to broadcast if no specific socket
+  
+  if (clientSocket) {
+    console.log(`✅ Will send events to specific client: ${clientSocketId}`);
+  } else {
+    console.log(`⚠️  No socket ID, will broadcast to all clients`);
+  }
 
   // For single track downloads, check if file already exists
   if (selectedTracks.length === 1) {
@@ -3265,8 +3278,8 @@ app.post('/api/download/start', async (req, res) => {
       
       console.log(`📤 Emitting instant download events for: ${expectedFileName}`);
       
-      // Emit track-level progress (mark as completed)
-      io.emit('download:track', {
+      // Emit track-level progress (mark as completed) - ONLY to this client
+      emitSocket.emit('download:track', {
         downloadId,
         trackId: track.id,
         status: 'completed',
@@ -3274,8 +3287,8 @@ app.post('/api/download/start', async (req, res) => {
         message: `✅ ${track.name}`
       });
       
-      // Emit instant complete with download URL
-      io.emit('download:complete', {
+      // Emit instant complete with download URL - ONLY to this client
+      emitSocket.emit('download:complete', {
         downloadId,
         status: 'completed',
         message: '✅ File already exists - downloading instantly!',
@@ -3286,8 +3299,8 @@ app.post('/api/download/start', async (req, res) => {
         failedTracks: []
       });
       
-      // Show success notification
-      io.emit('download:status', {
+      // Show success notification - ONLY to this client
+      emitSocket.emit('download:status', {
         downloadId,
         status: 'completed',
         message: '⚡ Instant download - file was already downloaded!'
@@ -3302,10 +3315,10 @@ app.post('/api/download/start', async (req, res) => {
     }
   }
 
-  // Emit pending status for all selected tracks
+  // Emit pending status for all selected tracks - ONLY to this client
   console.log(`📤 Emitting pending status for ${selectedTracks.length} track(s)`);
   selectedTracks.forEach(track => {
-    io.emit('download:track', {
+    emitSocket.emit('download:track', {
       downloadId,
       trackId: track.id,
       status: 'pending',
@@ -5025,10 +5038,20 @@ function formatElapsedTime(startTime) {
 
 // Start the actual download process
 async function startDownload(downloadId, playlistUrl, tracks, settings, outputFolder) {
-  const socket = io;
   const downloadInfo = activeDownloads.get(downloadId);
   
   if (!downloadInfo) return;
+
+  // Get the specific client socket (if available) to send events only to that client
+  const clientSocketId = downloadInfo.socketId;
+  const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
+  const socket = clientSocket || io; // Fallback to broadcast if no specific socket
+  
+  if (clientSocket) {
+    console.log(`✅ Sending download events to specific client: ${clientSocketId}`);
+  } else {
+    console.log(`⚠️  No socket ID found, broadcasting to all clients`);
+  }
 
   // Start download timer
   const downloadStartTime = Date.now();
@@ -6316,6 +6339,13 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       res.setHeader('Content-Disposition', contentDisposition);
       res.setHeader('Cache-Control', 'no-cache');
       
+      // IDM-compatible headers for better download manager support
+      const fileStats = fsSync.statSync(filePath);
+      res.setHeader('Content-Length', fileStats.size); // File size for IDM progress
+      res.setHeader('Accept-Ranges', 'bytes'); // Enable multi-part downloads for IDM
+      
+      console.log(`📊 File size: ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
+      
       // Stream the file directly
       const fileStream = fsSync.createReadStream(filePath);
       fileStream.pipe(res);
@@ -6343,6 +6373,7 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     res.setHeader('Content-Disposition', contentDisposition);
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Accept-Ranges', 'bytes'); // IDM-compatible: enable resume support
     
     // Create archive with optimized compression for music files
     const archive = archiver('zip', {

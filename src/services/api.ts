@@ -102,12 +102,18 @@ interface StartDownloadResponse {
 }
 
 export const startDownload = async (request: StartDownloadRequest): Promise<StartDownloadResponse> => {
+  // Get current socket ID to send events only to this client (not broadcast to all browsers!)
+  const socketId = socket?.id;
+  
   const response = await fetch(`${API_URL}/api/download/start`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      ...request,
+      socketId // Include socket ID to identify this specific client
+    }),
   });
 
   if (!response.ok) {
