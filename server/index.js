@@ -3172,45 +3172,55 @@ app.post('/api/download/start', async (req, res) => {
   console.log('Selected track URLs:', selectedTracks.map(t => ({ name: t.name, url: t.url })));
 
   const downloadId = `download_${Date.now()}`;
-  const baseFolderName = sanitizeFolderName(folderName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`);
-  
-  // Find available folder name with Windows-style incremental suffix
   let outputFolder;
-  let counter = 0;
   
-  while (true) {
-    const folderName = counter === 0 
-      ? baseFolderName 
-      : `${baseFolderName} (${counter})`;
-    outputFolder = path.join(os.homedir(), 'Downloads', folderName);
+  // For single track downloads, use Downloads folder directly (no subfolder)
+  if (selectedTracks.length === 1) {
+    outputFolder = path.join(os.homedir(), 'Downloads');
+    console.log('📁 Single track download - saving directly to Downloads folder\n');
     
-    try {
-      await fs.access(outputFolder);
-      counter++; // Folder exists, try next number
-    } catch {
-      break; // Folder doesn't exist, use this name
-    }
-  }
-
-  // Create output folder
-  try {
-    await fs.mkdir(outputFolder, { recursive: true });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to create output folder' });
-  }
-
-  // Create folder cover image
-  if (playlistImages && playlistImages.length > 0) {
-    console.log(`\n🖼️  Creating folder cover with ${playlistImages.length} playlist image(s)...`);
-    const coverPath = path.join(outputFolder, 'folder.jpg');
-    const coverCreated = await createFolderCoverImage(playlistImages, coverPath);
-    if (coverCreated) {
-      console.log('✅ Folder cover created successfully!\n');
-    } else {
-      console.log('⚠️  Folder cover creation failed - continuing without it\n');
-    }
+    // No folder cover for single tracks
   } else {
-    console.log('⚠️  No playlist images provided - skipping folder cover\n');
+    // For multiple tracks, create a subfolder with incremental naming
+    const baseFolderName = sanitizeFolderName(folderName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`);
+    
+    // Find available folder name with Windows-style incremental suffix
+    let counter = 0;
+    
+    while (true) {
+      const folderName = counter === 0 
+        ? baseFolderName 
+        : `${baseFolderName} (${counter})`;
+      outputFolder = path.join(os.homedir(), 'Downloads', folderName);
+      
+      try {
+        await fs.access(outputFolder);
+        counter++; // Folder exists, try next number
+      } catch {
+        break; // Folder doesn't exist, use this name
+      }
+    }
+
+    // Create output folder
+    try {
+      await fs.mkdir(outputFolder, { recursive: true });
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to create output folder' });
+    }
+
+    // Create folder cover image for playlists
+    if (playlistImages && playlistImages.length > 0) {
+      console.log(`\n🖼️  Creating folder cover with ${playlistImages.length} playlist image(s)...`);
+      const coverPath = path.join(outputFolder, 'folder.jpg');
+      const coverCreated = await createFolderCoverImage(playlistImages, coverPath);
+      if (coverCreated) {
+        console.log('✅ Folder cover created successfully!\n');
+      } else {
+        console.log('⚠️  Folder cover creation failed - continuing without it\n');
+      }
+    } else {
+      console.log('⚠️  No playlist images provided - skipping folder cover\n');
+    }
   }
 
   // Store download info
@@ -6115,7 +6125,7 @@ app.get('/api/download/status/:downloadId', (req, res) => {
   res.json(downloadInfo);
 });
 
-// Download completed files as ZIP archive
+// Download completed files as ZIP archive (or single file for 1 track)
 app.get('/api/download/archive/:downloadId', async (req, res) => {
   const { downloadId } = req.params;
   const downloadInfo = activeDownloads.get(downloadId);
@@ -6133,13 +6143,55 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
   req.setTimeout(3600000); // 1 hour
   res.setTimeout(3600000); // 1 hour
 
-  const { outputFolder } = downloadInfo;
+  const { outputFolder, tracks } = downloadInfo;
   
   try {
     // Check if folder exists
     await fs.access(outputFolder);
     
-    // Get folder name for the ZIP file
+    // Get all music files in the folder
+    const files = await fs.readdir(outputFolder);
+    const musicFiles = files.filter(f => 
+      f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
+    );
+    
+    // For single track downloads, send the file directly (no ZIP)
+    if (tracks.length === 1 && musicFiles.length === 1) {
+      const singleFile = musicFiles[0];
+      const filePath = path.join(outputFolder, singleFile);
+      
+      console.log(`📥 Sending single file directly: ${singleFile}`);
+      
+      // Build safe Content-Disposition header
+      const asciiName = singleFile.replace(/[^\x20-\x7E]/g, '_');
+      const encodedName = encodeURIComponent(singleFile).replace(/\*/g, '%2A');
+      const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+      
+      // Set headers for audio file
+      const fileExt = path.extname(singleFile).toLowerCase();
+      const mimeTypes = {
+        '.mp3': 'audio/mpeg',
+        '.flac': 'audio/flac',
+        '.ogg': 'audio/ogg'
+      };
+      
+      res.setHeader('Content-Type', mimeTypes[fileExt] || 'audio/mpeg');
+      res.setHeader('Content-Disposition', contentDisposition);
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      // Stream the file directly
+      const fileStream = fsSync.createReadStream(filePath);
+      fileStream.pipe(res);
+      
+      fileStream.on('error', (err) => {
+        console.error('File stream error:', err);
+        try { res.status(500).end('File stream error'); } catch {}
+      });
+      
+      return;
+    }
+    
+    // For multiple tracks, create ZIP archive
     const folderName = path.basename(outputFolder);
     const zipFileName = `${folderName}.zip`;
     
