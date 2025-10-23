@@ -43,15 +43,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [folderName, setFolderName] = useState(playlistName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`);
   const [outputFolder, setOutputFolder] = useState("");
   const [downloadId, setDownloadId] = useState("");
-  const downloadIdRef = useRef<string>(""); // Ref to track current downloadId for socket listeners
   const [attemptCount, setAttemptCount] = useState(0);
-  
-  // Helper to update both state and ref
-  const updateDownloadId = (newId: string | null) => {
-    const id = newId || "";
-    setDownloadId(id);
-    downloadIdRef.current = id;
-  };
   const [showPlayDialog, setShowPlayDialog] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
@@ -2259,13 +2251,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         playlistImages
       });
 
-      updateDownloadId(response.downloadId);
+      setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
       toast.info(`📁 Saving to: ${response.outputFolder}`);
     } catch (error: any) {
       setDownloading(false);
-      updateDownloadId(null);
       // Reset track status on error
       setTracks(prev => prev.map(t => ({
         ...t,
@@ -2366,18 +2357,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
       console.log('Download track update:', data);
-      // Use ref to get current downloadId value (not stale closure value)
-      const currentDownloadId = downloadIdRef.current;
-      // Accept event if downloadId matches OR if we don't have a downloadId yet (API call still in progress)
-      // This handles instant downloads where server events arrive before API response
-      const shouldAccept = !currentDownloadId || data.downloadId === currentDownloadId;
-      console.log('download:track - shouldAccept:', shouldAccept, 'current downloadId:', currentDownloadId, 'event downloadId:', data.downloadId);
-      
-      if (shouldAccept) {
-        setTracks(prev => prev.map((track) => {
-          // Match by trackId
-          if (track.id === data.trackId) {
-            console.log(`Updating track ${track.name} to status: ${data.status}`);
+      // Always accept track updates if we're downloading OR if track is pending
+      setTracks(prev => {
+        const updatedTracks = prev.map((track) => {
+          // Match by trackId and only update if track is pending/downloading
+          if (track.id === data.trackId && (track.downloadStatus === 'pending' || track.downloadStatus === 'downloading' || downloading)) {
+            console.log(`Updating track ${track.name} from ${track.downloadStatus} to ${data.status}`);
             return {
               ...track,
               downloadStatus: data.status,
@@ -2385,8 +2370,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             };
           }
           return track;
-        }));
-      }
+        });
+        return updatedTracks;
+      });
     });
 
     socket.on('download:progress', (data: any) => {
@@ -2461,14 +2447,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     socket.on('download:complete', (data: any) => {
       console.log('Download complete:', data);
-      // Use ref to get current downloadId value (not stale closure value)
-      const currentDownloadId = downloadIdRef.current;
-      // Accept event if downloadId matches OR if we don't have a downloadId yet (API call still in progress)
-      const shouldAccept = !currentDownloadId || data.downloadId === currentDownloadId;
-      console.log('download:complete - shouldAccept:', shouldAccept, 'current downloadId:', currentDownloadId, 'event downloadId:', data.downloadId);
-      
-      if (shouldAccept) {
+      // Accept completion events if we're currently downloading
+      if (downloading || data.downloadId === downloadId) {
         setDownloading(false);
+        setDownloadId(data.downloadId); // Update to the correct downloadId
         setOutputFolder(data.outputFolder);
         resetTabTitle();
         
@@ -2666,7 +2648,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         playlistImages
       });
 
-      updateDownloadId(response.downloadId);
+      setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
       // Dismiss init toast and show success
@@ -2694,7 +2676,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       // Reset all download states
       setDownloading(false);
-      updateDownloadId(null);
+      setDownloadId(null);
       setAttemptCount(0);
       
       // Reset all track statuses
@@ -2711,7 +2693,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       // Force reset even if cancel fails
       setDownloading(false);
-      updateDownloadId(null);
+      setDownloadId(null);
     }
   };
 
