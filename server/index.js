@@ -4986,7 +4986,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   }
   
   console.log(`\n=== YT-DLP FALLBACK COMPLETE ===`);
-  console.log(`✅ Successfully downloaded: ${successCount}/${failedTracks.length}`);
+  // Note: successCount may not be accurate due to file checking logic
+  // The actual success count is determined by checking files in the output folder
   
   return successCount;
 }
@@ -6251,9 +6252,14 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     );
     
     // For single track downloads, send the file directly (no ZIP)
-    if (tracks.length === 1 && musicFiles.length === 1) {
-      const singleFile = musicFiles[0];
-      const filePath = path.join(outputFolder, singleFile);
+    // Check for the specific expected file, not just count
+    if (tracks.length === 1) {
+      const track = tracks[0];
+      const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+      const singleFile = musicFiles.find(f => f === expectedFileName);
+      
+      if (singleFile) {
+        const filePath = path.join(outputFolder, singleFile);
       
       console.log(`📥 Sending single file directly: ${singleFile}`);
       
@@ -6283,7 +6289,8 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
         try { res.status(500).end('File stream error'); } catch {}
       });
       
-      return;
+        return;
+      }
     }
     
     // For multiple tracks, create ZIP archive
