@@ -2214,15 +2214,27 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
     console.log(`🎯 Starting single track download for: ${track.name}`);
     
-    // IMMEDIATELY set track to pending status for instant UI feedback
+    // IMMEDIATELY set ONLY this track to pending, deselect and preserve status of ALL others
     setTracks(prev => {
-      const updated = prev.map(t => ({
-        ...t,
-        selected: t.id === track.id, // Only select this track
-        downloadStatus: t.id === track.id ? 'pending' as const : t.downloadStatus,
-        downloadProgress: t.id === track.id ? 0 : t.downloadProgress
-      }));
-      console.log(`📝 Set track ${track.name} to PENDING status`);
+      const updated = prev.map(t => {
+        if (t.id === track.id) {
+          // This is the track being downloaded - set to pending
+          return {
+            ...t,
+            selected: true,
+            downloadStatus: 'pending' as const,
+            downloadProgress: 0
+          };
+        } else {
+          // All other tracks - deselect but keep their current status
+          return {
+            ...t,
+            selected: false
+            // Don't modify downloadStatus or downloadProgress for other tracks!
+          };
+        }
+      });
+      console.log(`📝 Set track ${track.name} to PENDING status, deselected others`);
       return updated;
     });
 
@@ -2247,7 +2259,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         selected: true // Only this track is selected
       };
       
-      console.log('Downloading single track:', trackToDownload);
+      console.log('📤 Downloading single track:', trackToDownload);
+      console.log('📤 Sending array with 1 track to server');
 
       const response = await startDownload({
         playlistUrl,
@@ -2256,6 +2269,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         folderName: folderName || playlistName,
         playlistImages
       });
+      
+      console.log('✅ Server response:', response);
 
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
