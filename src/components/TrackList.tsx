@@ -2214,7 +2214,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
     console.log(`🎯 Starting single track download for: ${track.name}`);
     
-    // IMMEDIATELY set ONLY this track to pending, deselect and preserve status of ALL others
+    // IMMEDIATELY set ONLY this track to pending, preserve ALL other tracks unchanged
     setTracks(prev => {
       const updated = prev.map(t => {
         if (t.id === track.id) {
@@ -2226,19 +2226,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             downloadProgress: 0
           };
         } else {
-          // All other tracks - deselect but keep their current status
-          return {
-            ...t,
-            selected: false
-            // Don't modify downloadStatus or downloadProgress for other tracks!
-          };
+          // All other tracks - keep them EXACTLY as they are (don't deselect!)
+          // This allows multiple concurrent downloads
+          return t;
         }
       });
-      console.log(`📝 Set track ${track.name} to PENDING status, deselected others`);
+      console.log(`📝 Set track ${track.name} to PENDING status (concurrent downloads enabled)`);
       return updated;
     });
 
-    setDownloading(true);
+    // Don't set global downloading state - each track manages its own status
+    // Global downloading is only for multi-track downloads from main button
     setAttemptCount(0);
     
     const action = forceRedownload ? 'Re-downloading' : 'Downloading';
@@ -2277,8 +2275,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       toast.info(`📁 Saving to: ${response.outputFolder}`);
     } catch (error: any) {
-      setDownloading(false);
-      // Reset track status on error
+      // Don't touch global downloading state - it's for multi-track downloads only
+      // Just mark THIS track as failed
       setTracks(prev => prev.map(t => ({
         ...t,
         downloadStatus: t.id === track.id ? 'failed' as const : t.downloadStatus
@@ -3291,7 +3289,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        // Download single track logic
+                        // Download single track logic - supports concurrent downloads!
                         if (track.downloadStatus === 'completed') {
                           // Show re-download option
                           toast.info('This track has already been downloaded', {
@@ -3299,25 +3297,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                             action: {
                               label: '🔄 Re-download',
                               onClick: () => {
-                                if (!downloading) {
-                                  downloadSingleTrack(track, true);
-                                } else {
-                                  toast.warning('Please wait for current download to complete');
-                                }
+                                downloadSingleTrack(track, true);
                               }
                             },
                             duration: 5000
                           });
                           return;
                         }
-                        if (downloading) {
-                          toast.warning('Please wait for current download to complete');
+                        
+                        // Check if THIS specific track is already downloading
+                        if (track.downloadStatus === 'downloading' || track.downloadStatus === 'pending') {
+                          toast.warning(`"${track.name}" is already downloading`);
                           return;
                         }
-                        // Download this track directly without folder dialog
+                        
+                        // Download this track directly - allows multiple concurrent downloads
                         downloadSingleTrack(track);
                       }}
-                      disabled={downloading || track.downloadStatus === 'downloading'}
+                      disabled={track.downloadStatus === 'downloading' || track.downloadStatus === 'pending'}
                       className="h-9 w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       title={track.downloadStatus === 'completed' ? 'Click to re-download this track' : 'Download this track instantly'}
                     >
