@@ -5115,8 +5115,22 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
         );
         
-        const currentSuccess = musicFiles.length;
+        // For single track downloads, only count the specific expected file
+        let currentSuccess;
         const totalTracks = tracks.length;
+        
+        if (totalTracks === 1) {
+          // Single track: check if the specific expected file exists
+          const track = tracks[0];
+          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const fileExists = musicFiles.some(f => f === expectedFileName);
+          currentSuccess = fileExists ? 1 : 0;
+          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
+        } else {
+          // Multiple tracks: count all music files in the subfolder
+          currentSuccess = musicFiles.length;
+        }
+        
         const successRate = currentSuccess / totalTracks;
         
         console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
@@ -5270,8 +5284,22 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
         );
         
-        const currentSuccess = musicFiles.length;
+        // For single track downloads, only count the specific expected file
+        let currentSuccess;
         const totalTracks = tracks.length;
+        
+        if (totalTracks === 1) {
+          // Single track: check if the specific expected file exists
+          const track = tracks[0];
+          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const fileExists = musicFiles.some(f => f === expectedFileName);
+          currentSuccess = fileExists ? 1 : 0;
+          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
+        } else {
+          // Multiple tracks: count all music files in the subfolder
+          currentSuccess = musicFiles.length;
+        }
+        
         const successRate = currentSuccess / totalTracks;
         
         console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
