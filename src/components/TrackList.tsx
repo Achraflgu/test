@@ -174,29 +174,53 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // ============ SMART DOWNLOAD FUNCTION ============
   // Works with IDM (Internet Download Manager) AND regular browsers
   const triggerSmartDownload = (url: string, filename?: string) => {
-    console.log('📥 Triggering smart download:', url);
+    console.log('📥 Triggering IDM-compatible download:', url, filename);
     
     try {
-      // Create a temporary download link
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename || ''; // download attribute signals this is a download (IDM intercepts this!)
-      link.target = '_blank'; // Fallback for browsers that don't support download attribute
-      link.rel = 'noopener noreferrer';
-      link.style.display = 'none';
+      // METHOD 1: iframe approach (BEST for IDM detection!)
+      // IDM monitors iframe downloads and can intercept them
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.style.position = 'fixed';
+      iframe.style.width = '1px';
+      iframe.style.height = '1px';
+      iframe.style.left = '-100px';
+      iframe.style.top = '-100px';
       
-      document.body.appendChild(link);
-      link.click();
+      // Add filename to URL as query parameter for better IDM detection
+      const downloadUrl = filename ? `${url}?filename=${encodeURIComponent(filename)}` : url;
+      iframe.src = downloadUrl;
       
-      // Clean up after a short delay
+      document.body.appendChild(iframe);
+      
+      // Clean up iframe after download starts
       setTimeout(() => {
-        document.body.removeChild(link);
-      }, 100);
+        try {
+          document.body.removeChild(iframe);
+        } catch (e) {
+          console.log('Iframe already removed');
+        }
+      }, 5000);
       
-      console.log('✅ Download triggered successfully (IDM should intercept if installed)');
+      console.log('✅ Download triggered via iframe (IDM-compatible method)');
+      
+      // METHOD 2: Fallback with visible link (if iframe fails)
+      // Also create a temporary link as backup
+      setTimeout(() => {
+        const link = document.createElement('a');
+        link.href = url;
+        if (filename) link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try { document.body.removeChild(link); } catch (e) {}
+        }, 100);
+      }, 500);
+      
     } catch (error) {
-      console.error('❌ Download link method failed, using fallback:', error);
-      // Fallback: Open in new window (works everywhere but IDM won't intercept)
+      console.error('❌ Download methods failed, using window.open fallback:', error);
+      // Final fallback: Open in new window
       window.open(url, '_blank');
     }
   };
