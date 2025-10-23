@@ -2376,13 +2376,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
       console.log('📨 Received download:track event:', {
+        downloadId: data.downloadId,
         trackId: data.trackId,
         status: data.status,
         progress: data.progress,
         message: data.message
       });
       
-      // Always accept track updates - match by trackId only
+      // Always accept track updates - match by trackId only (supports concurrent downloads)
       setTracks(prev => {
         const matchingTrack = prev.find(t => t.id === data.trackId);
         if (!matchingTrack) {
@@ -2390,10 +2391,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           return prev;
         }
         
-        console.log(`✅ Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status}`);
+        console.log(`✅ Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
         
         const updatedTracks = prev.map((track) => {
           if (track.id === data.trackId) {
+            console.log(`🔄 Track update applied: ${track.name} status changed to ${data.status}`);
             return {
               ...track,
               downloadStatus: data.status,
@@ -2408,56 +2410,56 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     socket.on('download:progress', (data: any) => {
       console.log('Download progress:', data);
-      if (data.downloadId === downloadId) {
-        // Dismiss persistent attempt toast when we get actual progress
-        toast.dismiss('download-attempt');
+      // Accept progress from all downloads (supports concurrent downloads)
+      // Dismiss persistent attempt toast when we get actual progress
+      toast.dismiss('download-attempt');
+      
+      // Show user-friendly message if provided
+      if (data.message) {
+        console.log(data.message);
         
-        // Show user-friendly message if provided
-        if (data.message) {
-          console.log(data.message);
+        // Show toast for important updates
+        if (data.message.includes('✅') && data.message.includes('Downloaded')) {
+          toast.success(data.message.substring(0, 100), { duration: 2000 });
+        }
+      }
+      
+      setTracks(prev => {
+        const updatedTracks = prev.map((track) => {
+          // Match by track name - more reliable than index
+          const trackFullName = `${track.artist} - ${track.name}`;
+          const isMatch = data.trackName && (
+            data.trackName.includes(track.name) || 
+            data.trackName.includes(track.artist) ||
+            trackFullName.includes(data.trackName) ||
+            data.trackName.toLowerCase().includes(track.name.toLowerCase())
+          );
           
-          // Show toast for important updates
-          if (data.message.includes('✅') && data.message.includes('Downloaded')) {
-            toast.success(data.message.substring(0, 100), { duration: 2000 });
+          if (isMatch && track.selected) {
+            return {
+              ...track,
+              downloadStatus: data.status,
+              downloadProgress: data.progress || 0
+            };
           }
+          return track;
+        });
+        
+        // Update tab title with progress
+        const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
+        const totalSelected = updatedTracks.filter(t => t.selected).length;
+        if (totalSelected > 0) {
+          showDownloadProgress(completedInProgress, totalSelected);
         }
         
-        setTracks(prev => {
-          const updatedTracks = prev.map((track) => {
-            // Match by track name - more reliable than index
-            const trackFullName = `${track.artist} - ${track.name}`;
-            const isMatch = data.trackName && (
-              data.trackName.includes(track.name) || 
-              data.trackName.includes(track.artist) ||
-              trackFullName.includes(data.trackName) ||
-              data.trackName.toLowerCase().includes(track.name.toLowerCase())
-            );
-            
-            if (isMatch && track.selected) {
-              return {
-                ...track,
-                downloadStatus: data.status,
-                downloadProgress: data.progress || 0
-              };
-            }
-            return track;
-          });
-          
-          // Update tab title with progress
-          const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
-          const totalSelected = updatedTracks.filter(t => t.selected).length;
-          if (totalSelected > 0) {
-            showDownloadProgress(completedInProgress, totalSelected);
-          }
-          
-          return updatedTracks;
-        });
-      }
+        return updatedTracks;
+      });
     });
 
     socket.on('download:error', (data: any) => {
       console.error('Download error:', data);
-      if (data.downloadId === downloadId && data.trackName) {
+      // Accept errors from all downloads (supports concurrent downloads)
+      if (data.trackName) {
         // Only show toast for persistent errors, not for each retry
         if (data.error && data.error.includes('giving up')) {
           toast.error(`❌ Failed: ${data.trackName}`, {
@@ -2471,32 +2473,33 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     socket.on('download:retry', (data: any) => {
       console.log('Download retry:', data);
-      if (data.downloadId === downloadId) {
+      // Accept retries from all downloads (supports concurrent downloads)
+      if (data.message) {
         toast.warning(data.message);
       }
     });
 
     socket.on('download:complete', (data: any) => {
       console.log('Download complete:', data);
-      // Always accept completion events - server is source of truth
-        setDownloading(false);
+      // Always accept completion events - server is source of truth (supports concurrent downloads)
+      setDownloading(false);
       setDownloadId(data.downloadId);
-        setOutputFolder(data.outputFolder);
-        resetTabTitle();
-        
-        // Dismiss persistent attempt toast
-        toast.dismiss('download-attempt');
-        
-        // Collect failed tracks
-        const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
-        if (currentFailedTracks.length > 0 || (data.failedTracks && data.failedTracks.length > 0)) {
-          setFailedTracks(currentFailedTracks);
-        }
-        
-        // Calculate success rate
-        const successRate = data.totalSuccess > 0 ? (data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100 : 0;
-        
-        if (data.totalFailed > 0) {
+      setOutputFolder(data.outputFolder);
+      resetTabTitle();
+      
+      // Dismiss persistent attempt toast
+      toast.dismiss('download-attempt');
+      
+      // Collect failed tracks
+      const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
+      if (currentFailedTracks.length > 0 || (data.failedTracks && data.failedTracks.length > 0)) {
+        setFailedTracks(currentFailedTracks);
+      }
+      
+      // Calculate success rate
+      const successRate = data.totalSuccess > 0 ? (data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100 : 0;
+      
+      if (data.totalFailed > 0) {
           // Partial success - show warning with details
           const failedList = data.failedTracks && data.failedTracks.length > 0 
             ? `\n\nFailed tracks:\n${data.failedTracks.slice(0, 3).join('\n')}${data.failedTracks.length > 3 ? `\n...and ${data.failedTracks.length - 3} more` : ''}`
@@ -2629,7 +2632,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       socket.off('download:cancelled');
       socket.off('download:skipped');
     };
-  }, [downloadId]);
+  }, []); // Empty dependencies - track updates work for ALL downloads, never recreate listeners
 
   const openFolderDialog = () => {
     const selectedTracks = tracks.filter(t => t.selected);
