@@ -747,8 +747,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       // Clean tracks: remove download status/progress before saving
       const cleanTracks = tracks.map(track => ({
         ...track,
-        downloadStatus: 'pending' as const, // Reset to pending
-        downloadProgress: 0,                 // Reset progress
+        downloadStatus: undefined, // Clear download status
+        downloadProgress: undefined // Clear download progress
       }));
       
       const trackList = {
@@ -2710,11 +2710,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(null);
       setAttemptCount(0);
       
-      // Reset all track statuses
+      // Clear all track statuses (remove download status)
       setTracks(prev => prev.map(track => ({
         ...track,
-        downloadStatus: 'pending',
-        downloadProgress: 0
+        downloadStatus: undefined,
+        downloadProgress: undefined
       })));
       
       toast.success('✅ Download cancelled successfully');
