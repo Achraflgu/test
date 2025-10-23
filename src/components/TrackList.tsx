@@ -2354,6 +2354,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       }
     });
 
+    // Handle track-level progress updates (for instant downloads and individual track updates)
+    socket.on('download:track', (data: any) => {
+      console.log('Download track update:', data);
+      if (data.downloadId === downloadId) {
+        setTracks(prev => prev.map((track) => {
+          // Match by trackId
+          if (track.id === data.trackId) {
+            return {
+              ...track,
+              downloadStatus: data.status,
+              downloadProgress: data.progress || 0
+            };
+          }
+          return track;
+        }));
+      }
+    });
+
     socket.on('download:progress', (data: any) => {
       console.log('Download progress:', data);
       if (data.downloadId === downloadId) {
@@ -2568,6 +2586,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     return () => {
       socket.off('download:status');
       socket.off('download:attempt');
+      socket.off('download:track');
       socket.off('download:progress');
       socket.off('download:error');
       socket.off('download:retry');
