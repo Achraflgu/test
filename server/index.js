@@ -3263,13 +3263,23 @@ app.post('/api/download/start', async (req, res) => {
         startTime: Date.now()
       });
       
-      // Emit instant complete
+      // Emit instant complete with download URL
       io.emit('download:complete', {
         downloadId,
         status: 'completed',
-        message: '✅ File already downloaded - ready instantly!',
+        message: '✅ File already exists - downloading instantly!',
         totalSuccess: 1,
-        totalFailed: 0
+        totalFailed: 0,
+        outputFolder,
+        downloadUrl: `/api/download/archive/${downloadId}`,
+        failedTracks: []
+      });
+      
+      // Show success notification
+      io.emit('download:status', {
+        downloadId,
+        status: 'completed',
+        message: '⚡ Instant download - file was already downloaded!'
       });
       
       return;
