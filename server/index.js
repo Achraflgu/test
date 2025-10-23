@@ -3179,6 +3179,13 @@ app.post('/api/download/start', async (req, res) => {
     outputFolder = path.join(os.homedir(), 'Downloads');
     console.log('📁 Single track download - saving directly to Downloads folder\n');
     
+    // Ensure Downloads folder exists
+    try {
+      await fs.mkdir(outputFolder, { recursive: true });
+    } catch (error) {
+      console.log('⚠️ Downloads folder already exists or error creating it:', error.message);
+    }
+    
     // No folder cover for single tracks
   } else {
     // For multiple tracks, create a subfolder with incremental naming
