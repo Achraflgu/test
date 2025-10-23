@@ -2211,32 +2211,51 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
   };
 
-  const downloadSingleTrack = async (track: Track) => {
-    // Select only this track
-    setTracks(prev => prev.map(t => ({
-      ...t,
-      selected: t.id === track.id,
-      downloadStatus: t.id === track.id ? 'pending' : t.downloadStatus,
-      downloadProgress: t.id === track.id ? 0 : t.downloadProgress
-    })));
+  const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
+    // Reset download status if forcing re-download
+    if (forceRedownload) {
+      setTracks(prev => prev.map(t => ({
+        ...t,
+        selected: false,
+        downloadStatus: t.id === track.id ? 'pending' : t.downloadStatus,
+        downloadProgress: t.id === track.id ? 0 : t.downloadProgress
+      })));
+    } else {
+      // Select only this track and deselect all others
+      setTracks(prev => prev.map(t => ({
+        ...t,
+        selected: false, // Deselect all first
+        downloadStatus: t.id === track.id ? 'pending' : t.downloadStatus,
+        downloadProgress: t.id === track.id ? 0 : t.downloadProgress
+      })));
+    }
 
     setDownloading(true);
     setAttemptCount(0);
     
-    toast.success(`🚀 Downloading "${track.name}"...`);
+    const action = forceRedownload ? 'Re-downloading' : 'Downloading';
+    toast.success(`🚀 ${action} "${track.name}"...`);
 
     try {
-      // Ensure the track has the selected flag
-      const trackToDownload = {
-        ...track,
-        selected: true
+      // Create a fresh track object with ONLY this track
+      const trackToDownload: Track = {
+        id: track.id,
+        name: track.name,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        imageUrl: track.imageUrl,
+        url: track.url,
+        downloadStatus: 'pending' as const,
+        downloadProgress: 0,
+        selected: true // Only this track is selected
       };
       
       console.log('Downloading single track:', trackToDownload);
 
       const response = await startDownload({
         playlistUrl,
-        tracks: [trackToDownload], // Only download this one track with selected flag
+        tracks: [trackToDownload], // Send ONLY this one track
         settings,
         folderName: folderName || playlistName,
         playlistImages
@@ -3224,7 +3243,21 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       onClick={() => {
                         // Download single track logic
                         if (track.downloadStatus === 'completed') {
-                          toast.info('This track has already been downloaded');
+                          // Show re-download option
+                          toast.info('This track has already been downloaded', {
+                            description: 'Click the button below to download it again',
+                            action: {
+                              label: '🔄 Re-download',
+                              onClick: () => {
+                                if (!downloading) {
+                                  downloadSingleTrack(track, true);
+                                } else {
+                                  toast.warning('Please wait for current download to complete');
+                                }
+                              }
+                            },
+                            duration: 5000
+                          });
                           return;
                         }
                         if (downloading) {
@@ -3236,7 +3269,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       }}
                       disabled={downloading || track.downloadStatus === 'downloading'}
                       className="h-9 w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                      title={track.downloadStatus === 'completed' ? 'Already downloaded' : 'Download this track instantly'}
+                      title={track.downloadStatus === 'completed' ? 'Click to re-download this track' : 'Download this track instantly'}
                     >
                       <Download className="w-4 h-4" />
                     </Button>
