@@ -2212,23 +2212,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
-    // Reset download status if forcing re-download
-    if (forceRedownload) {
-      setTracks(prev => prev.map(t => ({
-        ...t,
-        selected: false,
-        downloadStatus: t.id === track.id ? 'pending' : t.downloadStatus,
-        downloadProgress: t.id === track.id ? 0 : t.downloadProgress
-      })));
-    } else {
-      // Select only this track and deselect all others
-      setTracks(prev => prev.map(t => ({
-        ...t,
-        selected: false, // Deselect all first
-        downloadStatus: t.id === track.id ? 'pending' : t.downloadStatus,
-        downloadProgress: t.id === track.id ? 0 : t.downloadProgress
-      })));
-    }
+    // Set track to downloading status immediately
+    setTracks(prev => prev.map(t => ({
+      ...t,
+      selected: false, // Deselect all first
+      downloadStatus: t.id === track.id ? 'downloading' as const : t.downloadStatus,
+      downloadProgress: t.id === track.id ? 0 : t.downloadProgress
+    })));
 
     setDownloading(true);
     setAttemptCount(0);
@@ -2246,7 +2236,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         duration: track.duration,
         imageUrl: track.imageUrl,
         url: track.url,
-        downloadStatus: 'pending' as const,
+        downloadStatus: 'downloading' as const,
         downloadProgress: 0,
         selected: true // Only this track is selected
       };
@@ -2267,6 +2257,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       toast.info(`📁 Saving to: ${response.outputFolder}`);
     } catch (error: any) {
       setDownloading(false);
+      // Reset track status on error
+      setTracks(prev => prev.map(t => ({
+        ...t,
+        downloadStatus: t.id === track.id ? 'failed' as const : t.downloadStatus
+      })));
       toast.error(`❌ Failed to download: ${error.message}`);
     }
   };

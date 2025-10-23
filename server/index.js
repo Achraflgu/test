@@ -3263,6 +3263,17 @@ app.post('/api/download/start', async (req, res) => {
         startTime: Date.now()
       });
       
+      console.log(`📤 Emitting instant download events for: ${expectedFileName}`);
+      
+      // Emit track-level progress (mark as completed)
+      io.emit('download:track', {
+        downloadId,
+        trackId: track.id,
+        status: 'completed',
+        progress: 100,
+        message: `✅ ${track.name}`
+      });
+      
       // Emit instant complete with download URL
       io.emit('download:complete', {
         downloadId,
@@ -3281,6 +3292,8 @@ app.post('/api/download/start', async (req, res) => {
         status: 'completed',
         message: '⚡ Instant download - file was already downloaded!'
       });
+      
+      console.log(`✅ Events emitted successfully for downloadId: ${downloadId}`);
       
       return;
     } catch (error) {
