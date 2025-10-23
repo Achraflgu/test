@@ -2212,11 +2212,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
 
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
-    // Set track to downloading status immediately
+    // Set track to pending status (like multiple tracks)
     setTracks(prev => prev.map(t => ({
       ...t,
       selected: false, // Deselect all first
-      downloadStatus: t.id === track.id ? 'downloading' as const : t.downloadStatus,
+      downloadStatus: t.id === track.id ? 'pending' as const : t.downloadStatus,
       downloadProgress: t.id === track.id ? 0 : t.downloadProgress
     })));
 
@@ -2236,7 +2236,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         duration: track.duration,
         imageUrl: track.imageUrl,
         url: track.url,
-        downloadStatus: 'downloading' as const,
+        downloadStatus: 'pending' as const,
         downloadProgress: 0,
         selected: true // Only this track is selected
       };
