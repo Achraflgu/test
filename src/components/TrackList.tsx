@@ -62,16 +62,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   
   // Audio player state
   const [currentPlayingTrack, setCurrentPlayingTrack] = useState<Track | null>(null);
-  // Auto-scroll to the current playing track and after reorder/additions
+  const [isPlaying, setIsPlaying] = useState(false);
+  // Auto-scroll to the current playing track when actually playing
   useEffect(() => {
+    if (!isPlaying) return; // Do not scroll on status changes while paused (e.g., downloads)
     if (currentPlayingTrack?.id) {
       const el = rowRefs.current[currentPlayingTrack.id];
       if (el && typeof el.scrollIntoView === 'function') {
         try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
       }
     }
-  }, [currentPlayingTrack?.id, tracks]);
-  const [isPlaying, setIsPlaying] = useState(false);
+  }, [currentPlayingTrack?.id, isPlaying]);
   const [currentTime, setCurrentTime] = useState(0);
   const [youtubeIdCache, setYoutubeIdCache] = useState<Map<string, string>>(new Map()); // Cache Spotify ID -> YouTube ID
   const blockedYoutubeIdCacheRef = useRef<Map<string, Set<string>>>(new Map()); // track.id -> Set of blocked YT IDs
@@ -1977,6 +1978,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       }
       
       toast.success('Track reordered');
+
+      // After reorder, keep the current playing track centered for context
+      if (currentPlayingTrack?.id) {
+        const el = rowRefs.current[currentPlayingTrack.id];
+        if (el && typeof el.scrollIntoView === 'function') {
+          try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+        }
+      }
     }
     
     setDraggedIndex(null);
