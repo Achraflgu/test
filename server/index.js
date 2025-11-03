@@ -5138,9 +5138,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`  yt-dlp${useSearchMethod ? ' search' : ''}: ${txt.trim()}`);
           }
           // Detect if search returned 0 items (search failed to find video)
-          if (useSearchMethod && txt.includes('Downloading 0 items')) {
+          if (useSearchMethod && (txt.includes('Downloading 0 items') || txt.includes('Playlist') && txt.includes('Downloading 0 items'))) {
             searchReturnedZeroItems = true;
-            console.log(`  ⚠️ Search returned 0 items - will fallback to direct URL`);
+            console.log(`  ⚠️ Search returned 0 items detected - will fallback to direct URL`);
           }
           // Detect ffmpeg issues
           if (txt.includes('ffmpeg') || txt.includes('avconv') || txt.includes('WARNING')) {
@@ -5190,6 +5190,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               
               resolve('success');
             } else {
+              // 🚀 OPTIMIZATION: If search returned 0 items and no file, try direct URL
+              if (useSearchMethod && searchReturnedZeroItems && youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
+                console.log(`  ⚠️ Search returned 0 items - falling back to direct URL...`);
+                youtubeLinks[`retry_${track.id}`] = true;
+                resolve('search_zero_items'); // Signal to try direct URL
+                return;
+              }
+              
               console.log(`⚠️  yt-dlp COMPLETED but MP3 file not found: ${mp3Path}`);
               console.log(`  Checking for other formats...`);
               
