@@ -243,88 +243,62 @@ All colors MUST be HSL.
     display: none !important;
   }
 
-  /* 🎵 Creative Global Layout Adjustments for Player Positioning */
-  /* Apply padding to all main content when player is on left/right */
-  body[data-player-position="left"][data-player-visible="true"] .container,
-  body[data-player-position="left"][data-player-visible="true"] [data-track-list] {
-    @media (min-width: 768px) {
-      margin-left: 356px !important; /* 320px player + 16px left-4 + 20px gap */
-      transition: margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Creative content padding for left/right player positions */
+  /* Player is positioned at left-4 (1rem) with width w-72 (288px) sm:w-80 (320px) */
+  /* Content needs: player offset (1rem) + player width (20rem) + gap (1.5rem) = 22.5rem total */
+  
+  /* When player is on left side */
+  body[data-player-position="left"][data-player-visible="true"] .container {
+    transition: padding-left 500ms cubic-bezier(0.4, 0, 0.2, 1), margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @media (min-width: 768px) {
+    body[data-player-position="left"][data-player-visible="true"] .container {
+      padding-left: calc(1rem + 20rem + 1.5rem) !important; /* Player offset + width + gap = 22.5rem = 360px */
+      margin-left: 0;
     }
   }
 
-  body[data-player-position="right"][data-player-visible="true"] .container,
-  body[data-player-position="right"][data-player-visible="true"] [data-track-list] {
-    @media (min-width: 768px) {
-      margin-right: 356px !important; /* 320px player + 16px right-4 + 20px gap */
-      transition: margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  @media (min-width: 640px) and (max-width: 767px) {
+    body[data-player-position="left"][data-player-visible="true"] .container {
+      padding-left: calc(1rem + 18rem + 1.5rem) !important; /* Player offset + width + gap = 20.5rem = 328px */
+      margin-left: 0;
     }
   }
 
-  /* Add creative visual border accent on the side where player is positioned */
-  body[data-player-position="left"][data-player-visible="true"]::before {
-    @media (min-width: 768px) {
-      content: '';
-      position: fixed;
-      left: 340px;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: linear-gradient(
-        to bottom,
-        transparent,
-        hsl(var(--primary) / 0.3),
-        hsl(var(--primary) / 0.5),
-        hsl(var(--primary) / 0.3),
-        transparent
-      );
-      z-index: 99;
-      pointer-events: none;
-      animation: glow-pulse 3s ease-in-out infinite;
-      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+  /* When player is on right side */
+  body[data-player-position="right"][data-player-visible="true"] .container {
+    transition: padding-right 500ms cubic-bezier(0.4, 0, 0.2, 1), margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @media (min-width: 768px) {
+    body[data-player-position="right"][data-player-visible="true"] .container {
+      padding-right: calc(1rem + 20rem + 1.5rem) !important; /* Player offset + width + gap = 22.5rem = 360px */
+      margin-right: 0;
     }
   }
 
-  body[data-player-position="right"][data-player-visible="true"]::after {
-    @media (min-width: 768px) {
-      content: '';
-      position: fixed;
-      right: 340px;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: linear-gradient(
-        to bottom,
-        transparent,
-        hsl(var(--primary) / 0.3),
-        hsl(var(--primary) / 0.5),
-        hsl(var(--primary) / 0.3),
-        transparent
-      );
-      z-index: 99;
-      pointer-events: none;
-      animation: glow-pulse 3s ease-in-out infinite;
-      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
-    }
-  }
-
-  @keyframes glow-pulse {
-    0%, 100% {
-      opacity: 0.5;
-      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
-    }
-    50% {
-      opacity: 1;
-      box-shadow: 0 0 40px hsl(var(--primary) / 0.4);
+  @media (min-width: 640px) and (max-width: 767px) {
+    body[data-player-position="right"][data-player-visible="true"] .container {
+      padding-right: calc(1rem + 18rem + 1.5rem) !important; /* Player offset + width + gap = 20.5rem = 328px */
+      margin-right: 0;
     }
   }
 
   /* Smooth transitions for all content when player position changes */
-  body[data-player-position] .container,
-  body[data-player-position] [data-track-list],
-  body[data-player-position] main,
-  body[data-player-position] > div {
-    transition: margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1),
-                margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  body[data-player-position="left"] main,
+  body[data-player-position="right"] main,
+  body[data-player-position="left"] [data-track-list],
+  body[data-player-position="right"] [data-track-list] {
+    transition: all 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Ensure no content overlap on mobile - vertical positions hidden anyway */
+  @media (max-width: 767px) {
+    body[data-player-position="left"][data-player-visible="true"] .container,
+    body[data-player-position="right"][data-player-visible="true"] .container {
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+    }
   }
 }

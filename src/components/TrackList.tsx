@@ -87,8 +87,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [isShuffled, setIsShuffled] = useState(false);
   // Load saved player position from localStorage
   const [playerPosition, setPlayerPosition] = useState<'bottom' | 'left' | 'right'>(() => {
-    const saved = localStorage.getItem('music-player-position');
-    return (saved === 'left' || saved === 'right' || saved === 'bottom') ? saved : 'bottom';
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('music-player-position');
+      return (saved === 'left' || saved === 'right' || saved === 'bottom') ? saved : 'bottom';
+    }
+    return 'bottom';
   });
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
@@ -1865,12 +1868,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     localStorage.setItem('music-player-position', nextPosition);
   };
   
-  // Save position whenever it changes (including from restored state)
-  // Also update body data attribute for global CSS styling
+  // Save position whenever it changes and update body data attribute for global styling
   useEffect(() => {
-    if (playerPosition) {
+    if (typeof window !== 'undefined') {
       localStorage.setItem('music-player-position', playerPosition);
-      // Update body data attribute for global layout adjustments
+      // Update body data attribute for global CSS styling and content padding
       document.body.setAttribute('data-player-position', playerPosition);
       // Update data attribute based on player visibility
       if (currentPlayingTrack) {
@@ -1881,8 +1883,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     // Cleanup on unmount
     return () => {
-      document.body.removeAttribute('data-player-position');
-      document.body.removeAttribute('data-player-visible');
+      if (typeof window !== 'undefined') {
+        document.body.removeAttribute('data-player-position');
+        document.body.removeAttribute('data-player-visible');
+      }
     };
   }, [playerPosition, currentPlayingTrack]);
 
@@ -2916,10 +2920,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   });
 
   return (
-    <div 
-      className="relative group transition-all duration-300" 
-      data-track-list
-    >
+    <div className="relative group" data-track-list>
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/5 to-accent/5 rounded-2xl blur-xl opacity-50" />
       <div className="relative bg-card rounded-2xl border border-border shadow-card overflow-hidden">
         {/* Preview Mode Banner */}
@@ -3209,7 +3210,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
         {/* Track List - Mobile Responsive */}
         {expanded && (
-          <div className="p-2 sm:p-4 space-y-2 sm:space-y-2.5 max-h-[500px] sm:max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent scroll-smooth">
+          <div className={`p-2 sm:p-4 space-y-2 sm:space-y-2.5 ${sortedTracks.length > 8 ? 'max-h-[500px] sm:max-h-[700px] overflow-y-auto' : 'overflow-visible min-h-0'} scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent scroll-smooth`}>
             {sortedTracks.length === 0 ? (
               /* Empty State */
               <div className="flex flex-col items-center justify-center py-16 px-4">
