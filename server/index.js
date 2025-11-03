@@ -4382,10 +4382,20 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       .trim();
   };
   
+  // For single track downloads, use exact filename matching (no fuzzy matching!)
+  // For multi-track downloads, use fuzzy matching to handle YouTube title variations
   const failedTracks = tracks.filter(track => {
-        const expectedFilename = track.artist === 'Unknown Artist' 
-          ? `${track.name}.mp3`
-          : `${track.artist} - ${track.name}.mp3`;
+    // Single track: ONLY exact match (same as post-download check)
+    if (tracks.length === 1) {
+      const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
+      const exists = musicFiles.some(f => f === expectedFileName);
+      return !exists;
+    }
+    
+    // Multi-track: use fuzzy matching (handles YouTube title variations)
+    const expectedFilename = track.artist === 'Unknown Artist' 
+      ? `${track.name}.mp3`
+      : `${track.artist} - ${track.name}.mp3`;
     const exists = musicFiles.some(file => {
       const fileNormalized = normalizeString(file.toLowerCase());
       const artistNormalized = normalizeString(track.artist.toLowerCase().trim());
