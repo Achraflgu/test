@@ -272,9 +272,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
 
   return (
     <>
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-2 sm:left-3 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search for songs, artists, albums..."
@@ -282,21 +282,26 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
             onChange={(e) => handleQueryChange(e.target.value)}
             onKeyPress={handleKeyPress}
             onPaste={handlePaste}
-            className={`pl-9 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+            className={`pl-8 sm:pl-9 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
             disabled={isSearching}
             autoFocus
             ref={inputRef}
           />
         </div>
-        <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim() || isInvalidUrl}>
+        <Button 
+          onClick={handleSearch} 
+          disabled={isSearching || !searchQuery.trim() || isInvalidUrl}
+          className="h-10 sm:h-11 w-full sm:w-auto px-4 sm:px-6"
+        >
           {isSearching ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Searching...
+              <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+              <span className="hidden sm:inline">Searching...</span>
+              <span className="sm:hidden">Searching</span>
             </>
           ) : (
             <>
-              <Search className="mr-2 h-4 w-4" />
+              <Search className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Search
             </>
           )}

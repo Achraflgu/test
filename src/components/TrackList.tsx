@@ -2917,30 +2917,30 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </div>
         )}
         
-        {/* Clean Compact Header */}
+        {/* Clean Compact Header - Mobile Responsive */}
         <div className="border-b border-border bg-card">
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 px-3 sm:px-4 py-3">
             {/* Left: Title & Stats */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <div className="flex items-center gap-2">
-                <Music2 className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold">Track List</h3>
+                <Music2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                <h3 className="text-base sm:text-lg font-semibold">Track List</h3>
               </div>
               
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
                 {downloading ? (
                   <>
                     <span className="font-medium flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                      Downloading {selectedCount} track{selectedCount !== 1 ? 's' : ''}
+                      <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin text-primary" />
+                      <span className="hidden sm:inline">Downloading </span>{selectedCount} track{selectedCount !== 1 ? 's' : ''}
                     </span>
                     {completedCount > 0 && (
-                      <span className="text-green-600 font-medium">• ✓ {completedCount} done</span>
+                      <span className="text-green-600 font-medium">✓ {completedCount}</span>
                     )}
                     {failedCount > 0 && (
-                      <span className="text-red-600 font-medium">• ✗ {failedCount} failed</span>
+                      <span className="text-red-600 font-medium">✗ {failedCount}</span>
                     )}
-                    <span className="text-primary font-medium">• Attempt {attemptCount}/8</span>
+                    <span className="text-primary font-medium hidden sm:inline">Attempt {attemptCount}/8</span>
                   </>
                 ) : (
                   <>
@@ -2948,85 +2948,89 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       {selectedCount > 0 ? `${selectedCount} selected` : `${filteredTracks.length} tracks`}
                     </span>
                     {completedCount > 0 && (
-                      <span className="text-green-600">• ✓ {completedCount} done</span>
+                      <span className="text-green-600">✓ {completedCount}</span>
                     )}
                     {failedCount > 0 && (
-                      <span className="text-red-600">• ✗ {failedCount} failed</span>
+                      <span className="text-red-600">✗ {failedCount}</span>
                     )}
                   </>
                 )}
-                <span className="text-blue-600">• {settings.format.toUpperCase()}</span>
+                <span className="text-blue-600 hidden sm:inline">{settings.format.toUpperCase()}</span>
               </div>
             </div>
 
-            {/* Right: Search & Actions */}
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Music className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            {/* Right: Search & Actions - Stack on Mobile */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              {/* Search - Full Width on Mobile */}
+              <div className="relative w-full sm:w-auto">
+                <Music className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9 h-8 w-64"
+                  className="pl-8 sm:pl-9 pr-8 sm:pr-9 h-8 w-full sm:w-48 md:w-64 text-sm"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
                 )}
               </div>
               
               {/* Results count */}
               {searchQuery && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs sm:text-sm text-muted-foreground">
                   {filteredTracks.length} result{filteredTracks.length !== 1 ? 's' : ''}
                 </span>
               )}
 
-              {/* Select All */}
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={toggleSelectAll}
-                  className="h-4 w-4"
-                />
-                <span className="text-sm text-muted-foreground">
-                  {allSelected ? 'All' : 'None'}
-                </span>
-              </div>
+              {/* Select All & Expand - Row on Mobile */}
+              <div className="flex items-center gap-3 sm:gap-2">
+                {/* Select All */}
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleSelectAll}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-xs sm:text-sm text-muted-foreground">
+                    {allSelected ? 'All' : 'None'}
+                  </span>
+                </div>
 
-              {/* Expand/Collapse */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setExpanded(!expanded)}
-                className="h-8 w-8 p-0 lg:hidden"
-              >
-                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </Button>
+                {/* Expand/Collapse */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExpanded(!expanded)}
+                  className="h-8 w-8 p-0 lg:hidden"
+                >
+                  {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons - Clean & Compact */}
+        {/* Action Buttons - Mobile Responsive */}
         {expanded && (
           <div className="border-b border-border bg-secondary/30">
-            <div className="flex flex-wrap items-center justify-center gap-2 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3">
               {/* Play All */}
               <Button
                 onClick={playAllTracks}
                 disabled={tracks.length === 0}
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 text-xs sm:text-sm"
               >
-                <Play className="w-4 h-4 mr-1" />
-                Play All
+                <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
+                <span className="hidden sm:inline">Play All</span>
+                <span className="sm:hidden">Play</span>
               </Button>
 
               {/* Save Playlist */}
@@ -3035,9 +3039,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 disabled={tracks.length === 0}
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 text-xs sm:text-sm"
               >
-                <Save className="w-4 h-4 mr-1" />
+                <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
                 Save
               </Button>
 
@@ -3048,9 +3052,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 disabled={downloading || tracks.length < 2}
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 text-xs sm:text-sm"
               >
-                <CheckCircle2 className="w-4 h-4 mr-1" />
+                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
                 Clean
               </Button>
               )}
@@ -3061,10 +3065,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 disabled={downloading || selectedCount === 0}
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 text-xs sm:text-sm"
               >
-                <GripVertical className="w-4 h-4 mr-1" />
-                Reorder
+                <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
+                <span className="hidden sm:inline">Reorder</span>
+                <span className="sm:hidden">Sort</span>
               </Button>
 
               {/* Remove Selected - Hidden in Preview Mode */}
@@ -3074,10 +3079,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 disabled={downloading || selectedCount === 0}
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 text-xs sm:text-sm"
               >
-                <X className="w-4 h-4 mr-1" />
-                Remove
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
+                <span className="hidden sm:inline">Remove</span>
+                <span className="sm:hidden">Del</span>
               </Button>
               )}
 
@@ -3086,17 +3092,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 onClick={openFolderDialog}
                 disabled={downloading || selectedCount === 0}
                 size="sm"
-                className="h-8 bg-primary hover:bg-primary/90"
+                className="h-8 bg-primary hover:bg-primary/90 text-xs sm:text-sm"
               >
                 {downloading ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Downloading{attemptCount > 0 ? ` (${attemptCount})` : '...'}
+                    <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" />
+                    <span className="hidden sm:inline">Downloading{attemptCount > 0 ? ` (${attemptCount})` : '...'}</span>
+                    <span className="sm:hidden">{attemptCount > 0 ? attemptCount : '...'}</span>
                   </>
                 ) : (
                   <>
-                    <Download className="w-4 h-4 mr-1" />
-                    Download {selectedCount > 0 ? `(${selectedCount})` : ''}
+                    <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
+                    <span className="hidden sm:inline">Download {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+                    <span className="sm:hidden">DL{selectedCount > 0 ? `(${selectedCount})` : ''}</span>
                   </>
                 )}
               </Button>
@@ -3169,9 +3177,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           </div>
         )}
 
-        {/* Track List */}
+        {/* Track List - Mobile Responsive */}
         {expanded && (
-          <div className="p-4 space-y-2.5 max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent scroll-smooth">
+          <div className="p-2 sm:p-4 space-y-2 sm:space-y-2.5 max-h-[500px] sm:max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20 hover:scrollbar-thumb-primary/40 scrollbar-track-transparent scroll-smooth">
             {sortedTracks.length === 0 ? (
               /* Empty State */
               <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -3224,149 +3232,152 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary via-accent to-primary rounded-l-xl"></div>
                 )}
 
-                <div className="flex items-center gap-4 px-4 py-3">
-                  {/* Left Section: Controls (Fixed Width) */}
-                  <div className="flex items-center gap-2.5 flex-shrink-0 w-[140px]">
-                    {/* Drag Handle - Hidden in Preview Mode */}
-                    {!downloading && !isPrivateMode && (
-                      <div className="cursor-grab active:cursor-grabbing opacity-0 group-hover/track:opacity-100 transition-opacity">
-                        <GripHorizontal className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                      </div>
-                    )}
-                    
-                    {/* Checkbox */}
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTrackSelection(track.id, {
-                          shiftKey: e.shiftKey,
-                          ctrlKey: e.ctrlKey,
-                          metaKey: e.metaKey
-                        }, sortedTracks);
-                      }}
-                    >
-                      <Checkbox
-                        checked={track.selected}
-                        onCheckedChange={() => {}} // Handled by wrapper div
-                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all"
-                      />
-                    </div>
-
-                    {/* Track Number with Badge */}
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-lg font-bold text-sm transition-all ${
-                      currentPlayingTrack?.id === track.id 
-                        ? 'bg-primary/20 text-primary ring-1 ring-primary/50' 
-                        : 'text-muted-foreground group-hover/track:bg-primary/10 group-hover/track:text-primary'
-                    }`}>
-                      {tracks.findIndex(t => t.id === track.id) + 1}
-                    </div>
-                  </div>
-
-                  {/* Album Art with Enhanced Play Button */}
-                  <button
-                    onClick={() => playTrack(track)}
-                    className="relative group/art cursor-pointer flex-shrink-0"
-                    title={currentPlayingTrack?.id === track.id ? (isPlaying ? "Pause" : "Resume") : "Play"}
-                  >
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden shadow-lg ring-1 ring-border/30 group-hover/art:ring-primary/50 transition-all">
-                      <img
-                        src={track.imageUrl}
-                        alt={track.album}
-                        className="w-full h-full object-cover transition-all group-hover/art:scale-110"
-                      />
-                      <div className={`absolute inset-0 flex items-center justify-center transition-all ${
-                        currentPlayingTrack?.id === track.id && isPlaying
-                          ? 'bg-black/40'
-                          : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
-                      }`}>
-                        <div className={`w-10 h-10 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center transition-all ${
-                          currentPlayingTrack?.id === track.id && isPlaying
-                            ? 'scale-100 opacity-100'
-                            : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
-                        }`}>
-                          {currentPlayingTrack?.id === track.id && isPlaying ? (
-                            <Pause className="w-5 h-5 text-white" />
-                          ) : (
-                            <Play className="w-5 h-5 text-white ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Now Playing Indicator */}
-                    {currentPlayingTrack?.id === track.id && (
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full animate-pulse shadow-lg shadow-primary/50 ring-2 ring-background"></div>
-                    )}
-                  </button>
-
-                  {/* Track Info Section */}
-                  <div className="flex-1 min-w-0 flex items-center gap-4">
-                    {/* Track Name & Artist */}
-                    <div className="flex-1 min-w-0 max-w-[400px]">
-                      <h4 className="font-semibold text-base text-foreground truncate group-hover/track:text-primary transition-colors leading-tight mb-1">
-                        {track.name}
-                      </h4>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {track.artist}
-                      </p>
-                    </div>
-
-                    {/* Album - Desktop */}
-                    <div className="hidden xl:block flex-1 min-w-0 max-w-[300px]">
-                      <p className="text-sm text-muted-foreground truncate">{track.album}</p>
-                    </div>
-
-                    {/* Platform Badge - Fixed Position */}
-                    <div className="hidden md:flex items-center justify-center flex-shrink-0 w-[110px]">
-                      {track.url.includes('youtube.com') || track.url.includes('youtu.be') ? (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-red-500/15 to-red-600/10 border border-red-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-red-500/20 transition-all">
-                          <Youtube className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                          <span className="text-xs font-semibold text-red-500 tracking-wide">YouTube</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-green-500/15 to-green-600/10 border border-green-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-green-500/20 transition-all">
-                          <Music className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                          <span className="text-xs font-semibold text-green-500 tracking-wide">Spotify</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3">
+                  {/* Top Row on Mobile: Controls + Art + Info */}
+                  <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                    {/* Left Section: Controls (Smaller on Mobile) */}
+                    <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0 w-auto sm:w-[140px]">
+                      {/* Drag Handle - Hidden on Mobile, Hidden in Preview Mode */}
+                      {!downloading && !isPrivateMode && (
+                        <div className="hidden sm:block cursor-grab active:cursor-grabbing opacity-0 group-hover/track:opacity-100 transition-opacity">
+                          <GripHorizontal className="w-4 h-4 text-muted-foreground hover:text-primary" />
                         </div>
                       )}
+                      
+                      {/* Checkbox */}
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTrackSelection(track.id, {
+                            shiftKey: e.shiftKey,
+                            ctrlKey: e.ctrlKey,
+                            metaKey: e.metaKey
+                          }, sortedTracks);
+                        }}
+                      >
+                        <Checkbox
+                          checked={track.selected}
+                          onCheckedChange={() => {}} // Handled by wrapper div
+                          className="data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all h-4 w-4 sm:h-5 sm:w-5"
+                        />
+                      </div>
+
+                      {/* Track Number with Badge */}
+                      <div className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-lg font-bold text-xs sm:text-sm transition-all ${
+                        currentPlayingTrack?.id === track.id 
+                          ? 'bg-primary/20 text-primary ring-1 ring-primary/50' 
+                          : 'text-muted-foreground group-hover/track:bg-primary/10 group-hover/track:text-primary'
+                      }`}>
+                        {tracks.findIndex(t => t.id === track.id) + 1}
+                      </div>
                     </div>
 
-                    {/* Duration Badge - Fixed Width */}
-                    <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-secondary/50 border border-border/50 rounded-lg flex-shrink-0 w-[80px] justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse"></div>
-                      <span className="text-sm text-muted-foreground font-mono tabular-nums font-semibold">
-                        {formatDuration(track.duration)}
-                      </span>
-                    </div>
+                    {/* Album Art with Enhanced Play Button - Smaller on Mobile */}
+                    <button
+                      onClick={() => playTrack(track)}
+                      className="relative group/art cursor-pointer flex-shrink-0"
+                      title={currentPlayingTrack?.id === track.id ? (isPlaying ? "Pause" : "Resume") : "Play"}
+                    >
+                      <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden shadow-lg ring-1 ring-border/30 group-hover/art:ring-primary/50 transition-all">
+                        <img
+                          src={track.imageUrl}
+                          alt={track.album}
+                          className="w-full h-full object-cover transition-all group-hover/art:scale-110"
+                        />
+                        <div className={`absolute inset-0 flex items-center justify-center transition-all ${
+                          currentPlayingTrack?.id === track.id && isPlaying
+                            ? 'bg-black/40'
+                            : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
+                        }`}>
+                          <div className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center transition-all ${
+                            currentPlayingTrack?.id === track.id && isPlaying
+                              ? 'scale-100 opacity-100'
+                              : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
+                          }`}>
+                            {currentPlayingTrack?.id === track.id && isPlaying ? (
+                              <Pause className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white ml-0.5" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Now Playing Indicator */}
+                      {currentPlayingTrack?.id === track.id && (
+                        <div className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-primary rounded-full animate-pulse shadow-lg shadow-primary/50 ring-2 ring-background"></div>
+                      )}
+                    </button>
 
-                    {/* Status Indicator - Fixed Width */}
-                    <div className="hidden xl:flex items-center gap-2 flex-shrink-0 w-[120px]">
-                      {getStatusIcon(track.downloadStatus, track.downloadProgress, track)}
-                      {(() => {
-                        const shouldShowStatus = 
-                          track.downloadStatus === 'downloading' || 
-                          track.downloadStatus === 'completed' || 
-                          track.downloadStatus === 'failed' ||
-                          track.downloadStatus === 'pending'; // Always show pending status!
-                        
-                        return shouldShowStatus && (
-                          <span className={`text-xs font-bold uppercase tracking-wider truncate ${getStatusColor(track.downloadStatus)}`}>
-                            {track.downloadStatus === 'downloading' ? `${track.downloadProgress}%` : track.downloadStatus}
-                          </span>
-                        );
-                      })()}
+                    {/* Track Info Section - Stack on Mobile */}
+                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      {/* Track Name & Artist */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-sm sm:text-base text-foreground truncate group-hover/track:text-primary transition-colors leading-tight mb-0.5 sm:mb-1">
+                          {track.name}
+                        </h4>
+                        <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                          {track.artist}
+                        </p>
+                        {/* Album - Show below on Mobile, inline on Desktop */}
+                        <p className="text-xs text-muted-foreground/70 truncate sm:hidden mt-0.5">{track.album}</p>
+                      </div>
+
+                      {/* Album - Desktop Only */}
+                      <div className="hidden xl:block flex-1 min-w-0 max-w-[300px]">
+                        <p className="text-sm text-muted-foreground truncate">{track.album}</p>
+                      </div>
+
+                      {/* Platform Badge - Tablet+ Only */}
+                      <div className="hidden md:flex items-center justify-center flex-shrink-0 w-[110px]">
+                        {track.url.includes('youtube.com') || track.url.includes('youtu.be') ? (
+                          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-br from-red-500/15 to-red-600/10 border border-red-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-red-500/20 transition-all">
+                            <Youtube className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-red-500 tracking-wide">YouTube</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-br from-green-500/15 to-green-600/10 border border-green-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-green-500/20 transition-all">
+                            <Music className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-green-500 tracking-wide">Spotify</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Duration Badge - Desktop Only */}
+                      <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-secondary/50 border border-border/50 rounded-lg flex-shrink-0 w-[80px] justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse"></div>
+                        <span className="text-sm text-muted-foreground font-mono tabular-nums font-semibold">
+                          {formatDuration(track.duration)}
+                        </span>
+                      </div>
+
+                      {/* Status Indicator - Desktop Only */}
+                      <div className="hidden xl:flex items-center gap-2 flex-shrink-0 w-[120px]">
+                        {getStatusIcon(track.downloadStatus, track.downloadProgress, track)}
+                        {(() => {
+                          const shouldShowStatus = 
+                            track.downloadStatus === 'downloading' || 
+                            track.downloadStatus === 'completed' || 
+                            track.downloadStatus === 'failed' ||
+                            track.downloadStatus === 'pending';
+                          
+                          return shouldShowStatus && (
+                            <span className={`text-xs font-bold uppercase tracking-wider truncate ${getStatusColor(track.downloadStatus)}`}>
+                              {track.downloadStatus === 'downloading' ? `${track.downloadProgress}%` : track.downloadStatus}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right Section: Action Buttons (Fixed Width) */}
-                  <div className="flex items-center gap-2 flex-shrink-0 w-[220px] justify-end">
+                  {/* Right Section: Action Buttons - Stack on Mobile */}
+                  <div className="flex items-center gap-2 sm:gap-2 flex-shrink-0 justify-end sm:justify-end sm:w-[220px]">
                     {/* Download Single Track Button */}
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        // Download single track logic - supports concurrent downloads!
                         if (track.downloadStatus === 'completed') {
-                          // Show re-download option
                           toast.info('This track has already been downloaded', {
                             description: 'Click the button below to download it again',
                             action: {
@@ -3379,21 +3390,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                           });
                           return;
                         }
-                        
-                        // Check if THIS specific track is already downloading
                         if (track.downloadStatus === 'downloading' || track.downloadStatus === 'pending') {
                           toast.warning(`"${track.name}" is already downloading`);
                           return;
                         }
-                        
-                        // Download this track directly - allows multiple concurrent downloads
                         downloadSingleTrack(track);
                       }}
                       disabled={track.downloadStatus === 'downloading' || track.downloadStatus === 'pending'}
-                      className="h-9 w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                      className="h-8 sm:h-9 w-8 sm:w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       title={track.downloadStatus === 'completed' ? 'Click to re-download this track' : 'Download this track instantly'}
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </Button>
 
                     {/* Open in New Tab Button */}
@@ -3401,37 +3408,37 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       size="sm"
                       variant="outline"
                       onClick={() => window.open(track.url, '_blank')}
-                      className="h-9 w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all"
+                      className="h-8 sm:h-9 w-8 sm:w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all"
                       title="Open in new tab"
                     >
-                      <ExternalLink className="w-4 h-4" />
+                      <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </Button>
 
-                    {/* Details Button */}
+                    {/* Details Button - Icon Only on Mobile */}
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => openTrackDetails(track)}
-                      className="h-9 px-4 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary transition-all rounded-lg hover:scale-105 shadow-sm font-semibold"
+                      className="h-8 sm:h-9 w-8 sm:w-auto sm:px-4 p-0 sm:p-2 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary transition-all rounded-lg hover:scale-105 shadow-sm font-semibold"
                       title="View details"
                     >
-                      <Info className="w-4 h-4 mr-1.5" />
-                      <span className="text-xs">Details</span>
+                      <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
+                      <span className="hidden sm:inline text-xs">Details</span>
                     </Button>
                   </div>
                 </div>
 
-                {/* Progress Bar - Enhanced */}
+                {/* Progress Bar - Enhanced - Mobile Responsive */}
                 {track.downloadStatus === 'downloading' && (
-                  <div className="px-4 pb-3">
-                    <div className="flex items-center gap-3">
+                  <div className="px-3 sm:px-4 pb-2.5 sm:pb-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                       <div className="flex-1">
-                        <Progress value={track.downloadProgress} className="h-2 bg-secondary/50">
+                        <Progress value={track.downloadProgress} className="h-1.5 sm:h-2 bg-secondary/50">
                           <div className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all shadow-sm shadow-primary/30" 
                                style={{ width: `${track.downloadProgress}%` }} />
                         </Progress>
                       </div>
-                      <span className="text-xs font-mono text-primary font-semibold min-w-[45px] text-right">
+                      <span className="text-xs font-mono text-primary font-semibold min-w-[40px] sm:min-w-[45px] text-right">
                         {track.downloadProgress}%
                       </span>
                     </div>

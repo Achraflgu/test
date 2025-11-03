@@ -114,22 +114,22 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
   return (
     <div className="relative group">
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-accent/10 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
-      <div className="relative bg-gradient-card rounded-2xl border border-border overflow-hidden shadow-card">
-        <div className="flex flex-col md:flex-row gap-8 p-8">
+      <div className="relative bg-gradient-card rounded-xl sm:rounded-2xl border border-border overflow-hidden shadow-card">
+        <div className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8 p-4 sm:p-6 md:p-8">
           {/* Playlist Image(s) - Clickable */}
           <button
             onClick={() => setShowPlaylistDialog(true)}
-            className="relative group/image flex-shrink-0 cursor-pointer hover-scale"
+            className="relative group/image flex-shrink-0 cursor-pointer hover-scale mx-auto md:mx-0"
             title={isYouTube ? "Click to watch on YouTube!" : "Click to listen on Spotify - No login required!"}
           >
-            <div className="absolute -inset-1 bg-gradient-to-br from-primary/50 to-accent/50 rounded-2xl blur-md opacity-0 group-hover/image:opacity-100 transition-opacity duration-300" />
+            <div className="absolute -inset-1 bg-gradient-to-br from-primary/50 to-accent/50 rounded-xl sm:rounded-2xl blur-md opacity-0 group-hover/image:opacity-100 transition-opacity duration-300" />
             
             {/* Multi-Playlist Images Grid */}
             {isMultiplePlaylists && combinedPlaylists ? (
-              <div className="relative w-56 h-56">
+              <div className="relative w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56">
                 {combinedPlaylists.images.length === 2 ? (
                   // 2 Playlists: Side by side
-                  <div className="grid grid-cols-2 gap-2 w-56 h-56">
+                  <div className="grid grid-cols-2 gap-1.5 sm:gap-2 w-full h-full">
                     {combinedPlaylists.images.map((img, idx) => (
                       <div key={idx} className="relative overflow-hidden rounded-xl group/img">
                         <img
@@ -145,8 +145,8 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
                   </div>
                 ) : combinedPlaylists.images.length === 3 ? (
                   // 3 Playlists: 2 top, 1 bottom
-                  <div className="grid grid-rows-2 gap-2 w-56 h-56">
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-rows-2 gap-1.5 sm:gap-2 w-full h-full">
+                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                       {combinedPlaylists.images.slice(0, 2).map((img, idx) => (
                         <div key={idx} className="relative overflow-hidden rounded-xl">
                           <img
@@ -173,7 +173,7 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
                   </div>
                 ) : (
                   // 4+ Playlists: 2x2 grid
-                  <div className="grid grid-cols-2 grid-rows-2 gap-2 w-56 h-56">
+                  <div className="grid grid-cols-2 grid-rows-2 gap-1.5 sm:gap-2 w-full h-full">
                     {combinedPlaylists.images.slice(0, 4).map((img, idx) => (
                       <div key={idx} className="relative overflow-hidden rounded-xl">
                         <img
@@ -199,16 +199,16 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
               </div>
             ) : (
               // Single Playlist: Original display
-              <div className="relative overflow-hidden rounded-2xl">
+              <div className="relative overflow-hidden rounded-xl sm:rounded-2xl w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56">
                 <img
                   src={playlist.imageUrl}
                   alt={playlist.name}
-                  className="w-56 h-56 object-cover shadow-2xl transition-transform duration-500 group-hover/image:scale-110"
+                  className="w-full h-full object-cover shadow-2xl transition-transform duration-500 group-hover/image:scale-110"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity duration-300" />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-opacity duration-300">
-                  <div className="p-4 bg-primary/90 backdrop-blur-sm rounded-full shadow-glow">
-                    <Play className="w-10 h-10 text-primary-foreground" />
+                  <div className="p-3 sm:p-4 bg-primary/90 backdrop-blur-sm rounded-full shadow-glow">
+                    <Play className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
                   </div>
                 </div>
               </div>
@@ -225,17 +225,17 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
               </div>
               
               {/* Action Buttons */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* Share Button */}
                 <Button
                   onClick={() => setShowShareDialog(true)}
                   variant="outline"
                   size="sm"
-                  className="h-9 px-3 border-2 border-blue-500/40 text-blue-500 hover:bg-blue-500/10 hover:border-blue-500 transition-all rounded-lg hover:scale-105"
+                  className="h-8 sm:h-9 px-2 sm:px-3 border-2 border-blue-500/40 text-blue-500 hover:bg-blue-500/10 hover:border-blue-500 transition-all rounded-lg hover:scale-105 text-xs"
                   title="Share this playlist"
                 >
-                  <Share2 className="w-4 h-4 mr-1.5" />
-                  <span className="text-xs font-semibold">Share</span>
+                  <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                  <span className="hidden sm:inline text-xs font-semibold">Share</span>
                 </Button>
                 
                 {/* Reset Button */}
@@ -245,28 +245,28 @@ export const PlaylistHeader = ({ playlist, tracks = [], combinedPlaylists, onRes
                     disabled={!hasActiveTracks}
                     variant="outline"
                     size="sm"
-                    className="h-9 px-3 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 hover:border-orange-500 transition-all rounded-lg hover:scale-105 disabled:opacity-50"
+                    className="h-8 sm:h-9 px-2 sm:px-3 border-2 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 hover:border-orange-500 transition-all rounded-lg hover:scale-105 disabled:opacity-50 text-xs"
                     title="Reset session (clear playlist and player)"
                   >
-                    <RotateCcw className="w-4 h-4 mr-1.5" />
-                    <span className="text-xs font-semibold">Reset</span>
+                    <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                    <span className="hidden sm:inline text-xs font-semibold">Reset</span>
                   </Button>
                 )}
               </div>
             </div>
             
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight hover-scale">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight hover-scale">
               {playlist.name}
             </h2>
             
             {playlist.description && (
-              <p className="text-muted-foreground text-lg leading-relaxed line-clamp-2">
+              <p className="text-muted-foreground text-sm sm:text-base md:text-lg leading-relaxed line-clamp-2">
                 {playlist.description}
               </p>
             )}
 
             {/* Stats */}
-            <div className="flex flex-wrap items-center gap-6 pt-2">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6 pt-2 text-xs sm:text-sm">
               {/* Owner with photo and link - Only show if valid owner */}
               {shouldShowOwner && playlist.ownerUrl ? (
                 <a 

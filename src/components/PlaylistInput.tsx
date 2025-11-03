@@ -201,23 +201,23 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
   return (
     <div className="relative group">
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      <div className="relative bg-card rounded-2xl border border-border p-8 shadow-card backdrop-blur-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Link2 className="w-5 h-5 text-primary" />
+      <div className="relative bg-card rounded-xl sm:rounded-2xl border border-border p-4 sm:p-6 md:p-8 shadow-card backdrop-blur-sm">
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <div className="p-1.5 sm:p-2 bg-primary/10 rounded-lg">
+            <Link2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
           </div>
-          <h2 className="text-2xl font-bold">Enter Music URL</h2>
+          <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Enter Music URL</h2>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <div className="flex-1 relative">
             <Input
               type="text"
-              placeholder="Spotify (track/playlist/album/artist) or YouTube (video/playlist) URL..."
+              placeholder="Spotify or YouTube URL..."
               value={url}
               onChange={(e) => handleUrlChange(e.target.value)}
               onKeyPress={handleKeyPress}
-              className={`h-14 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground rounded-xl px-5 text-lg focus-visible:ring-2 transition-all ${
+              className={`h-12 sm:h-14 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground rounded-lg sm:rounded-xl px-4 sm:px-5 text-sm sm:text-base md:text-lg focus-visible:ring-2 transition-all ${
                 isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : isSearchText ? 'border-blue-500 focus-visible:ring-blue-500' : 'focus-visible:ring-primary'
               }`}
               disabled={loading}
@@ -228,26 +228,27 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
             disabled={loading || !url.trim() || isInvalidUrl}
             size="lg"
             data-load-button
-            className={`h-14 px-8 text-primary-foreground shadow-glow transition-all duration-300 rounded-xl font-semibold text-lg ${
+            className={`h-12 sm:h-14 px-6 sm:px-8 text-primary-foreground shadow-glow transition-all duration-300 rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base md:text-lg w-full sm:w-auto ${
               isSearchText ? 'bg-blue-600 hover:bg-blue-700 hover:shadow-[0_0_50px_hsl(217_91%_60%/0.5)]' : 'bg-primary hover:bg-primary/90 hover:shadow-[0_0_50px_hsl(141_76%_48%/0.5)]'
             }`}
           >
             {loading ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2 animate-spin" />
                 <span className="flex flex-col items-start">
-                  <span>Fetching{loadingDots}</span>
+                  <span className="text-sm sm:text-base">Fetching{loadingDots}</span>
                   {loadingTime >= 10 && (
                     <span className="text-xs opacity-70 mt-0.5">
-                      {loadingTime}s {loadingTime >= 60 && '(Large playlist, please wait)'}
+                      {loadingTime}s {loadingTime >= 60 && <span className="hidden sm:inline">(Large playlist, please wait)</span>}
                     </span>
                   )}
                 </span>
               </>
             ) : (
               <>
-                <Search className="w-5 h-5 mr-2" />
-                {isSearchText ? 'Search Music' : 'Load Music'}
+                <Search className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                <span className="hidden sm:inline">{isSearchText ? 'Search Music' : 'Load Music'}</span>
+                <span className="sm:hidden">{isSearchText ? 'Search' : 'Load'}</span>
               </>
             )}
           </Button>
@@ -280,17 +281,13 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
           </Alert>
         )}
 
-        <div className="mt-6 flex items-start gap-2 text-sm text-muted-foreground bg-secondary/30 p-4 rounded-xl border border-border/50">
-          <div className="text-primary mt-0.5">💡</div>
-          <div>
+        <div className="mt-4 sm:mt-6 flex items-start gap-2 text-xs sm:text-sm text-muted-foreground bg-secondary/30 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-border/50">
+          <div className="text-primary mt-0.5 flex-shrink-0">💡</div>
+          <div className="min-w-0">
             <span className="font-medium text-foreground">Supported URLs:</span> 
-            <ul className="mt-1 space-y-1">
-              <li>🎵 Spotify tracks (single songs)</li>
-              <li>📁 Spotify playlists</li>
-              <li>💿 Spotify albums</li>
-              <li>🎤 Spotify artists (popular tracks)</li>
-              <li>📺 YouTube videos/music</li>
-              <li>📂 YouTube playlists</li>
+            <ul className="mt-1 space-y-0.5 sm:space-y-1">
+              <li className="truncate">🎵 Spotify tracks, 📁 playlists, 💿 albums, 🎤 artists</li>
+              <li className="truncate">📺 YouTube videos/music, 📂 playlists</li>
             </ul>
           </div>
         </div>
