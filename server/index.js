@@ -4167,7 +4167,34 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         // Try search method first (bypasses bot detection better)
         const searchUrl = `ytsearch1:${searchQuery}`;
         result = await youtubedl(searchUrl, downloadOptions);
-        console.log(`  ✅ Search method succeeded!`);
+        
+        // Wait a bit for file system to sync
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verify file was actually created
+        const fileExistsAfterSearch = await fs.access(expectedFilePath).then(() => true).catch(() => false);
+        if (!fileExistsAfterSearch) {
+          // Check for other possible files
+          const folderFiles = await fs.readdir(outputFolder);
+          const possibleFile = folderFiles.find(f => {
+            const normalized = f.toLowerCase();
+            return (normalized.includes(track.name.toLowerCase().substring(0, 10)) || 
+                    normalized.includes(safeFilename.toLowerCase().substring(0, 10))) &&
+                   (normalized.endsWith('.mp3') || normalized.endsWith('.m4a') || 
+                    normalized.endsWith('.webm') || normalized.endsWith('.opus'));
+          });
+          
+          if (!possibleFile) {
+            console.log(`  ⚠️ Search method reported success but no file found, trying direct URL...`);
+            useSearchMethod = false;
+            // Fall back to direct URL
+            result = await youtubedl(youtubeUrl, downloadOptions);
+          } else {
+            console.log(`  ✅ Search method succeeded! File found: ${possibleFile}`);
+          }
+        } else {
+          console.log(`  ✅ Search method succeeded!`);
+        }
       } catch (searchError) {
         console.log(`  ⚠️ Search method failed, trying direct URL: ${searchError.message}`);
         useSearchMethod = false;
@@ -4584,10 +4611,19 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
-    // Build search query - skip "Unknown Artist" to improve search results
+    // Build search query - clean and simplify (remove parentheses, extra text, etc.)
+    // This improves search results and reduces bot detection
+    const cleanSearchQuery = (str) => {
+      return str
+        .replace(/\([^)]*\)/g, '') // Remove parentheses and their content
+        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .trim()
+        .substring(0, 100); // Limit length to 100 chars
+    };
+    
     const searchQuery = track.artist === 'Unknown Artist' 
-      ? track.name
-      : `${track.artist} ${track.name}`;
+      ? cleanSearchQuery(track.name)
+      : cleanSearchQuery(`${track.artist} ${track.name}`);
     
     console.log(`\n🔄 Trying download for: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
     console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
@@ -5091,6 +5127,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           console.log(`  yt-dlp${useSearchMethod ? ' search' : ''}: ${txt.trim()}`);
         });
         
+        let searchReturnedZeroItems = false;
+        
         ytdlpProcess.stderr.on('data', (data) => {
           const txt = data.toString();
           errorOutput += txt;
@@ -5099,6 +5137,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               txt.includes('[EmbedThumbnail]') || txt.includes('[ThumbnailsConvertor]')) {
             console.log(`  yt-dlp${useSearchMethod ? ' search' : ''}: ${txt.trim()}`);
           }
+          // Detect if search returned 0 items (search failed to find video)
+          if (useSearchMethod && txt.includes('Downloading 0 items')) {
+            searchReturnedZeroItems = true;
+            console.log(`  ⚠️ Search returned 0 items - will fallback to direct URL`);
+          }
           // Detect ffmpeg issues
           if (txt.includes('ffmpeg') || txt.includes('avconv') || txt.includes('WARNING')) {
             console.log(`  ⚠️  ${txt.trim()}`);
@@ -5106,6 +5149,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         });
         
         ytdlpProcess.on('close', async (code) => {
+          // 🚀 OPTIMIZATION: If search returned 0 items, immediately try direct URL
+          if (useSearchMethod && searchReturnedZeroItems && youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
+            console.log(`  🔄 Search returned 0 items - falling back to direct URL immediately...`);
+            youtubeLinks[`retry_${track.id}`] = true;
+            resolve('search_zero_items'); // Signal to try direct URL
+            return;
+          }
+          
           if (code === 0) {
             // Build the expected MP3 path (replace %(ext)s with .mp3)
             const mp3Path = outputPath.replace('%(ext)s', 'mp3').replace(/\.(webm|m4a|opus)$/, '.mp3');
@@ -5176,6 +5227,115 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           resolve('error');
         });
       });
+      
+      // 🚀 OPTIMIZATION: If search returned 0 items, try direct URL immediately
+      if (result === 'search_zero_items' && youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
+        console.log(`  🔄 Search returned 0 items - trying direct URL...`);
+        youtubeLinks[`retry_${track.id}`] = true;
+        
+        // Build direct URL args
+        const directArgs = [
+          '-m', 'yt_dlp',
+          '-x',
+          '--audio-format', settings.format || 'mp3',
+          '--audio-quality', settings.quality || '320K',
+          '--embed-thumbnail',
+          '--embed-metadata',
+          '--add-metadata',
+          '--metadata-from-title', '%(artist)s - %(title)s',
+          '--output', outputPath,
+          '--no-playlist',
+          '--no-part',
+          '--force-overwrites',
+          '--no-warnings',
+          '--ignore-errors',
+          youtubeLink
+        ];
+        
+        // Add enhancements
+        await addYouTubeEnhancements(directArgs, attemptNumber);
+        directArgs.push('--socket-timeout', '60');
+        directArgs.push('--retries', '15');
+        directArgs.push('--fragment-retries', '15');
+        directArgs.push('--skip-unavailable-fragments');
+        directArgs.push('--http-chunk-size', '1M');
+        
+        // Force metadata
+        const safeArtist = (track.artist || '').replace(/"/g, '\\"');
+        const safeTitle = (track.name || '').replace(/"/g, '\\"');
+        const safeAlbum = (track.album || '').replace(/"/g, '\\"');
+        let ffArgs = `FFmpegMetadata:-metadata artist=\"${safeArtist}\" -metadata title=\"${safeTitle}\"`;
+        if (safeAlbum && safeAlbum !== 'YouTube') {
+          ffArgs += ` -metadata album=\"${safeAlbum}\"`;
+        }
+        directArgs.push('--postprocessor-args', ffArgs);
+        
+        // Try direct URL
+        try {
+          const directResult = await new Promise((resolve) => {
+            const directProcess = spawn(PYTHON_CMD, directArgs, {
+              cwd: outputFolder,
+              shell: false
+            });
+            
+            let directErrorOutput = '';
+            
+            directProcess.stdout.on('data', (data) => {
+              console.log(`  yt-dlp direct: ${data.toString().trim()}`);
+            });
+            
+            directProcess.stderr.on('data', (data) => {
+              const txt = data.toString();
+              directErrorOutput += txt;
+              if (txt.includes('[download]') || txt.includes('[ExtractAudio]')) {
+                console.log(`  yt-dlp direct: ${txt.trim()}`);
+              }
+            });
+            
+            directProcess.on('close', async (code) => {
+              if (code === 0) {
+                const mp3Path = outputPath.replace('%(ext)s', 'mp3').replace(/\.(webm|m4a|opus)$/, '.mp3');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                let fileExists = false;
+                for (let i = 0; i < 5; i++) {
+                  fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
+                  if (fileExists) break;
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                if (fileExists) {
+                  console.log(`✅ yt-dlp DIRECT SUCCESS (fallback from search): ${track.name}`);
+                  successCount++;
+                  socket.emit('download:progress', {
+                    downloadId,
+                    trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+                    status: 'completed',
+                    progress: 100,
+                    message: `✅ Downloaded via yt-dlp direct (fallback): ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
+                  });
+                  resolve('success');
+                } else {
+                  console.log(`❌ yt-dlp DIRECT FAILED (fallback): ${track.name}`);
+                  resolve('failed');
+                }
+              } else {
+                console.log(`❌ yt-dlp DIRECT FAILED (fallback): ${track.name} (exit code ${code})`);
+                if (directErrorOutput) {
+                  console.log('  Error output:', directErrorOutput.substring(0, 500));
+                }
+                resolve('failed');
+              }
+            });
+            
+            directProcess.on('error', () => resolve('error'));
+          });
+          
+          if (directResult === 'success') {
+            return; // Success with direct URL
+          }
+        } catch (err) {
+          console.log(`  ⚠️ Direct URL fallback failed: ${err.message}`);
+        }
+      }
       
       // If direct link failed, immediately retry with search method
       if (result !== 'success' && usingDirectLink) {
