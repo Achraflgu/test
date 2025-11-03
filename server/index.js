@@ -3298,30 +3298,15 @@ app.post('/api/download/start', async (req, res) => {
   // (sanitizer defined globally)
 
   // For single track downloads, check if file already exists
+  // NOTE: Only use EXACT filename match for single tracks to avoid downloading wrong file
   if (selectedTracks.length === 1) {
     const track = selectedTracks[0];
     const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
     const expectedFilePath = path.join(outputFolder, expectedFileName);
     
     try {
-      let fileExists = false;
-      try {
-        await fs.access(expectedFilePath);
-        fileExists = true;
-      } catch {}
-
-      // If exact match not found, try fuzzy match among existing files
-      if (!fileExists) {
-        const files = await fs.readdir(outputFolder);
-        const musicFiles = files.filter(f => f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg'));
-        const fuzzy = musicFiles.find(f => isFileMatchForTrack(f, track));
-        if (fuzzy) {
-          fileExists = true;
-          console.log(`✅ Fuzzy match found for existing file: ${fuzzy}`);
-        }
-      }
-
-      if (!fileExists) throw new Error('Not found');
+      // Only check exact filename match - no fuzzy matching for single tracks!
+      await fs.access(expectedFilePath);
 
       // File exists! Skip download and mark as complete immediately
       console.log(`✅ File already exists: ${expectedFileName}`);
@@ -5216,15 +5201,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         const totalTracks = tracks.length;
         
         if (totalTracks === 1) {
-          // Single track: allow fuzzy match for success detection
+          // Single track: ONLY use exact filename match (no fuzzy matching - avoids wrong file matches!)
           const track = tracks[0];
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          let fileExists = musicFiles.some(f => f === expectedFileName);
-          if (!fileExists) {
-            fileExists = musicFiles.some(f => isFileMatchForTrack(f, track));
-          }
+          const fileExists = musicFiles.some(f => f === expectedFileName);
           currentSuccess = fileExists ? 1 : 0;
-          console.log(`📝 Single track check: ${expectedFileName} (fuzzy=${fileExists})`);
+          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
         } else {
           // Multiple tracks: count all music files in the subfolder
           currentSuccess = musicFiles.length;
@@ -5388,15 +5370,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         const totalTracks = tracks.length;
         
         if (totalTracks === 1) {
-          // Single track: allow fuzzy match for success detection
+          // Single track: ONLY use exact filename match (no fuzzy matching - avoids wrong file matches!)
           const track = tracks[0];
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          let fileExists = musicFiles.some(f => f === expectedFileName);
-          if (!fileExists) {
-            fileExists = musicFiles.some(f => isFileMatchForTrack(f, track));
-          }
+          const fileExists = musicFiles.some(f => f === expectedFileName);
           currentSuccess = fileExists ? 1 : 0;
-          console.log(`📝 Single track check: ${expectedFileName} (fuzzy=${fileExists})`);
+          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
         } else {
           // Multiple tracks: count all music files in the subfolder
           currentSuccess = musicFiles.length;
@@ -5418,7 +5397,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         tracks.forEach(track => {
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
           let trackDownloaded = musicFiles.some(f => f === expectedFileName);
-          if (!trackDownloaded) {
+          // For multi-track scenarios, allow fuzzy matching (handles YouTube title variations)
+          // For single tracks, only exact match (already handled above, but be safe)
+          if (!trackDownloaded && tracks.length > 1) {
             trackDownloaded = musicFiles.some(f => isFileMatchForTrack(f, track));
           }
           
@@ -6384,11 +6365,8 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     if (tracks.length === 1) {
       const track = tracks[0];
       const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-      let singleFile = musicFiles.find(f => f === expectedFileName);
-      if (!singleFile) {
-        // Try fuzzy match if exact not found
-        singleFile = musicFiles.find(f => isFileMatchForTrack(f, track));
-      }
+      // For single tracks, ONLY use exact filename match (no fuzzy matching - avoids sending wrong file!)
+      const singleFile = musicFiles.find(f => f === expectedFileName);
       
       if (singleFile) {
         const filePath = path.join(outputFolder, singleFile);
