@@ -1866,11 +1866,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   };
   
   // Save position whenever it changes (including from restored state)
+  // Also update body data attribute for global CSS styling
   useEffect(() => {
     if (playerPosition) {
       localStorage.setItem('music-player-position', playerPosition);
+      // Update body data attribute for global layout adjustments
+      document.body.setAttribute('data-player-position', playerPosition);
+      // Update data attribute based on player visibility
+      if (currentPlayingTrack) {
+        document.body.setAttribute('data-player-visible', 'true');
+      } else {
+        document.body.removeAttribute('data-player-visible');
+      }
     }
-  }, [playerPosition]);
+  }, [playerPosition, currentPlayingTrack]);
 
   const openTrackDetails = (track: Track) => {
     setSelectedTrackForDetails(track);
@@ -2903,11 +2912,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   return (
     <div 
-      className={`relative group transition-all duration-300 ${
-        playerPosition === 'left' && currentPlayingTrack ? 'md:ml-[340px]' : 
-        playerPosition === 'right' && currentPlayingTrack ? 'md:mr-[340px]' : 
-        ''
-      }`} 
+      className="relative group transition-all duration-300" 
       data-track-list
     >
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/5 to-accent/5 rounded-2xl blur-xl opacity-50" />

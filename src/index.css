@@ -242,4 +242,89 @@ All colors MUST be HSL.
   body.fullscreen-active [data-sonner-toaster] {
     display: none !important;
   }
+
+  /* 🎵 Creative Global Layout Adjustments for Player Positioning */
+  /* Apply padding to all main content when player is on left/right */
+  body[data-player-position="left"][data-player-visible="true"] .container,
+  body[data-player-position="left"][data-player-visible="true"] [data-track-list] {
+    @media (min-width: 768px) {
+      margin-left: 356px !important; /* 320px player + 16px left-4 + 20px gap */
+      transition: margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  }
+
+  body[data-player-position="right"][data-player-visible="true"] .container,
+  body[data-player-position="right"][data-player-visible="true"] [data-track-list] {
+    @media (min-width: 768px) {
+      margin-right: 356px !important; /* 320px player + 16px right-4 + 20px gap */
+      transition: margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  }
+
+  /* Add creative visual border accent on the side where player is positioned */
+  body[data-player-position="left"][data-player-visible="true"]::before {
+    @media (min-width: 768px) {
+      content: '';
+      position: fixed;
+      left: 340px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        hsl(var(--primary) / 0.3),
+        hsl(var(--primary) / 0.5),
+        hsl(var(--primary) / 0.3),
+        transparent
+      );
+      z-index: 99;
+      pointer-events: none;
+      animation: glow-pulse 3s ease-in-out infinite;
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+    }
+  }
+
+  body[data-player-position="right"][data-player-visible="true"]::after {
+    @media (min-width: 768px) {
+      content: '';
+      position: fixed;
+      right: 340px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        hsl(var(--primary) / 0.3),
+        hsl(var(--primary) / 0.5),
+        hsl(var(--primary) / 0.3),
+        transparent
+      );
+      z-index: 99;
+      pointer-events: none;
+      animation: glow-pulse 3s ease-in-out infinite;
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+    }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% {
+      opacity: 0.5;
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+    }
+    50% {
+      opacity: 1;
+      box-shadow: 0 0 40px hsl(var(--primary) / 0.4);
+    }
+  }
+
+  /* Smooth transitions for all content when player position changes */
+  body[data-player-position] .container,
+  body[data-player-position] [data-track-list],
+  body[data-player-position] main,
+  body[data-player-position] > div {
+    transition: margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1),
+                margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
