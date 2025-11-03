@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, User, Sparkles } from 'lucide-react';
+import { Search, Loader2, Plus, Music, CheckSquare, Square } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -319,37 +319,25 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       )}
 
       <Dialog open={isResultsOpen} onOpenChange={setIsResultsOpen}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] h-[90vh] p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-br from-primary/10 via-primary/5 to-accent/5 backdrop-blur-sm relative overflow-hidden">
-            {/* Decorative background elements */}
-            <div className="absolute inset-0 opacity-5">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
-              <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent rounded-full blur-3xl"></div>
-            </div>
-            
-            <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] h-[90vh] p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-accent/5">
+            <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="relative p-3 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl border border-primary/20 shadow-lg">
-                  <Search className="w-6 h-6 text-primary" />
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full animate-pulse"></div>
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <Search className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                    Search Results
-                  </h3>
-                  <p className="text-sm text-muted-foreground font-medium mt-0.5 flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                    "{currentQuery}"
-                  </p>
+                  <h3 className="text-xl font-bold">Search Results</h3>
+                  <p className="text-sm text-muted-foreground font-normal">"{currentQuery}"</p>
                 </div>
               </div>
               {searchResults.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2">
                   <Button 
                     onClick={handleSelectAll} 
                     size="sm" 
                     variant="outline"
-                    className="border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all shadow-sm hover:shadow-md"
+                    className="border-primary/30 hover:bg-primary/10"
                   >
                     {selectedResults.size === searchResults.length ? (
                       <><CheckSquare className="mr-2 h-4 w-4" /> Deselect All</>
@@ -360,7 +348,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                   <Button 
                     onClick={handleAddSelected} 
                     size="sm" 
-                    className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-primary hover:bg-primary/90 shadow-glow"
                     disabled={selectedResults.size === 0}
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -369,122 +357,98 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                 </div>
               )}
             </DialogTitle>
-            <DialogDescription className="text-base font-medium relative z-10 flex items-center gap-2">
-              <span className="px-3 py-1 bg-primary/10 rounded-full text-primary font-semibold">
-                {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'}
-              </span>
-              {selectedResults.size > 0 && (
-                <span className="px-3 py-1 bg-accent/20 rounded-full text-accent-foreground font-semibold">
-                  {selectedResults.size} selected
-                </span>
-              )}
+            <DialogDescription className="text-base font-medium">
+              {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'} found
+              {selectedResults.size > 0 && ` • ${selectedResults.size} selected`}
             </DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="flex-1 px-6 py-4">
             {searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <div className="relative p-8 bg-gradient-to-br from-primary/10 to-accent/10 rounded-2xl mb-6 border border-primary/20">
-                  <Music className="h-20 w-20 text-primary/60" />
-                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-primary rounded-full animate-pulse"></div>
+                <div className="p-6 bg-muted/30 rounded-full mb-6">
+                  <Music className="h-16 w-16" />
                 </div>
-                <p className="text-xl font-semibold mb-1">No results found</p>
-                <p className="text-sm text-muted-foreground/80">Try a different search query or check your spelling</p>
+                <p className="text-lg font-medium">No results found</p>
+                <p className="text-sm mt-2">Try a different search query</p>
               </div>
             ) : (
-              <div className="space-y-3 pb-4">
+              <div className="space-y-3">
                 {searchResults.map((result, index) => {
                   const isSelected = selectedResults.has(result.id);
                   return (
                     <div
                       key={result.id}
-                      className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 animate-fade-in backdrop-blur-sm ${
+                      className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border transition-all duration-300 animate-fade-in ${
                         isSelected 
-                          ? 'border-primary bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 shadow-xl shadow-primary/25 scale-[1.02]' 
-                          : 'border-border/50 bg-card/80 hover:border-primary/40 hover:bg-accent/30 hover:shadow-xl hover:scale-[1.01]'
+                          ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20' 
+                          : 'border-border/50 bg-card hover:bg-accent/50 hover:border-primary/30 hover:shadow-lg'
                       }`}
-                      style={{ animationDelay: `${index * 20}ms` }}
+                      style={{ animationDelay: `${index * 30}ms` }}
                     >
-                      {/* Selection Indicator Badge */}
-                      {isSelected && (
-                        <div className="absolute -top-2 -right-2 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg z-20 animate-bounce">
-                          <CheckSquare className="w-5 h-5 text-primary-foreground" />
-                        </div>
-                      )}
+                      {/* Checkbox */}
+                      <div className="absolute top-3 right-3 sm:relative sm:top-0 sm:right-0 z-10">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => handleToggleSelect(result.id)}
+                          className="h-5 w-5 border-2"
+                        />
+                      </div>
 
-                      {/* Thumbnail with Play Overlay */}
+                      {/* Thumbnail */}
                       <div 
-                        className="relative flex-shrink-0 cursor-pointer group/thumb"
+                        className="relative flex-shrink-0 cursor-pointer"
                         onClick={() => handleToggleSelect(result.id)}
                       >
                         {result.imageUrl ? (
-                          <div className="relative overflow-hidden rounded-xl shadow-lg group-hover/thumb:shadow-2xl transition-all duration-300">
-                            <img
-                              src={result.imageUrl}
-                              alt={result.name}
-                              className="w-24 h-24 sm:w-20 sm:h-20 object-cover group-hover/thumb:scale-110 transition-transform duration-300"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                              <div className="w-12 h-12 bg-primary/90 rounded-full flex items-center justify-center shadow-xl transform translate-y-2 group-hover/thumb:translate-y-0 transition-transform duration-300">
-                                <Play className="w-6 h-6 text-primary-foreground ml-0.5" fill="currentColor" />
-                              </div>
-                            </div>
-                          </div>
+                          <img
+                            src={result.imageUrl}
+                            alt={result.name}
+                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md group-hover:shadow-xl transition-shadow"
+                          />
                         ) : (
-                          <div className="w-24 h-24 sm:w-20 sm:h-20 rounded-xl bg-gradient-to-br from-primary/30 via-primary/20 to-accent/20 flex items-center justify-center border-2 border-primary/20 shadow-lg">
-                            <Music className="h-12 w-12 sm:h-10 sm:w-10 text-primary" />
+                          <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                            <Music className="h-10 w-10 sm:h-8 sm:w-8 text-primary" />
                           </div>
                         )}
-                        {/* Rank Badge */}
-                        <div className="absolute -top-2 -left-2 w-7 h-7 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-lg border-2 border-background z-10">
+                        <div className="absolute -top-1 -left-1 w-6 h-6 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-md">
                           {index + 1}
                         </div>
                       </div>
 
                       {/* Track Info */}
                       <div 
-                        className="flex-1 min-w-0 space-y-2 cursor-pointer"
+                        className="flex-1 min-w-0 space-y-1 cursor-pointer"
                         onClick={() => handleToggleSelect(result.id)}
                       >
-                        <div>
-                          <h4 className={`font-bold text-lg sm:text-base leading-tight line-clamp-2 transition-all duration-300 ${
-                            isSelected ? 'text-primary' : 'text-foreground group-hover:text-primary'
-                          }`}>
-                            {result.name}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <User className="w-3.5 h-3.5" />
-                              <span className="font-semibold">{result.artist}</span>
-                            </div>
-                          </div>
-                          {result.album && result.album !== result.name && (
-                            <p className="text-xs text-muted-foreground/70 line-clamp-1 flex items-center gap-1.5 mt-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-primary/50"></span>
-                              {result.album}
-                            </p>
-                          )}
-                        </div>
+                        <h4 className={`font-semibold text-base leading-tight line-clamp-1 transition-colors ${
+                          isSelected ? 'text-primary' : 'group-hover:text-primary'
+                        }`}>
+                          {result.name}
+                        </h4>
+                        <p className="text-sm text-muted-foreground line-clamp-1 flex items-center gap-2">
+                          <span className="font-medium">{result.artist}</span>
+                        </p>
+                        {result.album && result.album !== result.name && (
+                          <p className="text-xs text-muted-foreground/80 line-clamp-1 flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground/50"></span>
+                            {result.album}
+                          </p>
+                        )}
                       </div>
 
                       {/* Duration & Actions */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-full border border-border/50">
-                          <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground font-mono font-semibold">
-                            {formatDuration(result.duration)}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                        <span className="text-sm text-muted-foreground font-mono bg-muted/50 px-3 py-1 rounded-full">
+                          {formatDuration(result.duration)}
+                        </span>
                         <Button 
                           size="sm" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddTrack(result);
-                          }}
-                          className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md hover:shadow-lg transition-all hover:scale-105 w-full sm:w-auto"
+                          onClick={() => handleAddTrack(result)}
+                          className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
                         >
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          <span className="font-semibold">Add</span>
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add
                         </Button>
                       </div>
                     </div>
@@ -499,17 +463,17 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                       disabled={isLoadingMore}
                       variant="outline"
                       size="lg"
-                      className="w-full sm:w-auto min-w-[280px] border-2 border-primary/30 hover:border-primary/50 hover:bg-gradient-to-r hover:from-primary/10 hover:to-accent/10 transition-all duration-300 shadow-md hover:shadow-lg hover:scale-105"
+                      className="w-full sm:w-auto min-w-[250px] border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
                     >
                       {isLoadingMore ? (
                         <>
                           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          <span className="font-semibold">Loading More Results...</span>
+                          Loading More Results...
                         </>
                       ) : (
                         <>
                           <Plus className="mr-2 h-5 w-5" />
-                          <span className="font-semibold">Load More Results</span>
+                          Load More Results
                         </>
                       )}
                     </Button>
@@ -521,23 +485,14 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
           
           {/* Footer with stats */}
           {searchResults.length > 0 && (
-            <div className="px-6 py-4 border-t bg-gradient-to-r from-muted/40 to-muted/20 backdrop-blur-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="font-semibold text-foreground flex items-center gap-2">
-                  <Music className="w-4 h-4 text-primary" />
-                  Showing {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'}
-                </span>
+            <div className="px-6 py-3 border-t bg-muted/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span className="font-medium">
+                Showing {searchResults.length} results
                 {selectedResults.size > 0 && (
-                  <span className="px-3 py-1 bg-primary/20 text-primary rounded-full font-semibold flex items-center gap-1.5">
-                    <CheckSquare className="w-3.5 h-3.5" />
-                    {selectedResults.size} selected
-                  </span>
+                  <span className="ml-2 text-primary">• {selectedResults.size} selected</span>
                 )}
-              </div>
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                Click tracks to select • Use checkboxes
               </span>
+              <span className="text-xs">Click tracks to select • Use checkboxes</span>
             </div>
           )}
         </DialogContent>
