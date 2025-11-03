@@ -1979,8 +1979,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       toast.success('Track reordered');
 
-      // After reorder, keep the current playing track centered for context
-      if (currentPlayingTrack?.id) {
+      // After reorder, keep the current playing track centered only if playing
+      if (isPlaying && currentPlayingTrack?.id) {
         const el = rowRefs.current[currentPlayingTrack.id];
         if (el && typeof el.scrollIntoView === 'function') {
           try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
