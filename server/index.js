@@ -3145,6 +3145,16 @@ async function createFolderCoverImage(imageUrls, outputPath) {
 }
 
 // Start download
+// Global filename sanitizer to mirror yt-dlp filename normalization
+function sanitizeForFs(name) {
+  return String(name)
+    .replace(/[\\\/:*?"<>|]/g, '-')   // Windows-invalid and common sanitized
+    .replace(/[\u0000-\u001f]/g, '')    // control chars
+    .replace(/\s+/g, ' ')                // collapse whitespace
+    .replace(/-+/g, '-')                  // collapse hyphens
+    .trim();
+}
+
 app.post('/api/download/start', async (req, res) => {
   const { playlistUrl, tracks, settings, folderName, playlistImages, socketId } = req.body;
 
@@ -3255,17 +3265,7 @@ app.post('/api/download/start', async (req, res) => {
     console.log(`⚠️  No socket ID, will broadcast to all clients`);
   }
 
-  // Helper to sanitize filenames similar to yt-dlp defaults
-  const sanitizeForFs = (name) => {
-    // Replace forbidden or often-sanitized chars with hyphen
-    // Matches yt-dlp style: collapse problematic punctuation
-    return String(name)
-      .replace(/[\\\/:*?"<>|]/g, '-')   // Windows-invalid and common sanitized
-      .replace(/[\u0000-\u001f]/g, '')    // control chars
-      .replace(/\s+/g, ' ')                // collapse whitespace
-      .replace(/-+/g, '-')                  // collapse hyphens
-      .trim();
-  };
+  // (sanitizer defined globally)
 
   // For single track downloads, check if file already exists
   if (selectedTracks.length === 1) {
