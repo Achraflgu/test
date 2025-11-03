@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, Plus, Music, CheckSquare, Square } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
@@ -31,11 +31,20 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentLimit, setCurrentLimit] = useState(15);
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Update search query when initialSearchText prop changes
   useEffect(() => {
     if (initialSearchText) {
       setSearchQuery(initialSearchText);
+    }
+  }, [initialSearchText]);
+
+  // Auto-focus and select the search input when entering search mode
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+      try { inputRef.current.select(); } catch {}
     }
   }, [initialSearchText]);
 
@@ -164,9 +173,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       duration: result.duration,
       imageUrl: result.imageUrl,
       url: result.url,
-      downloadStatus: 'pending',
-      downloadProgress: 0,
-      selected: true,
+      downloadStatus: undefined,
+      downloadProgress: undefined,
+      selected: false,
     };
 
     onAddTracks([track]);
@@ -209,9 +218,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
         duration: result.duration,
         imageUrl: result.imageUrl,
         url: result.url,
-        downloadStatus: 'pending' as const,
-        downloadProgress: 0,
-        selected: true,
+        downloadStatus: undefined,
+        downloadProgress: undefined,
+        selected: false,
       }));
 
     onAddTracks(selectedTracks);
@@ -229,9 +238,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       duration: result.duration,
       imageUrl: result.imageUrl,
       url: result.url,
-      downloadStatus: 'pending',
-      downloadProgress: 0,
-      selected: true,
+      downloadStatus: undefined,
+      downloadProgress: undefined,
+      selected: false,
     }));
 
     onAddTracks(tracks);
@@ -275,6 +284,8 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
             onPaste={handlePaste}
             className={`pl-9 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
             disabled={isSearching}
+            autoFocus
+            ref={inputRef}
           />
         </div>
         <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim() || isInvalidUrl}>

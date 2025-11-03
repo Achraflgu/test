@@ -592,7 +592,14 @@ const Index = () => {
                         toast.info(`${newTracks.length - uniqueNewTracks.length} duplicate track(s) skipped`);
                       }
                       
-                      setTracks([...tracks, ...uniqueNewTracks]);
+                      // Insert new tracks at the top; ensure clean download state
+                      const cleanedNew = uniqueNewTracks.map(t => ({
+                        ...t,
+                        downloadStatus: undefined,
+                        downloadProgress: undefined,
+                        selected: false,
+                      }));
+                      setTracks([...cleanedNew, ...tracks]);
                       setPlaylist({
                         ...playlist,
                         totalTracks: playlist.totalTracks + uniqueNewTracks.length,
@@ -612,7 +619,14 @@ const Index = () => {
                         ownerImage: "",
                       };
                       setPlaylist(searchPlaylist);
-                      setTracks(newTracks);
+                      // Ensure clean download state for new list
+                      const cleaned = newTracks.map(t => ({
+                        ...t,
+                        downloadStatus: undefined,
+                        downloadProgress: undefined,
+                        selected: false,
+                      }));
+                      setTracks(cleaned);
                       setPlaylistNames([]);
                       setPlaylistImages([]);
                       setPlaylistUrls([]);

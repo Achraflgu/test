@@ -49,6 +49,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
   const [showFailedTracksDialog, setShowFailedTracksDialog] = useState(false);
   const [failedTracks, setFailedTracks] = useState<Track[]>([]);
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   
   // Download tray state
   const [recentDownloads, setRecentDownloads] = useState<Array<{ id: string; name: string; url: string; time: number }>>([]);
@@ -61,6 +62,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   
   // Audio player state
   const [currentPlayingTrack, setCurrentPlayingTrack] = useState<Track | null>(null);
+  // Auto-scroll to the current playing track and after reorder/additions
+  useEffect(() => {
+    if (currentPlayingTrack?.id) {
+      const el = rowRefs.current[currentPlayingTrack.id];
+      if (el && typeof el.scrollIntoView === 'function') {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+      }
+    }
+  }, [currentPlayingTrack?.id, tracks]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [youtubeIdCache, setYoutubeIdCache] = useState<Map<string, string>>(new Map()); // Cache Spotify ID -> YouTube ID
@@ -3171,6 +3181,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               sortedTracks.map((track, index) => (
               <div
                 key={track.id}
+                data-track-id={track.id}
+                ref={(el) => { rowRefs.current[track.id] = el; }}
                 draggable={!downloading && !isPrivateMode}
                 onDragStart={() => !isPrivateMode && handleDragStart(index)}
                 onDragOver={(e) => !isPrivateMode && handleDragOver(e, index)}
