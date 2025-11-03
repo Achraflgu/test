@@ -3255,10 +3255,22 @@ app.post('/api/download/start', async (req, res) => {
     console.log(`⚠️  No socket ID, will broadcast to all clients`);
   }
 
+  // Helper to sanitize filenames similar to yt-dlp defaults
+  const sanitizeForFs = (name) => {
+    // Replace forbidden or often-sanitized chars with hyphen
+    // Matches yt-dlp style: collapse problematic punctuation
+    return String(name)
+      .replace(/[\\\/:*?"<>|]/g, '-')   // Windows-invalid and common sanitized
+      .replace(/[\u0000-\u001f]/g, '')    // control chars
+      .replace(/\s+/g, ' ')                // collapse whitespace
+      .replace(/-+/g, '-')                  // collapse hyphens
+      .trim();
+  };
+
   // For single track downloads, check if file already exists
   if (selectedTracks.length === 1) {
     const track = selectedTracks[0];
-    const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+    const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
     const expectedFilePath = path.join(outputFolder, expectedFileName);
     
     try {
@@ -5158,7 +5170,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         if (totalTracks === 1) {
           // Single track: check if the specific expected file exists
           const track = tracks[0];
-          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
           const fileExists = musicFiles.some(f => f === expectedFileName);
           currentSuccess = fileExists ? 1 : 0;
           console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
@@ -5327,7 +5339,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         if (totalTracks === 1) {
           // Single track: check if the specific expected file exists
           const track = tracks[0];
-          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
           const fileExists = musicFiles.some(f => f === expectedFileName);
           currentSuccess = fileExists ? 1 : 0;
           console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
@@ -5350,7 +5362,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         
         // Emit track-level status updates
         tracks.forEach(track => {
-          const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
           const trackDownloaded = musicFiles.some(f => f === expectedFileName);
           
           if (trackDownloaded) {
@@ -6314,7 +6326,7 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     // Check for the specific expected file, not just count
     if (tracks.length === 1) {
       const track = tracks[0];
-      const expectedFileName = `${track.artist} - ${track.name}.mp3`;
+      const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
       const singleFile = musicFiles.find(f => f === expectedFileName);
       
       if (singleFile) {
