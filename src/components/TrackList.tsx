@@ -4190,12 +4190,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       {currentPlayingTrack && (
         <div 
           data-music-player
-          className={`fixed z-[100] bg-gradient-to-r from-card/98 to-secondary/98 backdrop-blur-xl border transition-all duration-300 ${
-            isLiveHost ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'border-border shadow-2xl'
+          className={`fixed z-[100] transition-all duration-500 ease-out ${
+            playerPosition === 'bottom' 
+              ? 'bottom-0 left-0 right-0 bg-gradient-to-r from-card/98 to-secondary/98 backdrop-blur-xl border-t border-l-0 border-r-0 border-b-0 border-border shadow-2xl rounded-t-2xl' :
+            playerPosition === 'left' 
+              ? 'left-4 top-1/2 -translate-y-1/2 w-72 sm:w-80 max-h-[85vh] overflow-hidden bg-gradient-to-b from-card/98 via-card/95 to-secondary/98 backdrop-blur-2xl border-2 border-l-primary/30 border-r-border border-t-border border-b-border shadow-[0_0_40px_rgba(34,197,94,0.15),inset_0_0_60px_rgba(34,197,94,0.05)] rounded-2xl hidden md:block' :
+            'right-4 top-1/2 -translate-y-1/2 w-72 sm:w-80 max-h-[85vh] overflow-hidden bg-gradient-to-b from-card/98 via-card/95 to-secondary/98 backdrop-blur-2xl border-2 border-r-primary/30 border-l-border border-t-border border-b-border shadow-[0_0_40px_rgba(34,197,94,0.15),inset_0_0_60px_rgba(34,197,94,0.05)] rounded-2xl hidden md:block'
           } ${
-            playerPosition === 'bottom' ? 'bottom-0 left-0 right-0 rounded-t-xl' :
-            playerPosition === 'left' ? 'left-4 top-1/2 -translate-y-1/2 w-80 rounded-xl' :
-            'right-4 top-1/2 -translate-y-1/2 w-80 rounded-xl'
+            isLiveHost ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : ''
           }`}>
           
           {/* Live Broadcasting Banner */}
@@ -4221,7 +4223,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               <span className="text-xs font-bold uppercase tracking-wider">RESTORING PLAYER · {playerLoadProgress}%</span>
             </div>
           )}
-          <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-3">
+          <div className={`mx-auto ${
+            playerPosition === 'bottom' ? 'container px-2 sm:px-4 py-2 sm:py-3' :
+            'px-4 py-4'
+          }`}>
             {/* Minimized View - Mobile Responsive */}
             {isPlayerMinimized ? (
               <div className="flex items-center gap-2 sm:gap-3 w-full">
@@ -4451,126 +4456,124 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 </div>
               </div>
             ) : (
-              /* Full View - Mobile Responsive */
-              <div className={`space-y-2 sm:space-y-3 ${playerPosition !== 'bottom' ? 'max-w-full' : ''}`}>
-                <div className={`flex flex-col sm:flex-row gap-3 sm:gap-4 ${playerPosition !== 'bottom' ? 'flex-col' : 'sm:items-center'}`}>
-                  {/* Track Info */}
-                  <div className={`flex items-center gap-2 sm:gap-3 ${playerPosition === 'bottom' ? 'flex-1 min-w-0' : 'w-full'}`}>
-                    <img
-                      src={currentPlayingTrack.imageUrl}
-                      alt={currentPlayingTrack.name}
-                      className={`rounded-lg object-cover shadow-lg ring-2 ring-primary/30 ${
-                        playerPosition === 'bottom' ? 'w-12 h-12 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-20 sm:h-20'
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className={`font-bold text-foreground truncate ${
-                        playerPosition === 'bottom' ? 'text-sm sm:text-base md:text-lg' : 'text-sm sm:text-base'
-                      }`}>
-                        {currentPlayingTrack.name}
-                      </p>
-                      <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                        {currentPlayingTrack.artist}
-                      </p>
-                      {isPlayingAll && (
-                        <div className="flex items-center gap-1 mt-0.5 sm:mt-1">
-                          <Repeat className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary" />
-                          <span className="text-[10px] sm:text-xs text-primary font-medium">
-                            Playing {playlistQueue.findIndex(t => t.id === currentPlayingTrack.id) + 1} of {playlistQueue.length}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Player Controls - Mobile Responsive */}
-                  <div className={`flex flex-col items-center gap-1.5 sm:gap-2 ${playerPosition === 'bottom' ? 'flex-1' : 'w-full'}`}>
-                    <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
-                      {/* Shuffle */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={toggleShuffle}
-                        className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${isShuffled ? 'text-primary' : 'text-muted-foreground'}`}
-                        title={isShuffled ? 'Shuffle on' : 'Shuffle off'}
-                      >
-                        <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={playPrevious}
-                        disabled={isPlayerLoading || !isPlayerReady}
-                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
-                      >
-                        <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-                      </Button>
-                      
-                      <Button
-                        size="lg"
-                        onClick={togglePlayPause}
-                        disabled={isPlayerLoading || !isPlayerReady}
-                        className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 p-0"
-                      >
-                        {isPlayerLoading ? (
-                          <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 animate-spin" />
-                        ) : isPlaying ? (
-                          <Pause className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
-                        ) : (
-                          <Play className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 ml-0.5" />
+              /* Full View - Creative Vertical Layout */
+              playerPosition === 'bottom' ? (
+                /* Bottom Layout - Horizontal */
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center">
+                    {/* Track Info */}
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                      <img
+                        src={currentPlayingTrack.imageUrl}
+                        alt={currentPlayingTrack.name}
+                        className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover shadow-lg ring-2 ring-primary/30"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-foreground truncate text-sm sm:text-base md:text-lg">
+                          {currentPlayingTrack.name}
+                        </p>
+                        <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                          {currentPlayingTrack.artist}
+                        </p>
+                        {isPlayingAll && (
+                          <div className="flex items-center gap-1 mt-0.5 sm:mt-1">
+                            <Repeat className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary" />
+                            <span className="text-[10px] sm:text-xs text-primary font-medium">
+                              Playing {playlistQueue.findIndex(t => t.id === currentPlayingTrack.id) + 1} of {playlistQueue.length}
+                            </span>
+                          </div>
                         )}
-                      </Button>
-                      
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={playNext}
-                        disabled={isPlayerLoading || !isPlayerReady}
-                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
-                      >
-                        <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-                      </Button>
-
-                      {/* Repeat */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={toggleRepeatMode}
-                        className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${repeatMode !== 'off' ? 'text-primary' : 'text-muted-foreground'}`}
-                        title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
-                      >
-                        {repeatMode === 'one' ? (
-                          <Repeat1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        ) : (
-                          <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        )}
-                      </Button>
-                    </div>
-
-                    {/* Progress Bar - Mobile Responsive */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 w-full max-w-lg px-1 sm:px-0">
-                      <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 text-right flex-shrink-0">
-                        {formatDuration(Math.floor(currentTime))}
-                      </span>
-                      <div className="flex-1 group">
-                        <input
-                          type="range"
-                          min="0"
-                          max={duration || 100}
-                          value={currentTime}
-                          onChange={(e) => seekTo(Number(e.target.value))}
-                          className="w-full h-1 sm:h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:w-4 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform touch-none"
-                        />
                       </div>
-                      <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 flex-shrink-0">
-                        {formatDuration(Math.floor(duration))}
-                      </span>
                     </div>
-                  </div>
 
-                  {/* Volume & Actions - Mobile Responsive */}
-                  <div className={`flex items-center gap-1.5 sm:gap-2 md:gap-3 justify-end ${playerPosition === 'bottom' ? 'flex-1' : 'w-full'}`}>
+                    {/* Player Controls */}
+                    <div className="flex flex-col items-center gap-1.5 sm:gap-2 flex-1">
+                      <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+                        {/* Shuffle */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={toggleShuffle}
+                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${isShuffled ? 'text-primary' : 'text-muted-foreground'}`}
+                          title={isShuffled ? 'Shuffle on' : 'Shuffle off'}
+                        >
+                          <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={playPrevious}
+                          disabled={isPlayerLoading || !isPlayerReady}
+                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
+                        >
+                          <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </Button>
+                        
+                        <Button
+                          size="lg"
+                          onClick={togglePlayPause}
+                          disabled={isPlayerLoading || !isPlayerReady}
+                          className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 p-0"
+                        >
+                          {isPlayerLoading ? (
+                            <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 animate-spin" />
+                          ) : isPlaying ? (
+                            <Pause className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
+                          ) : (
+                            <Play className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 ml-0.5" />
+                          )}
+                        </Button>
+                        
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={playNext}
+                          disabled={isPlayerLoading || !isPlayerReady}
+                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
+                        >
+                          <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </Button>
+
+                        {/* Repeat */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={toggleRepeatMode}
+                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${repeatMode !== 'off' ? 'text-primary' : 'text-muted-foreground'}`}
+                          title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+                        >
+                          {repeatMode === 'one' ? (
+                            <Repeat1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          ) : (
+                            <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="flex items-center gap-1.5 sm:gap-2 w-full max-w-lg px-1 sm:px-0">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 text-right flex-shrink-0">
+                          {formatDuration(Math.floor(currentTime))}
+                        </span>
+                        <div className="flex-1 group">
+                          <input
+                            type="range"
+                            min="0"
+                            max={duration || 100}
+                            value={currentTime}
+                            onChange={(e) => seekTo(Number(e.target.value))}
+                            className="w-full h-1 sm:h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:w-4 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform touch-none"
+                          />
+                        </div>
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 flex-shrink-0">
+                          {formatDuration(Math.floor(duration))}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Volume & Actions */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 justify-end flex-1">
                     {/* Volume Control - Mobile: Icon only, Desktop: Icon + Slider */}
                     <div className="relative group/volume flex items-center gap-1.5 sm:gap-2">
                       <Button
@@ -4694,8 +4697,198 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Vertical Layout - Left/Right Side - Creative & Compact */
+                <div className="flex flex-col gap-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
+                  {/* Large Album Art - Centered */}
+                  <div className="flex flex-col items-center gap-3 pt-2">
+                    <div className="relative group/art">
+                      <img
+                        src={currentPlayingTrack.imageUrl}
+                        alt={currentPlayingTrack.name}
+                        className="w-48 h-48 sm:w-56 sm:h-56 rounded-2xl object-cover shadow-2xl ring-4 ring-primary/30 transition-transform duration-300 group-hover/art:scale-105"
+                      />
+                      {isPlaying && (
+                        <div className="absolute inset-0 rounded-2xl bg-primary/10 animate-pulse"></div>
+                      )}
+                    </div>
+                    
+                    {/* Track Info - Centered */}
+                    <div className="text-center px-2">
+                      <h3 className="font-bold text-lg sm:text-xl text-foreground line-clamp-2 leading-tight mb-1">
+                        {currentPlayingTrack.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {currentPlayingTrack.artist}
+                      </p>
+                      {isPlayingAll && (
+                        <div className="flex items-center justify-center gap-1.5 mt-2">
+                          <Repeat className="w-3 h-3 text-primary" />
+                          <span className="text-xs text-primary font-medium">
+                            {playlistQueue.findIndex(t => t.id === currentPlayingTrack.id) + 1} / {playlistQueue.length}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Progress Bar - Vertical */}
+                  <div className="px-4">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground font-mono mb-2">
+                      <span>{formatDuration(Math.floor(currentTime))}</span>
+                      <span>{formatDuration(Math.floor(duration))}</span>
+                    </div>
+                    <div className="group">
+                      <input
+                        type="range"
+                        min="0"
+                        max={duration || 100}
+                        value={currentTime}
+                        onChange={(e) => seekTo(Number(e.target.value))}
+                        className="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-125 [&::-webkit-slider-thumb]:transition-transform"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Main Controls - Vertical Stack */}
+                  <div className="flex flex-col items-center gap-3 px-4">
+                    <div className="flex items-center justify-center gap-3">
+                      {/* Shuffle */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={toggleShuffle}
+                        className={`hover:bg-primary/20 transition-all h-10 w-10 rounded-full p-0 ${isShuffled ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
+                        title={isShuffled ? 'Shuffle on' : 'Shuffle off'}
+                      >
+                        <Shuffle className="w-5 h-5" />
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={playPrevious}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-10 w-10 rounded-full p-0"
+                      >
+                        <SkipBack className="w-5 h-5" />
+                      </Button>
+                      
+                      <Button
+                        size="lg"
+                        onClick={togglePlayPause}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="w-16 h-16 rounded-full bg-primary hover:bg-primary/90 shadow-xl hover:shadow-2xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 p-0"
+                      >
+                        {isPlayerLoading ? (
+                          <Loader2 className="w-8 h-8 animate-spin" />
+                        ) : isPlaying ? (
+                          <Pause className="w-8 h-8" fill="currentColor" />
+                        ) : (
+                          <Play className="w-8 h-8 ml-1" fill="currentColor" />
+                        )}
+                      </Button>
+                      
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={playNext}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                        className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-10 w-10 rounded-full p-0"
+                      >
+                        <SkipForward className="w-5 h-5" />
+                      </Button>
+
+                      {/* Repeat */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={toggleRepeatMode}
+                        className={`hover:bg-primary/20 transition-all h-10 w-10 rounded-full p-0 ${repeatMode !== 'off' ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
+                        title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+                      >
+                        {repeatMode === 'one' ? (
+                          <Repeat1 className="w-5 h-5" />
+                        ) : (
+                          <Repeat className="w-5 h-5" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Volume Control - Vertical */}
+                  <div className="px-4 pb-2">
+                    <div className="flex items-center justify-center gap-3">
+                      <VolumeX className="w-4 h-4 text-muted-foreground" />
+                      <div className="flex-1 group">
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={isMuted ? 0 : volume}
+                          onChange={(e) => changeVolume(Number(e.target.value))}
+                          className="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-125 [&::-webkit-slider-thumb]:transition-transform"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={toggleMute}
+                        className="hover:bg-primary/20 h-8 w-8 p-0"
+                      >
+                        {isMuted || volume === 0 ? (
+                          <VolumeX className="w-4 h-4" />
+                        ) : (
+                          <Volume2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons - Compact Row */}
+                  <div className="flex items-center justify-center gap-2 px-4 pb-4 border-t border-border/50 pt-3">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowFullScreenPlayer(true)}
+                      className="hover:bg-primary/20 h-8 w-8 p-0"
+                      title="Fullscreen"
+                    >
+                      <Maximize className="w-4 h-4" />
+                    </Button>
+                    
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={cyclePlayerPosition}
+                      className="hover:bg-primary/20 h-8 w-8 p-0"
+                      title={playerPosition === 'right' ? 'Move to left side' : 'Move to right side'}
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setCurrentPlayingTrack(null);
+                        setIsPlaying(false);
+                        setIsPlayingAll(false);
+                        if (playerRef.current) {
+                          playerRef.current.stopVideo();
+                        }
+                      }}
+                      className="hover:bg-destructive/20 hover:text-destructive h-8 w-8 p-0"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
             )}
           </div>
         </div>
