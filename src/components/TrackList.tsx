@@ -1879,6 +1879,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         document.body.removeAttribute('data-player-visible');
       }
     }
+    // Cleanup on unmount
+    return () => {
+      document.body.removeAttribute('data-player-position');
+      document.body.removeAttribute('data-player-visible');
+    };
   }, [playerPosition, currentPlayingTrack]);
 
   const openTrackDetails = (track: Track) => {
