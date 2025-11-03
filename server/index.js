@@ -3155,6 +3155,36 @@ function sanitizeForFs(name) {
     .trim();
 }
 
+// Fuzzy matcher: decide if a given filename belongs to a track
+function isFileMatchForTrack(fileName, track) {
+  const normalize = (str) => String(str)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const fileNorm = normalize(fileName.replace(/\.(mp3|flac|ogg)$/i, ''));
+  const artistNorm = normalize(track.artist);
+  const nameNorm = normalize(track.name);
+
+  // Break track name into significant words (length > 2)
+  const nameWords = nameNorm.split(' ').filter(w => w.length > 2);
+  const matchingNameWords = nameWords.filter(w => fileNorm.includes(w));
+  const nameMatchPercent = nameWords.length > 0 ? matchingNameWords.length / nameWords.length : 0;
+
+  // Heuristics:
+  // 1) File contains artist AND at least 50% of track name words
+  if (artistNorm && fileNorm.includes(artistNorm) && nameMatchPercent >= 0.5) return true;
+  // 2) File contains at least 70% of track name words (artist may differ)
+  if (nameMatchPercent >= 0.7) return true;
+  // 3) Direct includes of normalized name and artist
+  if (artistNorm && fileNorm.includes(artistNorm) && fileNorm.includes(nameNorm)) return true;
+
+  return false;
+}
+
 app.post('/api/download/start', async (req, res) => {
   const { playlistUrl, tracks, settings, folderName, playlistImages, socketId } = req.body;
 
@@ -3274,7 +3304,25 @@ app.post('/api/download/start', async (req, res) => {
     const expectedFilePath = path.join(outputFolder, expectedFileName);
     
     try {
-      await fs.access(expectedFilePath);
+      let fileExists = false;
+      try {
+        await fs.access(expectedFilePath);
+        fileExists = true;
+      } catch {}
+
+      // If exact match not found, try fuzzy match among existing files
+      if (!fileExists) {
+        const files = await fs.readdir(outputFolder);
+        const musicFiles = files.filter(f => f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg'));
+        const fuzzy = musicFiles.find(f => isFileMatchForTrack(f, track));
+        if (fuzzy) {
+          fileExists = true;
+          console.log(`✅ Fuzzy match found for existing file: ${fuzzy}`);
+        }
+      }
+
+      if (!fileExists) throw new Error('Not found');
+
       // File exists! Skip download and mark as complete immediately
       console.log(`✅ File already exists: ${expectedFileName}`);
       console.log(`⚡ Skipping download - file ready for instant download!`);
@@ -5168,12 +5216,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         const totalTracks = tracks.length;
         
         if (totalTracks === 1) {
-          // Single track: check if the specific expected file exists
+          // Single track: allow fuzzy match for success detection
           const track = tracks[0];
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          const fileExists = musicFiles.some(f => f === expectedFileName);
+          let fileExists = musicFiles.some(f => f === expectedFileName);
+          if (!fileExists) {
+            fileExists = musicFiles.some(f => isFileMatchForTrack(f, track));
+          }
           currentSuccess = fileExists ? 1 : 0;
-          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
+          console.log(`📝 Single track check: ${expectedFileName} (fuzzy=${fileExists})`);
         } else {
           // Multiple tracks: count all music files in the subfolder
           currentSuccess = musicFiles.length;
@@ -5337,12 +5388,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         const totalTracks = tracks.length;
         
         if (totalTracks === 1) {
-          // Single track: check if the specific expected file exists
+          // Single track: allow fuzzy match for success detection
           const track = tracks[0];
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          const fileExists = musicFiles.some(f => f === expectedFileName);
+          let fileExists = musicFiles.some(f => f === expectedFileName);
+          if (!fileExists) {
+            fileExists = musicFiles.some(f => isFileMatchForTrack(f, track));
+          }
           currentSuccess = fileExists ? 1 : 0;
-          console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
+          console.log(`📝 Single track check: ${expectedFileName} (fuzzy=${fileExists})`);
         } else {
           // Multiple tracks: count all music files in the subfolder
           currentSuccess = musicFiles.length;
@@ -5363,7 +5417,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         // Emit track-level status updates
         tracks.forEach(track => {
           const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          const trackDownloaded = musicFiles.some(f => f === expectedFileName);
+          let trackDownloaded = musicFiles.some(f => f === expectedFileName);
+          if (!trackDownloaded) {
+            trackDownloaded = musicFiles.some(f => isFileMatchForTrack(f, track));
+          }
           
           if (trackDownloaded) {
             socket.emit('download:track', {
@@ -6327,7 +6384,11 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     if (tracks.length === 1) {
       const track = tracks[0];
       const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-      const singleFile = musicFiles.find(f => f === expectedFileName);
+      let singleFile = musicFiles.find(f => f === expectedFileName);
+      if (!singleFile) {
+        // Try fuzzy match if exact not found
+        singleFile = musicFiles.find(f => isFileMatchForTrack(f, track));
+      }
       
       if (singleFile) {
         const filePath = path.join(outputFolder, singleFile);
