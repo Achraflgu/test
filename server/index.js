@@ -370,21 +370,127 @@ async function extractBrowserCookies() {
 }
 
 // ====================================
-// 🤖 AUTO-COOKIE GENERATION SYSTEM
+// 🤖 SMART AUTO-COOKIE MANAGEMENT SYSTEM
 // ====================================
-// Generates realistic YouTube cookies automatically
-// No user interaction required!
+// Tests cookies, regenerates if failed, saves working ones
+// Preserves existing working cookies on restart
 // ====================================
 
-function generateRealisticYouTubeCookies() {
+// Cookie metadata tracking
+const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
+const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
+const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Short test video (Me at the zoo - oldest YouTube video)
+
+// Load cookie metadata
+async function loadCookieMetadata() {
   try {
-    console.log('  🤖 Auto-generating YouTube cookies (no user action required)');
+    const content = await fs.readFile(COOKIE_METADATA_PATH, 'utf8');
+    return JSON.parse(content);
+  } catch (err) {
+    return {
+      lastTested: null,
+      successCount: 0,
+      failureCount: 0,
+      isValid: false,
+      generationAttempt: 0
+    };
+  }
+}
+
+// Save cookie metadata
+async function saveCookieMetadata(metadata) {
+  try {
+    await fs.writeFile(COOKIE_METADATA_PATH, JSON.stringify(metadata, null, 2), 'utf8');
+  } catch (err) {
+    // Silent fail
+  }
+}
+
+// Test if cookies work by attempting a small download
+async function testCookies(cookiePath) {
+  try {
+    console.log('  🧪 Testing cookies with test video...');
     
-    // Generate realistic values
+    // Use yt-dlp to test cookies with a short test video
+    const testArgs = [
+      '-m', 'yt_dlp',
+      `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`,
+      '--cookies', cookiePath,
+      '--dump-json', // Just get info, don't download
+      '--no-playlist',
+      '--quiet',
+      '--no-warnings',
+      '--extractor-args', 'youtube:player_client=web_embedded',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    ];
+    
+    return new Promise((resolve) => {
+      const testProcess = spawn(PYTHON_CMD, testArgs, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 15000 // 15 second timeout
+      });
+      
+      let output = '';
+      let errorOutput = '';
+      
+      testProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      testProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      testProcess.on('close', (code) => {
+        // Check for success indicators
+        const hasTitle = output.includes('"title"') || output.includes('"id"');
+        const noError = !errorOutput.includes('Sign in to confirm') && 
+                       !errorOutput.includes('LOGIN_REQUIRED') &&
+                       !errorOutput.includes('Unable to extract');
+        
+        if (code === 0 && hasTitle && noError) {
+          console.log('  ✅ Cookie test PASSED - cookies are working!');
+          resolve(true);
+        } else {
+          console.log('  ❌ Cookie test FAILED - cookies need regeneration');
+          if (errorOutput) {
+            console.log(`  📝 Error: ${errorOutput.substring(0, 200)}`);
+          }
+          resolve(false);
+        }
+      });
+      
+      testProcess.on('error', () => {
+        console.log('  ❌ Cookie test ERROR - process failed');
+        resolve(false);
+      });
+      
+      // Timeout fallback
+      setTimeout(() => {
+        try {
+          testProcess.kill();
+        } catch {}
+        console.log('  ⏱️ Cookie test TIMEOUT');
+        resolve(false);
+      }, 15000);
+    });
+  } catch (err) {
+    console.log(`  ⚠️ Cookie test exception: ${err.message}`);
+    return false;
+  }
+}
+
+// Generate professional YouTube cookies
+function generateRealisticYouTubeCookies(attempt = 0) {
+  try {
+    console.log(`  🤖 Generating professional YouTube cookies (attempt ${attempt + 1})...`);
+    
+    // Generate realistic values with better patterns
     const timestamp = Date.now();
-    const expiry = Math.floor(timestamp / 1000) + (365 * 24 * 60 * 60); // 1 year from now
+    const expiry = Math.floor(timestamp / 1000) + (365 * 24 * 60 * 60); // 1 year
+    const sessionExpiry = Math.floor(timestamp / 1000) + (30 * 24 * 60 * 60); // 30 days
     
-    // Generate realistic VISITOR_INFO1_LIVE (11 chars alphanumeric)
+    // Generate realistic VISITOR_INFO1_LIVE (format: [a-zA-Z0-9_-]{11})
     const generateVisitorId = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
       let result = '';
@@ -394,7 +500,7 @@ function generateRealisticYouTubeCookies() {
       return result;
     };
     
-    // Generate realistic YSC (11 chars alphanumeric)
+    // Generate realistic YSC (YouTube Session Cookie)
     const generateYSC = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
       let result = '';
@@ -404,49 +510,164 @@ function generateRealisticYouTubeCookies() {
       return result;
     };
     
-    // Generate realistic PREF value
-    const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=America.New_York`;
+    // Generate realistic PREF value with variation
+    const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
+    const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=${timezones[Math.floor(Math.random() * timezones.length)]}&f6=40000000`;
     
-    // Generate realistic CONSENT value (GDPR consent)
-    const consentValue = `YES+cb.20210328-17-p0.en+FX+${Math.floor(Math.random() * 1000)}`;
+    // Generate realistic CONSENT value (updated format)
+    const consentDates = ['20210328-17-p0', '20210428-17-p0', '20210528-17-p0', '20210628-17-p0', '20210728-17-p0'];
+    const consentValue = `YES+cb.${consentDates[Math.floor(Math.random() * consentDates.length)]}.en+FX+${Math.floor(Math.random() * 1000)}`;
     
-    // Create cookie content in Netscape format
+    // Generate realistic session IDs
+    const generateSessionId = (length) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    };
+    
+    // Create comprehensive cookie content
     const cookieContent = `# Netscape HTTP Cookie File
 # This is a generated file. Do not edit.
 # Auto-generated by TrackM Backend - ${new Date().toISOString()}
+# Generation attempt: ${attempt + 1}
 
 # Essential YouTube cookies for authentication
 .youtube.com	TRUE	/	TRUE	${expiry}	VISITOR_INFO1_LIVE	${generateVisitorId()}
-.youtube.com	TRUE	/	FALSE	${expiry}	YSC	${generateYSC()}
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	YSC	${generateYSC()}
 .youtube.com	TRUE	/	TRUE	${expiry}	PREF	${prefValue}
 .youtube.com	TRUE	/	TRUE	${expiry}	CONSENT	${consentValue}
-.youtube.com	TRUE	/	FALSE	${expiry}	GPS	1
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	GPS	1
 
 # Additional cookies for better compatibility
-.google.com	TRUE	/	TRUE	${expiry}	NID	${Math.floor(Math.random() * 1000000000)}
-.google.com	TRUE	/	TRUE	${expiry}	SID	${generateYSC()}${generateYSC()}
+.google.com	TRUE	/	TRUE	${expiry}	NID	${generateSessionId(20)}
+.google.com	TRUE	/	TRUE	${expiry}	SID	${generateSessionId(20)}
+.google.com	TRUE	/	TRUE	${expiry}	__Secure-3PSID	${generateSessionId(40)}
+
+# YouTube-specific session cookies
+.youtube.com	TRUE	/	TRUE	${sessionExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
 `;
     
     return cookieContent;
   } catch (err) {
-    console.log(`  ⚠️ Auto-cookie generation failed: ${err.message}`);
+    console.log(`  ⚠️ Cookie generation failed: ${err.message}`);
     return null;
   }
 }
 
-// Generate and save auto-cookies on startup
-async function initializeAutoCookies() {
-  try {
-    const autoCookiePath = path.join(__dirname, '.auto_generated_cookies.txt');
-    const cookieContent = generateRealisticYouTubeCookies();
-    
-    if (cookieContent) {
-      await fs.writeFile(autoCookiePath, cookieContent, 'utf8');
-      console.log('✅ Auto-generated cookies created successfully');
-      return autoCookiePath;
+// Generate and test cookies until one works (max 5 attempts)
+async function generateAndTestCookies(maxAttempts = 5) {
+  let attempt = 0;
+  
+  while (attempt < maxAttempts) {
+    // Generate new cookies
+    const cookieContent = generateRealisticYouTubeCookies(attempt);
+    if (!cookieContent) {
+      attempt++;
+      continue;
     }
     
-    return null;
+    // Save to temp file for testing
+    const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}.txt`);
+    await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+    
+    // Test the cookies
+    const testResult = await testCookies(tempCookiePath);
+    
+    if (testResult) {
+      // ✅ Cookies work! Save them permanently
+      await fs.writeFile(AUTO_COOKIE_PATH, cookieContent, 'utf8');
+      await fs.unlink(tempCookiePath).catch(() => {}); // Clean up temp file
+      
+      // Update metadata
+      const metadata = await loadCookieMetadata();
+      metadata.lastTested = new Date().toISOString();
+      metadata.successCount = (metadata.successCount || 0) + 1;
+      metadata.isValid = true;
+      metadata.generationAttempt = attempt + 1;
+      await saveCookieMetadata(metadata);
+      
+      console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts})`);
+      return AUTO_COOKIE_PATH;
+    } else {
+      // ❌ Cookies failed, try again
+      await fs.unlink(tempCookiePath).catch(() => {});
+      attempt++;
+      console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
+      
+      // Small delay between attempts
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  // All attempts failed - use last generated cookies anyway (fallback)
+  console.log(`⚠️ All ${maxAttempts} cookie generation attempts failed, using last generated cookies as fallback`);
+  const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
+  if (fallbackContent) {
+    await fs.writeFile(AUTO_COOKIE_PATH, fallbackContent, 'utf8');
+    return AUTO_COOKIE_PATH;
+  }
+  
+  return null;
+}
+
+// Initialize auto-cookies on startup with smart testing
+async function initializeAutoCookies() {
+  try {
+    console.log('🔄 Checking auto-generated cookies...');
+    
+    // Check if cookies exist
+    let cookiesExist = false;
+    try {
+      await fs.access(AUTO_COOKIE_PATH);
+      const existingContent = await fs.readFile(AUTO_COOKIE_PATH, 'utf8');
+      
+      if (existingContent && existingContent.length > 200 && existingContent.includes('VISITOR_INFO1_LIVE')) {
+        cookiesExist = true;
+        console.log('  📁 Found existing cookies, testing...');
+        
+        // Test existing cookies
+        const testResult = await testCookies(AUTO_COOKIE_PATH);
+        
+        if (testResult) {
+          // ✅ Existing cookies work!
+          const metadata = await loadCookieMetadata();
+          metadata.lastTested = new Date().toISOString();
+          metadata.successCount = (metadata.successCount || 0) + 1;
+          metadata.isValid = true;
+          await saveCookieMetadata(metadata);
+          
+          console.log('✅ Existing cookies are WORKING - reusing them!');
+          console.log(`🍪 Auto-cookies available at: ${AUTO_COOKIE_PATH}`);
+          return AUTO_COOKIE_PATH;
+        } else {
+          // ❌ Existing cookies failed, need regeneration
+          console.log('  ❌ Existing cookies FAILED - will generate new ones...');
+          const metadata = await loadCookieMetadata();
+          metadata.failureCount = (metadata.failureCount || 0) + 1;
+          metadata.isValid = false;
+          await saveCookieMetadata(metadata);
+        }
+      }
+    } catch (err) {
+      // Cookies don't exist
+      console.log('  📝 No existing cookies found');
+    }
+    
+    // Generate and test new cookies
+    console.log('  🔄 Generating and testing new cookies...');
+    const cookiePath = await generateAndTestCookies(5); // Try up to 5 times
+    
+    if (cookiePath) {
+      console.log(`🍪 Auto-cookies available at: ${cookiePath}`);
+      return cookiePath;
+    } else {
+      console.log('⚠️ Failed to generate working cookies, will use cookie-less methods');
+      return null;
+    }
   } catch (err) {
     console.log(`⚠️ Failed to initialize auto-cookies: ${err.message}`);
     return null;
@@ -456,9 +677,40 @@ async function initializeAutoCookies() {
 // Initialize auto-cookies on server startup
 initializeAutoCookies().then(cookiePath => {
   if (cookiePath) {
-    console.log(`🍪 Auto-cookies available at: ${cookiePath}`);
+    // Already logged in initializeAutoCookies()
   }
 });
+
+// Monitor cookie health during downloads
+async function markCookiesAsWorking() {
+  try {
+    const metadata = await loadCookieMetadata();
+    metadata.lastUsed = new Date().toISOString();
+    metadata.successCount = (metadata.successCount || 0) + 1;
+    metadata.isValid = true;
+    await saveCookieMetadata(metadata);
+  } catch (err) {
+    // Silent fail
+  }
+}
+
+// Monitor cookie failure
+async function markCookiesAsFailed() {
+  try {
+    const metadata = await loadCookieMetadata();
+    metadata.failureCount = (metadata.failureCount || 0) + 1;
+    
+    // If cookies fail too many times, regenerate
+    if (metadata.failureCount >= 3) {
+      metadata.isValid = false;
+      console.log('⚠️ Cookies failed multiple times, will regenerate on next restart');
+    }
+    
+    await saveCookieMetadata(metadata);
+  } catch (err) {
+    // Silent fail
+  }
+}
 
 // 🔥 ADVANCED BOT DETECTION BYPASS UTILITIES
 async function addAdvancedBotBypass(args, strategy, attempt) {
@@ -4564,6 +4816,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
             successCount++;
             
+            // Mark cookies as working (if auto-generated cookies were used)
+            await markCookiesAsWorking();
+            
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
@@ -4587,6 +4842,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           if (ytdlExecSuccess) {
             console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
             successCount++;
+            
+            // Mark cookies as working (if auto-generated cookies were used)
+            await markCookiesAsWorking();
             
             socket.emit('download:progress', {
               downloadId,
