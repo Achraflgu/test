@@ -4087,6 +4087,24 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
     };
     
+    // 🔥 CRITICAL FIX: Add cookies for YouTube authentication
+    try {
+      const cookieSetup = await setupYouTubeCookies();
+      if (cookieSetup) {
+        if (cookieSetup.type === 'file') {
+          downloadOptions.cookies = cookieSetup.path;
+          console.log(`  ✅ Authenticated with YouTube cookies (file)`);
+        } else if (cookieSetup.type === 'browser') {
+          downloadOptions.cookiesFromBrowser = cookieSetup.browser;
+          console.log(`  ✅ Authenticated with ${cookieSetup.browser} browser cookies`);
+        }
+      } else {
+        console.log(`  ⚠️ No cookies available - may fail with bot detection`);
+      }
+    } catch (err) {
+      console.log(`  ⚠️ Cookie setup failed: ${err.message}`);
+    }
+    
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
     // Download with youtube-dl-exec
