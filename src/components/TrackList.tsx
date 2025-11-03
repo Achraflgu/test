@@ -85,17 +85,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [playlistQueue, setPlaylistQueue] = useState<Track[]>([]);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('all');
   const [isShuffled, setIsShuffled] = useState(false);
-  // Initialize player position from localStorage, default to 'bottom'
+  // Load saved player position from localStorage
   const [playerPosition, setPlayerPosition] = useState<'bottom' | 'left' | 'right'>(() => {
-    try {
-      const saved = localStorage.getItem('musicPlayerPosition');
-      if (saved === 'bottom' || saved === 'left' || saved === 'right') {
-        return saved;
-      }
-    } catch (error) {
-      console.error('Error loading player position:', error);
-    }
-    return 'bottom';
+    const saved = localStorage.getItem('music-player-position');
+    return (saved === 'left' || saved === 'right' || saved === 'bottom') ? saved : 'bottom';
   });
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
@@ -1869,13 +1862,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     const nextPosition = positions[(currentIndex + 1) % positions.length];
     setPlayerPosition(nextPosition);
     // Save to localStorage
-    try {
-      localStorage.setItem('musicPlayerPosition', nextPosition);
-      console.log('💾 Saved player position:', nextPosition);
-    } catch (error) {
-      console.error('Error saving player position:', error);
-    }
+    localStorage.setItem('music-player-position', nextPosition);
   };
+  
+  // Save position whenever it changes (including from restored state)
+  useEffect(() => {
+    if (playerPosition) {
+      localStorage.setItem('music-player-position', playerPosition);
+    }
+  }, [playerPosition]);
 
   const openTrackDetails = (track: Track) => {
     setSelectedTrackForDetails(track);
@@ -2907,7 +2902,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   });
 
   return (
-    <div className="relative group" data-track-list>
+    <div 
+      className={`relative group transition-all duration-300 ${
+        playerPosition === 'left' && currentPlayingTrack ? 'md:ml-[340px]' : 
+        playerPosition === 'right' && currentPlayingTrack ? 'md:mr-[340px]' : 
+        ''
+      }`} 
+      data-track-list
+    >
       <div className="absolute -inset-1 bg-gradient-to-r from-primary/5 to-accent/5 rounded-2xl blur-xl opacity-50" />
       <div className="relative bg-card rounded-2xl border border-border shadow-card overflow-hidden">
         {/* Preview Mode Banner */}
