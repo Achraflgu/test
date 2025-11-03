@@ -85,7 +85,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [playlistQueue, setPlaylistQueue] = useState<Track[]>([]);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('all');
   const [isShuffled, setIsShuffled] = useState(false);
-  const [playerPosition, setPlayerPosition] = useState<'bottom' | 'bottom-left' | 'bottom-right'>('bottom');
+  const [playerPosition, setPlayerPosition] = useState<'bottom' | 'left' | 'right'>('bottom');
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
   const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
@@ -1853,7 +1853,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   }, [currentPlayingTrack, volume, duration, isPipSupported, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
 
   const cyclePlayerPosition = () => {
-    const positions: Array<'bottom' | 'bottom-left' | 'bottom-right'> = ['bottom', 'bottom-left', 'bottom-right'];
+    const positions: Array<'bottom' | 'left' | 'right'> = ['bottom', 'right', 'left'];
     const currentIndex = positions.indexOf(playerPosition);
     const nextPosition = positions[(currentIndex + 1) % positions.length];
     setPlayerPosition(nextPosition);
@@ -4194,13 +4194,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             isLiveHost ? 'border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'border-border shadow-2xl'
           } ${
             playerPosition === 'bottom' ? 'bottom-0 left-0 right-0 rounded-t-xl' :
-            playerPosition === 'bottom-left' ? 'bottom-4 left-4 w-96 rounded-xl' :
-            'bottom-4 right-4 w-96 rounded-xl'
+            playerPosition === 'right' ? 'top-0 right-0 bottom-0 w-80 sm:w-96 rounded-l-xl' :
+            'top-0 left-0 bottom-0 w-80 sm:w-96 rounded-r-xl'
           }`}>
           
           {/* Live Broadcasting Banner */}
           {isLiveHost && (
-            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gradient-to-r from-green-600 to-green-500 text-white px-4 py-1 rounded-t-lg flex items-center gap-2 shadow-lg animate-pulse">
+            <div className={`absolute ${
+              playerPosition === 'bottom' ? '-top-8 left-1/2 -translate-x-1/2' :
+              playerPosition === 'right' ? '-right-8 top-1/2 -translate-y-1/2 rotate-90' :
+              '-left-8 top-1/2 -translate-y-1/2 rotate-90'
+            } bg-gradient-to-r from-green-600 to-green-500 text-white px-4 py-1 rounded-lg flex items-center gap-2 shadow-lg animate-pulse whitespace-nowrap`}>
               <Radio className="w-3 h-3" />
               <span className="text-xs font-bold uppercase tracking-wider">LIVE · {liveListenerCount} Listening</span>
             </div>
@@ -4208,15 +4212,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           
           {/* Player Loading Indicator */}
           {isRestoringPlayer && (
-            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-1 rounded-t-lg flex items-center gap-2 shadow-lg">
+            <div className={`absolute ${
+              playerPosition === 'bottom' ? '-top-8 left-1/2 -translate-x-1/2' :
+              playerPosition === 'right' ? '-right-8 top-1/2 -translate-y-1/2 rotate-90' :
+              '-left-8 top-1/2 -translate-y-1/2 rotate-90'
+            } bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-1 rounded-lg flex items-center gap-2 shadow-lg whitespace-nowrap`}>
               <Loader2 className="w-3 h-3 animate-spin" />
               <span className="text-xs font-bold uppercase tracking-wider">RESTORING PLAYER · {playerLoadProgress}%</span>
             </div>
           )}
-          <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-3">
+          <div className={`${playerPosition === 'bottom' ? 'container mx-auto px-2 sm:px-4 py-2 sm:py-3' : 'px-3 sm:px-4 py-3 sm:py-4 overflow-y-auto h-full'}`}>
             {/* Minimized View - Mobile Responsive */}
             {isPlayerMinimized ? (
-              <div className="flex items-center gap-2 sm:gap-3 w-full">
+              <div className={`flex ${playerPosition === 'bottom' ? 'items-center gap-2 sm:gap-3' : 'flex-col items-center gap-2'} w-full`}>
                 {/* Album Art with Play Overlay */}
                 <div className="relative group/mini cursor-pointer flex-shrink-0" onClick={togglePlayPause}>
                   <img
@@ -4444,8 +4452,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               </div>
             ) : (
               /* Full View - Mobile Responsive */
-              <div className={`space-y-2 sm:space-y-3 ${playerPosition !== 'bottom' ? 'max-w-full' : ''}`}>
-                <div className={`flex flex-col sm:flex-row gap-3 sm:gap-4 ${playerPosition !== 'bottom' ? 'flex-col' : 'sm:items-center'}`}>
+              <div className={`${playerPosition === 'bottom' ? 'space-y-2 sm:space-y-3' : 'space-y-3 sm:space-y-4'} ${playerPosition !== 'bottom' ? 'max-w-full' : ''}`}>
+                <div className={`flex ${playerPosition === 'bottom' ? 'flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center' : 'flex-col gap-3 sm:gap-4'}`}>
                   {/* Track Info */}
                   <div className={`flex items-center gap-2 sm:gap-3 ${playerPosition === 'bottom' ? 'flex-1 min-w-0' : 'w-full'}`}>
                     <img
@@ -4476,7 +4484,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   </div>
 
                   {/* Player Controls - Mobile Responsive */}
-                  <div className={`flex flex-col items-center gap-1.5 sm:gap-2 ${playerPosition === 'bottom' ? 'flex-1' : 'w-full'}`}>
+                  <div className={`flex flex-col items-center gap-1.5 sm:gap-2 ${playerPosition === 'bottom' ? 'flex-1' : 'w-full order-2'}`}>
                     <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
                       {/* Shuffle */}
                       <Button
@@ -4562,9 +4570,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   </div>
 
                   {/* Volume & Actions - Mobile Responsive */}
-                  <div className={`flex items-center gap-1.5 sm:gap-2 md:gap-3 justify-end ${playerPosition === 'bottom' ? 'flex-1' : 'w-full'}`}>
+                  <div className={`flex ${playerPosition === 'bottom' ? 'items-center gap-1.5 sm:gap-2 md:gap-3 justify-end flex-1' : 'flex-col items-center gap-2 w-full order-3'}`}>
                     {/* Volume Control - Mobile: Icon only, Desktop: Icon + Slider */}
-                    <div className="relative group/volume flex items-center gap-1.5 sm:gap-2">
+                    <div className={`relative group/volume flex ${playerPosition === 'bottom' ? 'items-center gap-1.5 sm:gap-2' : 'items-center justify-center'}`}>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -4577,21 +4585,53 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                           <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         )}
                       </Button>
-                      {/* Volume Slider - Hidden on mobile, visible on desktop */}
-                      <div className="hidden md:block group">
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="1"
-                          value={isMuted ? 0 : volume}
-                          onChange={(e) => changeVolume(Number(e.target.value))}
-                          className="w-20 lg:w-24 h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
-                        />
-                      </div>
+                      {/* Volume Slider - Only show for bottom position */}
+                      {playerPosition === 'bottom' && (
+                        <div className="hidden md:block group">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={isMuted ? 0 : volume}
+                            onChange={(e) => changeVolume(Number(e.target.value))}
+                            className="w-20 lg:w-24 h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                          />
+                        </div>
+                      )}
+                      {/* Volume Popover for left/right positions */}
+                      {playerPosition !== 'bottom' && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 invisible group-hover/volume:opacity-100 group-hover/volume:visible transition-all duration-200 z-10">
+                          <div className="bg-card/98 backdrop-blur-xl border border-border rounded-lg shadow-2xl p-3 min-w-[200px]">
+                            <div className="flex items-center gap-3">
+                              <VolumeX className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={isMuted ? 0 : volume}
+                                onChange={(e) => changeVolume(Number(e.target.value))}
+                                className="flex-1 h-2 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                              />
+                              <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            </div>
+                            <div className="text-center mt-2">
+                              <span className="text-xs font-mono text-primary font-bold">
+                                {isMuted ? '0%' : `${volume}%`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                            <div className="w-3 h-3 bg-card border-r border-b border-border rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
-                    <div className="w-px h-6 bg-border mx-2"></div>
+                    {playerPosition === 'bottom' && (
+                      <div className="hidden lg:block w-px h-6 bg-border mx-2"></div>
+                    )}
                     
                     {/* Live Listening Button */}
                     {isLiveHost ? (
