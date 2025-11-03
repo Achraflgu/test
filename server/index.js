@@ -4831,9 +4831,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     let ytdlpArgs;
     let usingDirectLink = false;
     let useSearchMethod = false;
-    let searchQuery = track.artist === 'Unknown Artist' 
-      ? track.name.trim()
-      : `${track.artist} ${track.name}`.trim();
+    // searchQuery is already declared at function scope above
     
     // 🚀 OPTIMIZATION: For cookie-less downloads, prioritize search method (works better)
     if (youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
