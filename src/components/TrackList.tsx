@@ -85,7 +85,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [playlistQueue, setPlaylistQueue] = useState<Track[]>([]);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('all');
   const [isShuffled, setIsShuffled] = useState(false);
-  const [playerPosition, setPlayerPosition] = useState<'bottom' | 'left' | 'right'>('bottom');
+  // Initialize player position from localStorage, default to 'bottom'
+  const [playerPosition, setPlayerPosition] = useState<'bottom' | 'left' | 'right'>(() => {
+    try {
+      const saved = localStorage.getItem('musicPlayerPosition');
+      if (saved === 'bottom' || saved === 'left' || saved === 'right') {
+        return saved;
+      }
+    } catch (error) {
+      console.error('Error loading player position:', error);
+    }
+    return 'bottom';
+  });
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [selectedTrackForDetails, setSelectedTrackForDetails] = useState<Track | null>(null);
   const [showFullScreenPlayer, setShowFullScreenPlayer] = useState(false);
@@ -1857,6 +1868,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     const currentIndex = positions.indexOf(playerPosition);
     const nextPosition = positions[(currentIndex + 1) % positions.length];
     setPlayerPosition(nextPosition);
+    // Save to localStorage
+    try {
+      localStorage.setItem('musicPlayerPosition', nextPosition);
+      console.log('💾 Saved player position:', nextPosition);
+    } catch (error) {
+      console.error('Error saving player position:', error);
+    }
   };
 
   const openTrackDetails = (track: Track) => {
