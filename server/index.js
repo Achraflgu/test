@@ -4365,77 +4365,108 @@ async function findAlternativeVideo(track) {
   try {
     console.log(`  🔍 Age-restricted video detected - searching for alternative...`);
     
-    // Build search query: "Artist Track Name" or just "Track Name" if no artist
-    const searchQuery = track.artist === 'Unknown Artist' || !track.artist
-      ? track.name.trim()
-      : `${track.artist} ${track.name}`.trim();
+    // Clean search query: remove special characters, parentheses, etc.
+    const cleanQuery = (str) => {
+      return str
+        .replace(/[()\[\]{}]/g, '') // Remove parentheses and brackets
+        .replace(/[^\w\s-]/g, ' ') // Remove special chars except spaces and hyphens
+        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .trim()
+        .substring(0, 100); // Limit length
+    };
     
-    console.log(`  🎯 Searching YouTube for: "${searchQuery}"`);
+    // Build multiple search query variations
+    const searchQueries = [];
     
-    // Use yt-dlp to search for alternatives (limit to 5 results)
-    const searchArgs = [
-      '-m', 'yt_dlp',
-      `ytsearch5:${searchQuery}`,
-      '--dump-json',
-      '--flat-playlist',
-      '--no-warnings',
-      '--ignore-errors',
-      '--no-playlist',
-      '--extractor-args', 'youtube:player_client=web_embedded',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    ];
+    if (track.artist && track.artist !== 'Unknown Artist') {
+      // Try: "Artist Track Name"
+      searchQueries.push(`${track.artist} ${track.name}`);
+      // Try: "Artist - Track Name"
+      searchQueries.push(`${track.artist} - ${track.name}`);
+      // Try: just track name (if artist doesn't help)
+      searchQueries.push(track.name);
+    } else {
+      // Just track name
+      searchQueries.push(track.name);
+    }
     
-    const searchProcess = spawn(PYTHON_CMD, searchArgs, {
-      cwd: outputFolder,
-      shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    
-    let output = '';
-    let errorOutput = '';
-    
-    searchProcess.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-    
-    searchProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-    });
-    
-    await new Promise((resolve) => {
-      searchProcess.on('close', resolve);
-    });
-    
-    // Parse JSON results (one JSON object per line)
-    const lines = output.trim().split('\n').filter(line => line.trim());
-    const alternatives = [];
-    
-    for (const line of lines) {
-      try {
-        const data = JSON.parse(line);
-        const videoId = data.id;
-        const title = data.title || '';
-        const url = `https://www.youtube.com/watch?v=${videoId}`;
-        
-        // Skip if it's the same video we tried
-        if (track.url && track.url.includes(videoId)) {
-          continue;
+    // Try each search query variation
+    for (const rawQuery of searchQueries) {
+      const searchQuery = cleanQuery(rawQuery);
+      console.log(`  🎯 Trying search: "${searchQuery}"`);
+      
+      // Use yt-dlp to search for alternatives (limit to 10 results for better chances)
+      const searchArgs = [
+        '-m', 'yt_dlp',
+        `ytsearch10:${searchQuery}`,
+        '--dump-json',
+        '--flat-playlist',
+        '--no-warnings',
+        '--ignore-errors',
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      ];
+      
+      const searchProcess = spawn(PYTHON_CMD, searchArgs, {
+        cwd: outputFolder,
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      let output = '';
+      let errorOutput = '';
+      
+      searchProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      searchProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      await new Promise((resolve) => {
+        searchProcess.on('close', resolve);
+      });
+      
+      // Parse JSON results (one JSON object per line)
+      const lines = output.trim().split('\n').filter(line => line.trim());
+      const alternatives = [];
+      
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          const videoId = data.id;
+          const title = data.title || '';
+          const url = `https://www.youtube.com/watch?v=${videoId}`;
+          
+          // Skip if it's the same video we tried
+          if (track.url && track.url.includes(videoId)) {
+            continue;
+          }
+          
+          // Skip if title is too short (likely invalid)
+          if (title.length < 5) {
+            continue;
+          }
+          
+          alternatives.push({ url, videoId, title });
+        } catch (parseErr) {
+          // Skip invalid JSON lines
         }
-        
-        alternatives.push({ url, videoId, title });
-      } catch (parseErr) {
-        // Skip invalid JSON lines
+      }
+      
+      if (alternatives.length > 0) {
+        console.log(`  ✅ Found ${alternatives.length} alternative video(s) with query "${searchQuery}"`);
+        console.log(`  🎯 Trying first alternative: ${alternatives[0].title} (${alternatives[0].videoId})`);
+        return alternatives[0].url;
+      } else {
+        console.log(`  ⚠️ No results for "${searchQuery}", trying next variation...`);
       }
     }
     
-    if (alternatives.length > 0) {
-      console.log(`  ✅ Found ${alternatives.length} alternative video(s)`);
-      console.log(`  🎯 Trying first alternative: ${alternatives[0].title} (${alternatives[0].videoId})`);
-      return alternatives[0].url;
-    } else {
-      console.log(`  ⚠️ No alternatives found`);
-      return null;
-    }
+    console.log(`  ⚠️ No alternatives found with any search query`);
+    return null;
   } catch (err) {
     console.log(`  ⚠️ Alternative search failed: ${err.message}`);
     return null;
@@ -4569,19 +4600,22 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🔥 NEW: Check if failure was due to age-restricted or authentication required
+    // 🔥 PRIORITY: Check if failure was due to age-restricted (check this FIRST before bot detection)
+    // Age-restricted errors often contain "sign in to confirm your age" but that's different from bot detection
     const hasAgeRestricted = fullError.includes('age-restricted') || 
-                            fullError.includes('login_required') ||
-                            (fullError.includes('this video is') && fullError.includes('authentication')) ||
-                            (fullError.includes('some formats may be missing') && fullError.includes('authentication'));
+                            (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
+                            (fullError.includes('confirm your age') && fullError.includes('video may be inappropriate')) ||
+                            (fullError.includes('some formats may be missing') && fullError.includes('authentication')) ||
+                            (fullError.includes('login_required') && fullError.includes('age'));
     
-    // 🔥 NEW: Check if failure was due to bot detection
-    const hasBotDetectionError = fullError.includes('sign in to confirm') || 
-                                 fullError.includes('please sign in to continue') ||
-                                 (fullError.includes('this video is unavailable') && fullError.includes('sign in'));
+    // 🔥 NEW: Check if failure was due to bot detection (NOT age-restricted)
+    // Bot detection is when it's a general "sign in" without age/inappropriate context
+    const hasBotDetectionError = (fullError.includes('sign in to confirm') && !fullError.includes('age') && !fullError.includes('inappropriate')) || 
+                                 (fullError.includes('please sign in to continue') && !fullError.includes('age')) ||
+                                 (fullError.includes('this video is unavailable') && fullError.includes('sign in') && !fullError.includes('age'));
     
-    // 🔥 SMART FALLBACK: If age-restricted, search for alternative video
-    if (hasAgeRestricted && !hasBotDetectionError) {
+    // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
+    if (hasAgeRestricted) {
       console.log('  🔒 Age-restricted video detected - searching for alternative...');
       
       const alternativeUrl = await findAlternativeVideo(track);
