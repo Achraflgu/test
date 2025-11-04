@@ -4698,24 +4698,25 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🔥 PRIORITY: Check if failure was due to bot detection FIRST (most common)
-    // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
-    const hasBotDetectionError = fullError.includes('sign in to confirm you\'re not a bot') ||
-                                 fullError.includes('sign in to confirm you are not a bot') ||
-                                 (fullError.includes('sign in to confirm') && fullError.includes('bot')) ||
-                                 (fullError.includes('login_required') && !fullError.includes('age-restricted') && !fullError.includes('inappropriate')) ||
-                                 (fullError.includes('please sign in to continue') && !fullError.includes('age') && !fullError.includes('inappropriate'));
-    
-    // 🔥 Check if failure was due to age-restricted (ONLY if NOT bot detection)
-    // Age-restricted errors must explicitly mention age/inappropriate content
-    const hasAgeRestricted = !hasBotDetectionError && (
-                            fullError.includes('age-restricted') || 
+    // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
+    // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
+    const hasAgeRestricted = fullError.includes('age-restricted') || 
                             (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
                             (fullError.includes('sign in to confirm your age') && fullError.includes('video may be inappropriate')) ||
                             (fullError.includes('confirm your age') && fullError.includes('inappropriate')) ||
                             (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
-                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted'))
-                           );
+                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted')) ||
+                            (fullError.includes('login_required') && (fullError.includes('age') || fullError.includes('inappropriate')));
+    
+    // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
+    // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
+    const hasBotDetectionError = !hasAgeRestricted && (
+                                 fullError.includes('sign in to confirm you\'re not a bot') ||
+                                 fullError.includes('sign in to confirm you are not a bot') ||
+                                 (fullError.includes('sign in to confirm') && fullError.includes('bot')) ||
+                                 (fullError.includes('login_required') && !fullError.includes('age') && !fullError.includes('inappropriate')) ||
+                                 (fullError.includes('please sign in to continue') && !fullError.includes('age') && !fullError.includes('inappropriate'))
+                                );
     
     // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
     if (hasAgeRestricted) {
@@ -5790,22 +5791,25 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               
               const errorLower = errorOutput.toLowerCase();
               
-              // 🔥 PRIORITY: Check bot detection FIRST (most common)
-              const hasBotDetectionError = errorLower.includes('sign in to confirm you\'re not a bot') ||
-                                           errorLower.includes('sign in to confirm you are not a bot') ||
-                                           (errorLower.includes('sign in to confirm') && errorLower.includes('bot')) ||
-                                           (errorLower.includes('login_required') && !errorLower.includes('age-restricted') && !errorLower.includes('inappropriate')) ||
-                                           (errorLower.includes('please sign in to continue') && !errorLower.includes('age') && !errorLower.includes('inappropriate'));
-              
-              // 🔥 Check age-restricted ONLY if NOT bot detection
-              const hasAgeRestricted = !hasBotDetectionError && (
-                                      errorLower.includes('age-restricted') || 
+              // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
+              // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
+              const hasAgeRestricted = errorLower.includes('age-restricted') || 
                                       (errorLower.includes('sign in to confirm your age') && errorLower.includes('inappropriate')) ||
                                       (errorLower.includes('sign in to confirm your age') && errorLower.includes('video may be inappropriate')) ||
                                       (errorLower.includes('confirm your age') && errorLower.includes('inappropriate')) ||
                                       (errorLower.includes('video may be inappropriate') && errorLower.includes('age')) ||
-                                      (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted'))
-                                     );
+                                      (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted')) ||
+                                      (errorLower.includes('login_required') && (errorLower.includes('age') || errorLower.includes('inappropriate')));
+              
+              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
+              // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
+              const hasBotDetectionError = !hasAgeRestricted && (
+                                           errorLower.includes('sign in to confirm you\'re not a bot') ||
+                                           errorLower.includes('sign in to confirm you are not a bot') ||
+                                           (errorLower.includes('sign in to confirm') && errorLower.includes('bot')) ||
+                                           (errorLower.includes('login_required') && !errorLower.includes('age') && !errorLower.includes('inappropriate')) ||
+                                           (errorLower.includes('please sign in to continue') && !errorLower.includes('age') && !errorLower.includes('inappropriate'))
+                                          );
               
               if (hasAgeRestricted) {
                 console.log('  🔒 Age-restricted video detected - automatically searching for alternative...');
@@ -6059,6 +6063,76 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                 resolve('failed');
               }
             } else {
+              // Check for age-restricted in direct URL fallback
+              const errorLower = directError.toLowerCase();
+              
+              // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
+              // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
+              const hasAgeRestricted = errorLower.includes('age-restricted') || 
+                                      (errorLower.includes('sign in to confirm your age') && errorLower.includes('inappropriate')) ||
+                                      (errorLower.includes('sign in to confirm your age') && errorLower.includes('video may be inappropriate')) ||
+                                      (errorLower.includes('confirm your age') && errorLower.includes('inappropriate')) ||
+                                      (errorLower.includes('video may be inappropriate') && errorLower.includes('age')) ||
+                                      (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted')) ||
+                                      (errorLower.includes('login_required') && (errorLower.includes('age') || errorLower.includes('inappropriate')));
+              
+              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
+              // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
+              const hasBotDetectionError = !hasAgeRestricted && (
+                                           errorLower.includes('sign in to confirm you\'re not a bot') ||
+                                           errorLower.includes('sign in to confirm you are not a bot') ||
+                                           (errorLower.includes('sign in to confirm') && errorLower.includes('bot')) ||
+                                           (errorLower.includes('login_required') && !errorLower.includes('age') && !errorLower.includes('inappropriate')) ||
+                                           (errorLower.includes('please sign in to continue') && !errorLower.includes('age') && !errorLower.includes('inappropriate'))
+                                          );
+              
+              if (hasAgeRestricted) {
+                console.log('  🔒 Age-restricted detected in direct URL fallback - searching for alternative...');
+                const alternativeUrl = await findAlternativeVideo(track, outputFolder);
+                if (alternativeUrl) {
+                  console.log(`  🔄 Found alternative: ${alternativeUrl} - downloading...`);
+                  track.url = alternativeUrl;
+                  // Retry with alternative
+                  const altArgs = ytdlpArgs.slice(); // Copy args
+                  altArgs[altArgs.length - 1] = alternativeUrl; // Replace URL
+                  const altProcess = spawn(PYTHON_CMD, altArgs, {
+                    cwd: outputFolder,
+                    shell: false,
+                    stdio: ['ignore', 'pipe', 'pipe']
+                  });
+                  
+                  const altSuccess = await new Promise((altResolve) => {
+                    altProcess.on('close', async (altCode) => {
+                      if (altCode === 0) {
+                        const expectedFileName = getExpectedFileName(track, 'mp3');
+                        const mp3Path = path.join(outputFolder, expectedFileName);
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        const fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
+                        if (fileExists) {
+                          console.log(`  ✅ Alternative downloaded successfully: ${track.name}`);
+                          socket.emit('download:progress', {
+                            downloadId,
+                            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+                            status: 'completed',
+                            progress: 100,
+                            message: `✅ Downloaded alternative (age-restricted bypass): ${track.name}`
+                          });
+                          altResolve(true);
+                          return;
+                        }
+                      }
+                      altResolve(false);
+                    });
+                    altProcess.on('error', () => altResolve(false));
+                  });
+                  
+                  if (altSuccess) {
+                    successCount++;
+                    resolve('success');
+                    return;
+                  }
+                }
+              }
               resolve('failed');
             }
           });
