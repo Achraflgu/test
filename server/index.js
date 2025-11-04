@@ -3754,22 +3754,30 @@ app.post('/api/download/cancel', (req, res) => {
       const process = processInfo.process || processInfo; // Handle both formats
       if (process && !process.killed) {
         try {
-          console.log(`  🔪 Killing process ${index + 1}/${processes.length}`);
+          const processType = processInfo.type || 'unknown';
+          const trackId = processInfo.trackId || 'unknown';
+          console.log(`  🔪 Killing process ${index + 1}/${processes.length} (${processType}, track: ${trackId})`);
           process.kill('SIGTERM');
+          console.log(`  ✅ SIGTERM sent to process ${index + 1}`);
           // Force kill after 2 seconds if not terminated
           setTimeout(() => {
             if (process && !process.killed && process.kill) {
+              console.log(`  🔪 Force killing process ${index + 1} with SIGKILL`);
               process.kill('SIGKILL');
             }
           }, 2000);
         } catch (err) {
           console.error(`Error killing process ${index + 1}:`, err.message);
         }
+      } else if (process && process.killed) {
+        console.log(`  ⚠️  Process ${index + 1} already killed`);
       }
     });
+  } else {
+    console.log(`  ⚠️  No active processes found for download ${downloadId}`);
   }
   
-  // Update status
+  // Update status FIRST (before deleting) so running processes can check for cancellation
   downloadInfo.status = 'cancelled';
   downloadInfo.cancelled = true;
   
@@ -3779,9 +3787,17 @@ app.post('/api/download/cancel', (req, res) => {
     message: '❌ Download cancelled by user'
   });
   
-  // Clean up
-  activeDownloads.delete(downloadId);
-  activeProcesses.delete(downloadId);
+  // Don't delete immediately - keep it marked as cancelled so running processes can check
+  // The processes will be cleaned up when they complete or are killed
+  // We'll set a timeout to clean up after a delay if processes don't respond
+  setTimeout(() => {
+    const stillActive = activeDownloads.get(downloadId);
+    if (stillActive && stillActive.cancelled) {
+      console.log(`🧹 Cleaning up cancelled download ${downloadId} after timeout`);
+      activeDownloads.delete(downloadId);
+      activeProcesses.delete(downloadId);
+    }
+  }, 30000); // Clean up after 30 seconds if processes haven't stopped
   
   res.json({ success: true, message: 'Download cancelled' });
 });
@@ -5501,8 +5517,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             const index = currentList.findIndex(p => p.process === ytdlpProcess);
             if (index !== -1) {
               currentList.splice(index, 1);
+              // If all processes are done and download is cancelled, clean up
               if (currentList.length === 0) {
                 activeProcesses.delete(downloadId);
+                const downloadInfo = activeDownloads.get(downloadId);
+                if (downloadInfo && downloadInfo.cancelled) {
+                  console.log(`🧹 All processes stopped for cancelled download ${downloadId} - cleaning up`);
+                  activeDownloads.delete(downloadId);
+                }
               }
             }
           }
@@ -5731,14 +5753,27 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         const cancellationChecker = setInterval(() => {
           const downloadInfo = activeDownloads.get(downloadId);
           if (!downloadInfo || downloadInfo.cancelled) {
+            console.log(`  🛑 Cancellation detected for track ${track.name} - killing process`);
             clearInterval(cancellationChecker);
             removeProcess();
             try {
-              ytdlpProcess.kill('SIGTERM');
-            } catch (e) {}
+              if (!ytdlpProcess.killed) {
+                console.log(`  🔪 Sending SIGTERM to yt-dlp process for ${track.name}`);
+                ytdlpProcess.kill('SIGTERM');
+                // Force kill after 1 second
+                setTimeout(() => {
+                  if (ytdlpProcess && !ytdlpProcess.killed && ytdlpProcess.kill) {
+                    console.log(`  🔪 Force killing yt-dlp process for ${track.name} with SIGKILL`);
+                    ytdlpProcess.kill('SIGKILL');
+                  }
+                }, 1000);
+              }
+            } catch (e) {
+              console.log(`  ⚠️  Error killing process: ${e.message}`);
+            }
             resolve('cancelled');
           }
-        }, 1000); // Check every second
+        }, 500); // Check every 500ms for faster cancellation response
         
         // Clear cancellation checker when process completes
         ytdlpProcess.on('close', () => {
