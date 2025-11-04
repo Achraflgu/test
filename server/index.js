@@ -4361,7 +4361,7 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
 // ====================================
 
 // 🔥 SMART FALLBACK: Search for alternative video when age-restricted
-async function findAlternativeVideo(track) {
+async function findAlternativeVideo(track, outputFolder) {
   try {
     console.log(`  🔍 Age-restricted video detected - searching for alternative...`);
     
@@ -4409,7 +4409,7 @@ async function findAlternativeVideo(track) {
       ];
       
       const searchProcess = spawn(PYTHON_CMD, searchArgs, {
-        cwd: outputFolder,
+        cwd: outputFolder || __dirname,
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -4618,7 +4618,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     if (hasAgeRestricted) {
       console.log('  🔒 Age-restricted video detected - searching for alternative...');
       
-      const alternativeUrl = await findAlternativeVideo(track);
+      const alternativeUrl = await findAlternativeVideo(track, outputFolder);
       if (alternativeUrl) {
         console.log(`  🔄 Retrying with alternative video: ${alternativeUrl}`);
         
