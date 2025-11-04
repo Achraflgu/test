@@ -548,15 +548,15 @@ const Index = () => {
                   if (mode === 'append' && playlist && tracks.length > 0) {
                     // Append mode: merge tracks and update playlist name
                     // Check if adding all tracks vs partial selection
-                    // Single track (1 track) = individual track addition (position 1)
+                    // Single track (1 track) = individual track addition (position 0 = first)
                     // Multiple tracks = could be partial or all
                     const isSingleTrack = tracksData.length === 1;
                     const isAddingAllTracks = !isSingleTrack && tracksData.length === playlistData.totalTracks;
                     
                     // Determine insertion position: 
-                    // - Position 1 (beginning) for single tracks or partial selection
+                    // - Position 0 (first) for single tracks or partial selection
                     // - End for all tracks from a playlist
-                    const insertionPosition = (isSingleTrack || !isAddingAllTracks) ? 1 : tracks.length;
+                    const insertionPosition = (isSingleTrack || !isAddingAllTracks) ? 0 : tracks.length;
                     const mergedTracks = [
                       ...tracks.slice(0, insertionPosition),
                       ...tracksData,
