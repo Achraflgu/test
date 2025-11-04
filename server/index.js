@@ -3892,6 +3892,99 @@ app.post('/api/download/skip-to-ytdlp', (req, res) => {
   res.json({ success: true, message: 'Skipping to yt-dlp' });
 });
 
+// Preview audio endpoint - Get 30 second audio stream for preview
+app.get('/api/preview/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+  
+  if (!videoId) {
+    return res.status(400).json({ error: 'Video ID is required' });
+  }
+
+  console.log(`🎵 Preview request for: ${videoId}`);
+
+  try {
+    // Use yt-dlp to get audio stream URL
+    const args = [
+      '-f', 'bestaudio[ext=m4a]/bestaudio',
+      '--get-url',
+      `https://www.youtube.com/watch?v=${videoId}`
+    ];
+
+    const process = spawn(PYTHON_CMD, args);
+    let audioUrl = '';
+    let errorOutput = '';
+
+    process.stdout.on('data', (data) => {
+      audioUrl += data.toString().trim();
+    });
+
+    process.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+
+    process.on('close', async (code) => {
+      if (code === 0 && audioUrl) {
+        try {
+          // Fetch the audio stream
+          const audioResponse = await fetch(audioUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+
+          if (!audioResponse.ok) {
+            return res.status(500).json({ error: 'Failed to fetch audio stream' });
+          }
+
+          // Set headers for streaming
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Content-Length', audioResponse.headers.get('content-length') || '');
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Cache-Control', 'no-cache');
+
+          // Stream the audio (limit to ~30 seconds worth)
+          const reader = audioResponse.body;
+          let bytesRead = 0;
+          const maxBytes = 2 * 1024 * 1024; // ~2MB for 30 seconds of audio
+
+          reader.on('data', (chunk) => {
+            bytesRead += chunk.length;
+            if (bytesRead <= maxBytes) {
+              res.write(chunk);
+            } else {
+              reader.destroy();
+              res.end();
+            }
+          });
+
+          reader.on('end', () => {
+            res.end();
+          });
+
+          reader.on('error', (err) => {
+            console.error('Stream error:', err);
+            res.status(500).json({ error: 'Stream error' });
+          });
+        } catch (err) {
+          console.error('Preview fetch error:', err);
+          res.status(500).json({ error: 'Failed to fetch preview' });
+        }
+      } else {
+        console.error('yt-dlp error:', errorOutput);
+        res.status(500).json({ error: 'Failed to get audio URL' });
+      }
+    });
+
+    process.on('error', (err) => {
+      console.error('Process error:', err);
+      res.status(500).json({ error: 'Process error' });
+    });
+  } catch (error) {
+    console.error('Preview error:', error);
+    res.status(500).json({ error: 'Preview failed' });
+  }
+});
+
 // YouTube search endpoint (GET) - for inline player
 app.get('/api/youtube/search', async (req, res) => {
   const { query, limit = 10 } = req.query;

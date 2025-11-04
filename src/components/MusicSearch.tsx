@@ -34,12 +34,10 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentLimit, setCurrentLimit] = useState(15);
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
-  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
-  const [previewTrack, setPreviewTrack] = useState<SearchResult | null>(null);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [previewStopTimer, setPreviewStopTimer] = useState<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -96,55 +94,95 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     return tracks.filter(t => !existingIds.has(t.id));
   }, [currentTracks]);
 
-  // Preview playback (30 seconds) - Mini popup with YouTube embed
+  // Simple audio preview (30 seconds) - Using YouTube audio stream
   const handlePreviewPlay = useCallback(async (result: SearchResult) => {
     // Stop any currently playing preview
-    if (previewStopTimer) {
-      clearTimeout(previewStopTimer);
-      setPreviewStopTimer(null);
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.currentTime = 0;
+      previewAudio.src = '';
+      setPreviewAudio(null);
+      setPlayingPreviewId(null);
     }
 
     if (playingPreviewId === result.id) {
-      // Already playing this preview - close it
+      // Already playing this preview - stop it
       setPlayingPreviewId(null);
-      setPreviewTrack(null);
       return;
     }
 
-    // Set preview track and ID
-    setPreviewTrack(result);
-    setPlayingPreviewId(result.id);
+    try {
+      // Extract YouTube ID
+      const youtubeId = result.id.replace('search-', '');
+      
+      // Use yt-dlp or similar service to get audio stream
+      // For now, we'll use a simple approach with YouTube embed audio
+      // Note: Direct audio streaming from YouTube requires a backend service
+      // This is a placeholder that will need server-side implementation
+      
+      // Get audio stream from backend
+      const response = await fetch(`/api/preview/${youtubeId}`);
+      if (!response.ok) {
+        throw new Error('Preview not available');
+      }
+      
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      
+      const audio = new Audio(audioUrl);
+      
+      // Set to play for 30 seconds max
+      const stopTimer = setTimeout(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        URL.revokeObjectURL(audioUrl);
+        setPlayingPreviewId(null);
+        setPreviewAudio(null);
+        toast.info('Preview ended', { duration: 1000 });
+      }, 30000);
 
-    // Auto-close after 30 seconds
-    const timer = setTimeout(() => {
-      setPlayingPreviewId(null);
-      setPreviewTrack(null);
-      setPreviewStopTimer(null);
-      toast.info('Preview ended', { duration: 1000 });
-    }, 30000);
+      audio.addEventListener('ended', () => {
+        clearTimeout(stopTimer);
+        URL.revokeObjectURL(audioUrl);
+        setPlayingPreviewId(null);
+        setPreviewAudio(null);
+      });
 
-    setPreviewStopTimer(timer);
-    toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
-  }, [playingPreviewId, previewStopTimer]);
+      audio.addEventListener('error', () => {
+        clearTimeout(stopTimer);
+        URL.revokeObjectURL(audioUrl);
+        setPlayingPreviewId(null);
+        setPreviewAudio(null);
+        toast.error('Preview not available');
+      });
 
-  // Close preview manually
-  const closePreview = useCallback(() => {
-    if (previewStopTimer) {
-      clearTimeout(previewStopTimer);
-      setPreviewStopTimer(null);
+      audio.play().catch(err => {
+        console.error('Preview playback error:', err);
+        URL.revokeObjectURL(audioUrl);
+        toast.error('Preview not available');
+        setPlayingPreviewId(null);
+        setPreviewAudio(null);
+      });
+
+      setPreviewAudio(audio);
+      setPlayingPreviewId(result.id);
+      toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
+    } catch (error) {
+      console.error('Preview error:', error);
+      toast.error('Could not start preview');
     }
-    setPlayingPreviewId(null);
-    setPreviewTrack(null);
-  }, [previewStopTimer]);
+  }, [playingPreviewId, previewAudio]);
 
   // Cleanup preview on unmount
   useEffect(() => {
     return () => {
-      if (previewStopTimer) {
-        clearTimeout(previewStopTimer);
+      if (previewAudio) {
+        previewAudio.pause();
+        previewAudio.currentTime = 0;
+        previewAudio.src = '';
       }
     };
-  }, [previewStopTimer]);
+  }, [previewAudio]);
 
   // Voice search functionality
   const startVoiceSearch = useCallback(async () => {
@@ -798,32 +836,44 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                         />
                       </div>
 
-                      {/* Thumbnail with Play Preview */}
+                      {/* Thumbnail with Audio Preview */}
                       <div 
-                        className="relative flex-shrink-0 cursor-pointer group/thumb"
-                        onClick={() => handleToggleSelect(result.id)}
-                        onMouseEnter={() => setPreviewTrackId(result.id)}
-                        onMouseLeave={() => setPreviewTrackId(null)}
+                        className="relative flex-shrink-0 group/thumb"
                       >
                         {result.imageUrl ? (
                           <img
                             src={result.imageUrl}
                             alt={result.name}
-                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md group-hover/thumb:shadow-xl transition-all duration-300"
+                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md transition-all duration-300"
                           />
                         ) : (
                           <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                             <Music className="h-10 w-10 sm:h-8 sm:w-8 text-primary" />
                           </div>
                         )}
-                        {isPreviewing && (
-                          <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center transition-opacity duration-300">
+                        {/* Preview Button Overlay */}
+                        <button
+                          onClick={() => handlePreviewPlay(result)}
+                          className={`absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center transition-all duration-300 ${
+                            isPlayingPreview ? 'opacity-100 bg-black/60' : 'opacity-0 group-hover/thumb:opacity-100'
+                          }`}
+                          title={isPlayingPreview ? 'Stop preview' : 'Preview audio (30s)'}
+                        >
+                          {isPlayingPreview ? (
+                            <Volume2 className="h-6 w-6 text-white fill-white animate-pulse" />
+                          ) : (
                             <Play className="h-6 w-6 text-white fill-white" />
-                          </div>
-                        )}
+                          )}
+                        </button>
                         <div className="absolute -top-1 -left-1 w-6 h-6 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-md">
                           {index + 1}
                         </div>
+                        {/* Playing Indicator */}
+                        {isPlayingPreview && (
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-primary rounded-full border-2 border-card animate-pulse flex items-center justify-center">
+                            <div className="w-2 h-2 bg-primary-foreground rounded-full" />
+                          </div>
+                        )}
                       </div>
 
                       {/* Track Info */}
@@ -947,66 +997,6 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
         </DialogContent>
       </Dialog>
 
-      {/* Mini Preview Popup - Beautiful floating player */}
-      {previewTrack && playingPreviewId && (
-        <div className="fixed bottom-4 right-4 z-[100] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-gradient-to-br from-card via-card to-primary/5 border-2 border-primary/30 rounded-2xl shadow-2xl shadow-primary/20 backdrop-blur-sm overflow-hidden w-[360px] sm:w-[400px]">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-primary/20 via-primary/10 to-transparent px-4 py-3 border-b border-primary/20 flex items-center justify-between">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                  <Volume2 className="h-5 w-5 text-primary animate-pulse" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-sm text-foreground truncate">{previewTrack.name}</h4>
-                  <p className="text-xs text-muted-foreground truncate">{previewTrack.artist}</p>
-                </div>
-              </div>
-              <button
-                onClick={closePreview}
-                className="flex-shrink-0 ml-2 p-1.5 rounded-lg hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
-                title="Close preview"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Video Preview */}
-            <div className="relative bg-black/50 aspect-video">
-              {previewTrack.imageUrl && (
-                <img
-                  src={previewTrack.imageUrl}
-                  alt={previewTrack.name}
-                  className="absolute inset-0 w-full h-full object-cover opacity-30"
-                />
-              )}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <iframe
-                  src={`https://www.youtube.com/embed/${previewTrack.id.replace('search-', '')}?autoplay=1&start=0&enablejsapi=1&controls=1&modestbranding=1&rel=0&playsinline=1&mute=0`}
-                  className="w-full h-full"
-                  allow="autoplay; encrypted-media; picture-in-picture"
-                  allowFullScreen={false}
-                  title={`Preview: ${previewTrack.name}`}
-                />
-              </div>
-            </div>
-
-            {/* Footer with timer */}
-            <div className="px-4 py-2.5 bg-muted/30 border-t border-border/30 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>30 second preview</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full animate-shrink" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      )}
     </>
   );
 }
