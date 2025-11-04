@@ -3471,6 +3471,26 @@ function sanitizeForFs(name) {
     .trim();
 }
 
+// Helper function to get expected filename for a track (matches createSafeFilename logic)
+function getExpectedFileName(track, extension = 'mp3') {
+  const artist = track.artist || 'Unknown Artist';
+  const trackName = sanitizeForFs(track.name);
+  
+  // If artist is "Unknown Artist" or "Unknown", just use track name (matches createSafeFilename)
+  if (artist === 'Unknown Artist' || artist === 'Unknown') {
+    return `${trackName}.${extension}`;
+  }
+  
+  // Otherwise use "Artist - Track Name" format
+  return `${artist} - ${trackName}.${extension}`;
+}
+
+// Helper function to check if a file exists for a track (handles "Unknown Artist" correctly)
+function checkFileExistsForTrack(musicFiles, track, extension = 'mp3') {
+  const expectedFileName = getExpectedFileName(track, extension);
+  return musicFiles.some(f => f === expectedFileName);
+}
+
 // Fuzzy matcher: decide if a given filename belongs to a track
 function isFileMatchForTrack(fileName, track) {
   const normalize = (str) => String(str)
@@ -3617,7 +3637,7 @@ app.post('/api/download/start', async (req, res) => {
   // NOTE: Only use EXACT filename match for single tracks to avoid downloading wrong file
   if (selectedTracks.length === 1) {
     const track = selectedTracks[0];
-    const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
+    const expectedFileName = getExpectedFileName(track, 'mp3');
     const expectedFilePath = path.join(outputFolder, expectedFileName);
     
     try {
@@ -4717,8 +4737,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   const failedTracks = tracks.filter(track => {
     // Single track: ONLY exact match (same as post-download check)
     if (tracks.length === 1) {
-      const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-      const exists = musicFiles.some(f => f === expectedFileName);
+      const exists = checkFileExistsForTrack(musicFiles, track, 'mp3');
       return !exists;
     }
     
@@ -5297,7 +5316,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           
           if (code === 0) {
             // Build the expected MP3 path (replace %(ext)s with .mp3)
-            const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
+            const expectedFileName = getExpectedFileName(track, 'mp3');
             const mp3Path = path.join(outputFolder, expectedFileName);
             
             // Wait for file system to sync (important for conversion completion)
@@ -5521,7 +5540,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           
           directProcess.on('close', async (code) => {
             if (code === 0) {
-              const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
+              const expectedFileName = getExpectedFileName(track, 'mp3');
               const mp3Path = path.join(outputFolder, expectedFileName);
               await new Promise(resolve => setTimeout(resolve, 1000));
               
@@ -5816,8 +5835,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         if (totalTracks === 1) {
           // Single track: ONLY use exact filename match (no fuzzy matching - avoids wrong file matches!)
           const track = tracks[0];
-          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          const fileExists = musicFiles.some(f => f === expectedFileName);
+          const expectedFileName = getExpectedFileName(track, 'mp3');
+          const fileExists = checkFileExistsForTrack(musicFiles, track, 'mp3');
           currentSuccess = fileExists ? 1 : 0;
           console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
         } else {
@@ -5985,8 +6004,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         if (totalTracks === 1) {
           // Single track: ONLY use exact filename match (no fuzzy matching - avoids wrong file matches!)
           const track = tracks[0];
-          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          const fileExists = musicFiles.some(f => f === expectedFileName);
+          const expectedFileName = getExpectedFileName(track, 'mp3');
+          const fileExists = checkFileExistsForTrack(musicFiles, track, 'mp3');
           currentSuccess = fileExists ? 1 : 0;
           console.log(`📝 Single track check: ${expectedFileName} - ${fileExists ? 'Found ✅' : 'Not found ❌'}`);
         } else {
@@ -6008,8 +6027,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         
         // Emit track-level status updates
         tracks.forEach(track => {
-          const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
-          let trackDownloaded = musicFiles.some(f => f === expectedFileName);
+          const expectedFileName = getExpectedFileName(track, 'mp3');
+          let trackDownloaded = checkFileExistsForTrack(musicFiles, track, 'mp3');
           // For multi-track scenarios, allow fuzzy matching (handles YouTube title variations)
           // For single tracks, only exact match (already handled above, but be safe)
           if (!trackDownloaded && tracks.length > 1) {
@@ -6977,7 +6996,7 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     // Check for the specific expected file, not just count
     if (tracks.length === 1) {
       const track = tracks[0];
-      const expectedFileName = `${track.artist} - ${sanitizeForFs(track.name)}.mp3`;
+      const expectedFileName = getExpectedFileName(track, 'mp3');
       // For single tracks, ONLY use exact filename match (no fuzzy matching - avoids sending wrong file!)
       const singleFile = musicFiles.find(f => f === expectedFileName);
       
