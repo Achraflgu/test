@@ -386,14 +386,20 @@ const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for 
 async function loadCookieMetadata() {
   try {
     const content = await fs.readFile(COOKIE_METADATA_PATH, 'utf8');
-    return JSON.parse(content);
+    const metadata = JSON.parse(content);
+    // Ensure new fields exist for backward compatibility
+    if (metadata.regenerationCount === undefined) metadata.regenerationCount = 0;
+    if (metadata.lastRegenerated === undefined) metadata.lastRegenerated = null;
+    return metadata;
   } catch (err) {
     return {
       lastTested: null,
       successCount: 0,
       failureCount: 0,
       isValid: false,
-      generationAttempt: 0
+      generationAttempt: 0,
+      regenerationCount: 0,
+      lastRegenerated: null
     };
   }
 }
@@ -737,6 +743,36 @@ async function markCookiesAsFailed() {
     await saveCookieMetadata(metadata);
   } catch (err) {
     // Silent fail
+  }
+}
+
+// Regenerate cookies immediately when bot detection is detected during downloads
+async function regenerateCookiesOnFailure() {
+  try {
+    console.log('🔄 Bot detection detected during download - regenerating cookies immediately...');
+    
+    // Generate and test new cookies
+    const cookiePath = await generateAndTestCookies(3); // Try 3 times (faster than startup)
+    
+    if (cookiePath) {
+      console.log('✅ New cookies regenerated and saved!');
+      
+      // Update metadata
+      const metadata = await loadCookieMetadata();
+      metadata.lastRegenerated = new Date().toISOString();
+      metadata.regenerationCount = (metadata.regenerationCount || 0) + 1;
+      metadata.isValid = true;
+      metadata.failureCount = 0; // Reset failure count after successful regeneration
+      await saveCookieMetadata(metadata);
+      
+      return true;
+    } else {
+      console.log('⚠️ Cookie regeneration failed, will continue with existing cookies');
+      return false;
+    }
+  } catch (err) {
+    console.log(`⚠️ Cookie regeneration error: ${err.message}`);
+    return false;
   }
 }
 
@@ -4421,6 +4457,20 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
   } catch (err) {
     console.log(`  ❌ youtube-dl-exec failed: ${err.message}`);
     console.log(`  📝 Error stack:`, err.stack);
+    
+    // 🔥 NEW: Check if failure was due to bot detection
+    const errorMessage = err.message || err.toString() || '';
+    const hasBotDetectionError = errorMessage.includes('Sign in to confirm') || 
+                                 errorMessage.includes('LOGIN_REQUIRED') ||
+                                 errorMessage.includes('Please sign in to continue') ||
+                                 (errorMessage.includes('This video is unavailable') && errorMessage.includes('sign in'));
+    
+    if (hasBotDetectionError) {
+      console.log('  🚨 Bot detection error detected in youtube-dl-exec - regenerating cookies...');
+      await markCookiesAsFailed();
+      await regenerateCookiesOnFailure();
+    }
+    
     return false;
   }
 }
@@ -5191,6 +5241,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         let output = '';
         let errorOutput = '';
         let searchReturnedZeroItems = false;
+        let cookieRegenerated = false; // 🔥 Track if we've regenerated cookies for this download
         
         ytdlpProcess.stdout.on('data', (data) => {
           const txt = data.toString();
@@ -5201,6 +5252,24 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         ytdlpProcess.stderr.on('data', (data) => {
           const txt = data.toString();
           errorOutput += txt;
+          
+          // 🔥 NEW: Detect bot detection errors during download
+          const hasBotDetectionError = txt.includes('Sign in to confirm') || 
+                                       txt.includes('LOGIN_REQUIRED') ||
+                                       txt.includes('Please sign in to continue') ||
+                                       (txt.includes('This video is unavailable') && txt.includes('sign in'));
+          
+          if (hasBotDetectionError && !cookieRegenerated) {
+            console.log('  🚨 BOT DETECTION ERROR DETECTED during download!');
+            cookieRegenerated = true; // Flag to prevent multiple regenerations
+            // Regenerate cookies in background (don't await to avoid blocking)
+            regenerateCookiesOnFailure().then(success => {
+              if (success) {
+                console.log('  ✅ Cookies regenerated - future downloads will use new cookies');
+              }
+            });
+          }
+          
           // yt-dlp outputs progress to stderr, so log it
           if (txt.includes('[download]') || txt.includes('[ExtractAudio]') || txt.includes('[Metadata]') || 
               txt.includes('[EmbedThumbnail]') || txt.includes('[ThumbnailsConvertor]')) {
@@ -5337,6 +5406,23 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`❌ yt-dlp${useSearchMethod ? ' search' : ''} FAILED: ${searchQuery} (exit code ${code})`);
             if (errorOutput) {
               console.log('  Error output:', errorOutput.substring(0, 500));
+              
+              // 🔥 NEW: Check if failure was due to bot detection
+              const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                           errorOutput.includes('LOGIN_REQUIRED') ||
+                                           errorOutput.includes('Please sign in to continue') ||
+                                           (errorOutput.includes('This video is unavailable') && errorOutput.includes('sign in'));
+              
+              if (hasBotDetectionError) {
+                console.log('  🚨 Bot detection error confirmed - marking cookies as failed');
+                await markCookiesAsFailed();
+                
+                // Regenerate cookies if not already done
+                if (!cookieRegenerated) {
+                  await regenerateCookiesOnFailure();
+                }
+              }
+              
               // Check for specific ffmpeg errors
               if (errorOutput.includes('ffmpeg') || errorOutput.includes('Postprocessing')) {
                 console.log(`  ⚠️  FFMPEG ERROR DETECTED - Make sure ffmpeg is installed and in PATH`);
