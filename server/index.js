@@ -380,146 +380,7 @@ async function extractBrowserCookies() {
 // Cookie metadata tracking
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
-
-// 🎯 PERSISTENT COOKIE POOL - Multiple persistence strategies
-// Strategy 1: Environment Variable (COOKIE_POOL_DATA) - Persists across deployments
-// Strategy 2: Railway Volume (/data) - If available
-// Strategy 3: Local directory (.cookie_pool) - Fallback
-const PERSISTENT_DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || '/data';
-let COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Default fallback
-
-// 💾 SAVE COOKIE POOL TO ENVIRONMENT VARIABLE (for Railway persistence)
-async function saveCookiePoolToEnv() {
-  try {
-    // Ensure pool is initialized
-    await initCookiePool();
-    
-    const cookies = await getWorkingCookiesFromPool();
-    if (cookies.length === 0) {
-      return null; // No cookies to save
-    }
-    
-    // Create cookie pool data structure
-    const poolData = {
-      version: 1,
-      timestamp: new Date().toISOString(),
-      cookies: {}
-    };
-    
-    // Load metadata
-    await loadCookiePoolMetadata();
-    
-    // Save each cookie with its content and stats
-    for (const cookie of cookies) {
-      const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-      const stats = cookieStats.get(index) || initCookieStats(index);
-      
-      poolData.cookies[index] = {
-        content: cookie.content,
-        stats: stats
-      };
-    }
-    
-    // Convert to base64 for storage (Railway env vars have size limits)
-    const jsonData = JSON.stringify(poolData);
-    const base64Data = Buffer.from(jsonData).toString('base64');
-    
-    // Log instruction for user (Railway doesn't allow programmatic env var setting)
-    // Only log once per cookie generation session to avoid spam
-    if (cookies.length === COOKIE_POOL_SIZE) {
-      console.log(`\n💾 COOKIE POOL DATA - Copy this to Railway environment variable:`);
-      console.log(`   Key: COOKIE_POOL_DATA`);
-      console.log(`   Value: ${base64Data.substring(0, 80)}... (${base64Data.length} chars total)`);
-      console.log(`   📋 Full value available in logs (search for "COOKIE_POOL_DATA")`);
-    }
-    
-    return base64Data;
-  } catch (err) {
-    // Silent fail - don't spam logs
-    return null;
-  }
-}
-
-// 📥 LOAD COOKIE POOL FROM ENVIRONMENT VARIABLE
-async function loadCookiePoolFromEnv() {
-  try {
-    const base64Data = process.env.COOKIE_POOL_DATA;
-    if (!base64Data || base64Data.length < 100) {
-      return false; // No env var data
-    }
-    
-    // Decode from base64
-    const jsonData = Buffer.from(base64Data, 'base64').toString('utf8');
-    const poolData = JSON.parse(jsonData);
-    
-    if (!poolData.cookies || Object.keys(poolData.cookies).length === 0) {
-      return false;
-    }
-    
-    console.log(`  📥 Loading cookie pool from environment variable (${Object.keys(poolData.cookies).length} cookies)...`);
-    
-    // Restore cookies to pool directory
-    await initCookiePool();
-    
-    for (const [indexStr, cookieData] of Object.entries(poolData.cookies)) {
-      const index = parseInt(indexStr);
-      const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${index}.txt`);
-      
-      // Save cookie content
-      await fs.writeFile(cookiePath, cookieData.content, 'utf8');
-      
-      // Restore stats
-      if (cookieData.stats) {
-        cookieStats.set(index, cookieData.stats);
-      } else {
-        initCookieStats(index);
-      }
-    }
-    
-    // Save metadata
-    await saveCookiePoolMetadata();
-    
-    // Update primary cookie
-    if (poolData.cookies[0]) {
-      await fs.writeFile(AUTO_COOKIE_PATH, poolData.cookies[0].content, 'utf8');
-    }
-    
-    console.log(`  ✅ Restored ${Object.keys(poolData.cookies).length} cookies from environment variable`);
-    return true;
-  } catch (err) {
-    console.log(`  ⚠️ Failed to load cookie pool from env: ${err.message}`);
-    return false;
-  }
-}
-
-// Try to use persistent storage if available
-async function initPersistentCookiePool() {
-  try {
-    // Strategy 1: Load from environment variable (Railway persistence)
-    const loadedFromEnv = await loadCookiePoolFromEnv();
-    if (loadedFromEnv) {
-      return true;
-    }
-    
-    // Strategy 2: Try Railway persistent volume
-    try {
-      await fs.access(PERSISTENT_DATA_DIR);
-      COOKIE_POOL_DIR = path.join(PERSISTENT_DATA_DIR, '.cookie_pool');
-      console.log(`  💾 Using Railway persistent volume: ${COOKIE_POOL_DIR}`);
-      return true;
-    } catch {
-      // Persistent volume not available
-    }
-    
-    // Strategy 3: Use local directory (fallback)
-    COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool');
-    console.log(`  📁 Using local directory: ${COOKIE_POOL_DIR}`);
-    return false;
-  } catch (err) {
-    COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool');
-    return false;
-  }
-}
+const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
 const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
@@ -530,8 +391,7 @@ let cookieGenerationPromise = null;
 // 🎯 COOKIE POOL SYSTEM - Maintain 5 working cookies
 const COOKIE_POOL_SIZE = 5;
 let cookiePoolIndex = 0; // Round-robin rotation
-// Metadata path will be set dynamically based on COOKIE_POOL_DIR
-let COOKIE_POOL_METADATA_PATH = path.join(__dirname, '.cookie_pool_metadata.json');
+const COOKIE_POOL_METADATA_PATH = path.join(__dirname, '.cookie_pool_metadata.json');
 
 // 📊 COOKIE HEALTH TRACKING
 let cookieStats = new Map(); // In-memory stats (index -> stats)
@@ -570,10 +430,6 @@ async function saveCookieMetadata(metadata) {
 // 🎯 COOKIE POOL MANAGEMENT - Save 5 working cookies
 async function initCookiePool() {
   try {
-    // Initialize persistent storage first (env var or volume)
-    await initPersistentCookiePool();
-    
-    // Create directory
     await fs.mkdir(COOKIE_POOL_DIR, { recursive: true });
     await loadCookiePoolMetadata(); // Load stats on init
   } catch (err) {
@@ -584,8 +440,6 @@ async function initCookiePool() {
 // 📊 Load cookie pool metadata (stats per cookie)
 async function loadCookiePoolMetadata() {
   try {
-    // Update metadata path based on current COOKIE_POOL_DIR
-    COOKIE_POOL_METADATA_PATH = path.join(COOKIE_POOL_DIR, 'metadata.json');
     const content = await fs.readFile(COOKIE_POOL_METADATA_PATH, 'utf8');
     const metadata = JSON.parse(content);
     
@@ -606,8 +460,6 @@ async function loadCookiePoolMetadata() {
 // 💾 Save cookie pool metadata
 async function saveCookiePoolMetadata() {
   try {
-    // Update metadata path based on current COOKIE_POOL_DIR
-    COOKIE_POOL_METADATA_PATH = path.join(COOKIE_POOL_DIR, 'metadata.json');
     const metadata = {};
     for (const [index, stats] of cookieStats.entries()) {
       metadata[index] = stats;
@@ -686,10 +538,6 @@ async function saveCookieToPool(cookieContent, index) {
     initCookieStats(index);
     
     console.log(`  💾 Saved working cookie to pool (slot ${index + 1}/${COOKIE_POOL_SIZE})`);
-    
-    // Auto-save to env format for persistence (background, don't await)
-    saveCookiePoolToEnv().catch(() => {});
-    
     return cookiePath;
   } catch (err) {
     console.log(`  ⚠️ Failed to save cookie to pool: ${err.message}`);
@@ -1222,10 +1070,6 @@ async function generateAndTestCookies(maxAttempts = 100) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`\n🎉 SUCCESS! Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
       console.log(`📦 Pool ready at: ${COOKIE_POOL_DIR}`);
-      
-      // Save to env format for persistence across deployments
-      await saveCookiePoolToEnv();
-      
       return AUTO_COOKIE_PATH;
     } catch (err) {
       console.log(`  ⚠️ Cookie generation error: ${err.message}`);
@@ -1391,9 +1235,6 @@ async function validateCookiePool() {
       const content = await fs.readFile(primaryCookie.path, 'utf8');
       await fs.writeFile(AUTO_COOKIE_PATH, content, 'utf8');
       console.log(`  💾 Updated primary cookie from pool`);
-      
-      // Save to env format for persistence (background)
-      saveCookiePoolToEnv().catch(() => {});
     }
     
     return {
@@ -1464,9 +1305,6 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
 async function initializeAutoCookies() {
   try {
     console.log('🔄 Checking auto-generated cookies...');
-    
-    // Initialize persistent storage first
-    await initPersistentCookiePool();
     
     // ✅ NEW: Validate cookie pool first (fast validation)
     const poolStatus = await validateCookiePool();
