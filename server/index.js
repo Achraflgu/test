@@ -379,8 +379,8 @@ async function extractBrowserCookies() {
 // Cookie metadata tracking
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
-// Use a more reliable test video (short, popular, recent)
-const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (reliable test video)
+// Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
+const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
 // Load cookie metadata
 async function loadCookieMetadata() {
