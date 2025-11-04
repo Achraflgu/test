@@ -4361,6 +4361,9 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
 // ====================================
 
 async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}) {
+  // 🔥 Track cookie usage for error handling (must be at function scope)
+  let cookiesUsed = false;
+  
   try {
     console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
     
@@ -4424,7 +4427,6 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     };
     
     // 🔥 NEW: Add cookies for authentication (especially for age-restricted videos from Spotify)
-    let cookiesUsed = false;
     try {
       const cookieSetup = await setupYouTubeCookies();
       if (cookieSetup) {
