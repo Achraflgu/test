@@ -225,83 +225,150 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
 
   // Voice search functionality
   const startVoiceSearch = useCallback(async () => {
+    // Check browser support
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast.error('Voice search not supported in your browser');
+      toast.error('Voice search not supported in your browser. Try Chrome or Edge.', {
+        description: 'Voice search requires Web Speech API support'
+      });
       return;
     }
 
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
+    // Check if already listening
+    if (isListening) {
+      stopVoiceSearch();
+      return;
+    }
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      toast.info('Listening... Speak now', { duration: 2000 });
-    };
+    try {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
 
-    recognition.onresult = async (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setSearchQuery(transcript);
-      setIsListening(false);
-      recognitionRef.current = null;
-      toast.success('Search query set', { duration: 1000 });
-      
-      // Auto-search after voice input
-      const query = transcript.trim();
-      if (!query) return;
-      
-      setIsSearching(true);
-      try {
-        const initialLimit = 15;
-        const response = await searchMusic(query, initialLimit);
-        setSearchResults(response.results);
-        setCurrentQuery(query);
-        setCurrentLimit(initialLimit);
-        setSelectedResults(new Set(response.results.map(r => r.id)));
-        setIsResultsOpen(true);
-        saveSearchToHistory(query);
-        
-        if (response.results.length === 0) {
-          toast.info('No results found');
-        } else {
-          toast.success(`Found ${response.results.length} results`);
+      recognition.onstart = () => {
+        setIsListening(true);
+        toast.info('🎤 Listening... Speak now', { duration: 3000 });
+      };
+
+      recognition.onresult = async (event: any) => {
+        try {
+          const transcript = event.results[0][0].transcript;
+          const query = transcript.trim();
+          
+          if (!query) {
+            toast.warning('No speech detected. Please try again.');
+            setIsListening(false);
+            recognitionRef.current = null;
+            return;
+          }
+
+          setSearchQuery(query);
+          setIsListening(false);
+          recognitionRef.current = null;
+          
+          toast.success(`Searching: "${query}"`, { duration: 2000 });
+          
+          // Auto-search after voice input
+          setIsSearching(true);
+          try {
+            const initialLimit = 15;
+            const response = await searchMusic(query, initialLimit);
+            setSearchResults(response.results);
+            setCurrentQuery(query);
+            setCurrentLimit(initialLimit);
+            setSelectedResults(new Set(response.results.map(r => r.id)));
+            setIsResultsOpen(true);
+            saveSearchToHistory(query);
+            
+            if (response.results.length === 0) {
+              toast.info('No results found for your search');
+            } else {
+              toast.success(`Found ${response.results.length} results`);
+            }
+          } catch (error) {
+            console.error('Search error:', error);
+            toast.error('Failed to search. Please try again.');
+          } finally {
+            setIsSearching(false);
+          }
+        } catch (error) {
+          console.error('Voice result processing error:', error);
+          toast.error('Error processing voice input. Please try again.');
+          setIsListening(false);
+          recognitionRef.current = null;
         }
-      } catch (error) {
-        console.error('Search error:', error);
-        toast.error('Failed to search. Please try again.');
-      } finally {
-        setIsSearching(false);
-      }
-    };
+      };
 
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        
+        // Clear recognition reference
+        if (recognitionRef.current) {
+          recognitionRef.current = null;
+        }
+        
+        // Handle specific error types
+        let errorMessage = 'Voice search error. Please try again.';
+        switch (event.error) {
+          case 'no-speech':
+            errorMessage = 'No speech detected. Please speak clearly and try again.';
+            break;
+          case 'audio-capture':
+            errorMessage = 'Microphone not found. Please check your microphone settings.';
+            break;
+          case 'not-allowed':
+            errorMessage = 'Microphone permission denied. Please allow microphone access and try again.';
+            break;
+          case 'network':
+            errorMessage = 'Network error. Please check your connection and try again.';
+            break;
+          case 'aborted':
+            // User cancelled - don't show error
+            return;
+          case 'service-not-allowed':
+            errorMessage = 'Speech service not available. Please try again later.';
+            break;
+          default:
+            errorMessage = `Voice search error: ${event.error}. Please try again.`;
+        }
+        
+        toast.error(errorMessage, {
+          duration: 4000
+        });
+      };
+
+      recognition.onend = () => {
+        // Only reset if not manually stopped
+        if (isListening && recognitionRef.current) {
+          setIsListening(false);
+          recognitionRef.current = null;
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (error: any) {
+      console.error('Voice search initialization error:', error);
       setIsListening(false);
-      recognitionRef.current = null;
-      if (event.error === 'no-speech') {
-        toast.error('No speech detected. Try again.');
-      } else {
-        toast.error('Voice search error. Please try again.');
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      recognitionRef.current = null;
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  }, [saveSearchToHistory]);
+      toast.error('Failed to initialize voice search. Please try again.', {
+        description: error.message || 'Unknown error'
+      });
+    }
+  }, [saveSearchToHistory, isListening, stopVoiceSearch]);
 
   const stopVoiceSearch = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.log('Error stopping recognition:', error);
+      }
       recognitionRef.current = null;
-      setIsListening(false);
     }
+    setIsListening(false);
   }, []);
 
   // Auto-focus and select the search input when entering search mode
