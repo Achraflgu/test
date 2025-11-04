@@ -518,6 +518,17 @@ const Index = () => {
                 existingPlaylistName={playlist?.name}
                 initialUrl={detectedUrl}
                 currentTracks={tracks}
+                onAddTracksAndPlay={(track) => {
+                  if (playTrackRef.current) {
+                    playTrackRef.current(track);
+                  }
+                }}
+                onCheckPlayingState={() => {
+                  if (getPlayingStateRef.current) {
+                    return getPlayingStateRef.current();
+                  }
+                  return { isPlaying: false, isPlayerReady: false };
+                }}
                 onSearchTextDetected={handleSearchTextDetected}
                 onPlaylistLoaded={(playlistData, tracksData, mode) => {
                   // Clear detected URL after it's been used
@@ -536,35 +547,72 @@ const Index = () => {
                   
                   if (mode === 'append' && playlist && tracks.length > 0) {
                     // Append mode: merge tracks and update playlist name
-                    const mergedTracks = [...tracks, ...tracksData];
+                    // Check if adding all tracks vs partial selection
+                    // Single track (1 track) = individual track addition (position 1)
+                    // Multiple tracks = could be partial or all
+                    const isSingleTrack = tracksData.length === 1;
+                    const isAddingAllTracks = !isSingleTrack && tracksData.length === playlistData.totalTracks;
                     
-                    // Smart naming: only include playlist names (2+ tracks), ignore single tracks
+                    // Determine insertion position: 
+                    // - Position 1 (beginning) for single tracks or partial selection
+                    // - End for all tracks from a playlist
+                    const insertionPosition = (isSingleTrack || !isAddingAllTracks) ? 1 : tracks.length;
+                    const mergedTracks = [
+                      ...tracks.slice(0, insertionPosition),
+                      ...tracksData,
+                      ...tracks.slice(insertionPosition)
+                    ];
+                    
+                    // Smart naming: 
+                    // - If adding ALL tracks from a playlist (2+ tracks), use the new playlist name
+                    // - If adding partial tracks, combine playlist names
                     const isNewItemPlaylist = playlistData.totalTracks > 1;
                     let updatedPlaylistNames = [...playlistNames];
                     let updatedPlaylistImages = [...playlistImages];
                     let updatedPlaylistUrls = [...playlistUrls];
                     
                     if (isNewItemPlaylist) {
-                      // Add new playlist info to the lists
-                      updatedPlaylistNames.push(playlistData.name);
-                      updatedPlaylistImages.push(playlistData.imageUrl);
-                      updatedPlaylistUrls.push(playlistData.url);
+                      if (isAddingAllTracks) {
+                        // Adding all tracks: replace with new playlist name
+                        setPlaylist({
+                          ...playlist,
+                          name: playlistData.name,
+                          totalTracks: mergedTracks.length,
+                          totalDuration: playlist.totalDuration + playlistData.totalDuration,
+                        });
+                        // Update playlist info arrays
+                        setPlaylistNames([playlistData.name]);
+                        setPlaylistImages([playlistData.imageUrl]);
+                        setPlaylistUrls([playlistData.url]);
+                      } else {
+                        // Adding partial tracks: combine names
+                        updatedPlaylistNames.push(playlistData.name);
+                        updatedPlaylistImages.push(playlistData.imageUrl);
+                        updatedPlaylistUrls.push(playlistData.url);
+                        
+                        const combinedName = updatedPlaylistNames.length > 0 
+                          ? updatedPlaylistNames.join(' + ')
+                          : playlist.name;
+                        
+                        setPlaylistNames(updatedPlaylistNames);
+                        setPlaylistImages(updatedPlaylistImages);
+                        setPlaylistUrls(updatedPlaylistUrls);
+                        setPlaylist({
+                          ...playlist,
+                          name: combinedName,
+                          totalTracks: mergedTracks.length,
+                          totalDuration: playlist.totalDuration + playlistData.totalDuration,
+                        });
+                      }
+                    } else {
+                      // Single track: keep existing name, just add tracks
+                      setPlaylist({
+                        ...playlist,
+                        totalTracks: mergedTracks.length,
+                        totalDuration: playlist.totalDuration + playlistData.totalDuration,
+                      });
                     }
                     
-                    // Generate combined name from playlist names only
-                    const combinedName = updatedPlaylistNames.length > 0 
-                      ? updatedPlaylistNames.join(' + ')
-                      : playlist.name; // Fallback to current name if no playlists
-                    
-                    setPlaylistNames(updatedPlaylistNames);
-                    setPlaylistImages(updatedPlaylistImages);
-                    setPlaylistUrls(updatedPlaylistUrls);
-                    setPlaylist({
-                      ...playlist,
-                      name: combinedName,
-                      totalTracks: mergedTracks.length,
-                      totalDuration: playlist.totalDuration + playlistData.totalDuration,
-                    });
                     setTracks(mergedTracks);
                   } else {
                     // Replace mode: clear and load new

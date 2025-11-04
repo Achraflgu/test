@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Loader2, AlertCircle, Link2, Plus, RefreshCw, Music2, Clipboard, CheckCircle2, X, History, ExternalLink, Clock, Music, CheckSquare, Square } from "lucide-react";
+import { Search, Loader2, AlertCircle, Link2, Plus, RefreshCw, Music2, Clipboard, CheckCircle2, X, History, ExternalLink, Clock, Music, CheckSquare, Square, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -26,9 +26,11 @@ interface PlaylistInputProps {
   initialUrl?: string;
   onSearchTextDetected?: (searchText: string) => void;
   currentTracks?: Track[]; // To check for duplicates
+  onAddTracksAndPlay?: (track: Track) => void; // For individual track "Add & Play"
+  onCheckPlayingState?: () => { isPlaying: boolean; isPlayerReady: boolean }; // Check player state
 }
 
-export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlaylistName, initialUrl, onSearchTextDetected, currentTracks = [] }: PlaylistInputProps) => {
+export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlaylistName, initialUrl, onSearchTextDetected, currentTracks = [], onAddTracksAndPlay, onCheckPlayingState }: PlaylistInputProps) => {
   const [url, setUrl] = useState(initialUrl || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -445,6 +447,35 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
       newSelected.add(trackId);
     }
     setSelectedTracks(newSelected);
+  };
+
+  const handleAddTrack = (track: Track, playNext: boolean = false) => {
+    if (isTrackDuplicate(track.id)) {
+      toast.warning('This track is already in the playlist');
+      return;
+    }
+    
+    if (!pendingData) return;
+    
+    // Add single track at position 1 (beginning) - use a special mode indicator
+    // We'll pass a flag to indicate this is a single track addition
+    onPlaylistLoaded(
+      { ...pendingData.playlist, totalTracks: 1 },
+      [track],
+      'append' // This will be handled specially in Index.tsx based on track count
+    );
+    
+    // Don't close the dialog for single track additions
+    // Just show a toast
+    if (playNext && onAddTracksAndPlay) {
+      // Small delay to ensure track is added first
+      setTimeout(() => {
+        onAddTracksAndPlay(track);
+      }, 100);
+      toast.success(`✨ Added & playing "${track.name}"`);
+    } else {
+      toast.success(`✨ Added "${track.name}"`);
+    }
   };
 
   const handleAddSelected = () => {
@@ -956,6 +987,39 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                               <CheckCircle2 className="h-3 w-3" />
                               <span className="hidden sm:inline">Duplicate</span>
                             </span>
+                          )}
+                        </div>
+
+                        {/* Individual Track Action Buttons */}
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddTrack(track, false);
+                            }}
+                            size="sm"
+                            variant="outline"
+                            disabled={isDuplicate}
+                            className="h-8 px-3 text-xs border-primary/30 hover:bg-primary/10"
+                          >
+                            <Plus className="h-3 w-3 sm:mr-1.5" />
+                            <span className="hidden sm:inline">Add</span>
+                          </Button>
+                          {onAddTracksAndPlay && (
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddTrack(track, true);
+                              }}
+                              size="sm"
+                              variant="default"
+                              disabled={isDuplicate}
+                              className="h-8 px-3 text-xs bg-primary hover:bg-primary/90"
+                              title="Add & Play Next"
+                            >
+                              <Zap className="h-3 w-3 sm:mr-1.5" />
+                              <span className="hidden sm:inline">Play</span>
+                            </Button>
                           )}
                         </div>
                       </div>
