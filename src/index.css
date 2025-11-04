@@ -252,7 +252,7 @@ All colors MUST be HSL.
     transition: padding-left 500ms cubic-bezier(0.4, 0, 0.2, 1), margin-left 500ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  @media (min-width: 768px) {
+    @media (min-width: 768px) {
     body[data-player-position="left"][data-player-visible="true"] .container {
       padding-left: calc(1rem + 20rem + 1.5rem) !important; /* Player offset + width + gap = 22.5rem = 360px */
       margin-left: 0;
@@ -271,7 +271,7 @@ All colors MUST be HSL.
     transition: padding-right 500ms cubic-bezier(0.4, 0, 0.2, 1), margin-right 500ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  @media (min-width: 768px) {
+    @media (min-width: 768px) {
     body[data-player-position="right"][data-player-visible="true"] .container {
       padding-right: calc(1rem + 20rem + 1.5rem) !important; /* Player offset + width + gap = 22.5rem = 360px */
       margin-right: 0;
@@ -291,7 +291,7 @@ All colors MUST be HSL.
   body[data-player-position="left"] [data-track-list],
   body[data-player-position="right"] [data-track-list] {
     transition: all 500ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
+    }
 
   /* Ensure no content overlap on mobile - vertical positions hidden anyway */
   @media (max-width: 767px) {

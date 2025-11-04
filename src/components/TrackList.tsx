@@ -2310,7 +2310,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         if (t.id === track.id) {
           // This is the track being downloaded - set to pending
           return {
-            ...t,
+      ...t,
             selected: true,
             downloadStatus: 'pending' as const,
             downloadProgress: 0
@@ -2501,49 +2501,49 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     socket.on('download:progress', (data: any) => {
       console.log('Download progress:', data);
       // Accept progress from all downloads (supports concurrent downloads)
-      // Dismiss persistent attempt toast when we get actual progress
-      toast.dismiss('download-attempt');
-      
-      // Show user-friendly message if provided
-      if (data.message) {
-        console.log(data.message);
+        // Dismiss persistent attempt toast when we get actual progress
+        toast.dismiss('download-attempt');
         
-        // Show toast for important updates
-        if (data.message.includes('✅') && data.message.includes('Downloaded')) {
-          toast.success(data.message.substring(0, 100), { duration: 2000 });
-        }
-      }
-      
-      setTracks(prev => {
-        const updatedTracks = prev.map((track) => {
-          // Match by track name - more reliable than index
-          const trackFullName = `${track.artist} - ${track.name}`;
-          const isMatch = data.trackName && (
-            data.trackName.includes(track.name) || 
-            data.trackName.includes(track.artist) ||
-            trackFullName.includes(data.trackName) ||
-            data.trackName.toLowerCase().includes(track.name.toLowerCase())
-          );
+        // Show user-friendly message if provided
+        if (data.message) {
+          console.log(data.message);
           
-          if (isMatch && track.selected) {
-            return {
-              ...track,
-              downloadStatus: data.status,
-              downloadProgress: data.progress || 0
-            };
+          // Show toast for important updates
+          if (data.message.includes('✅') && data.message.includes('Downloaded')) {
+            toast.success(data.message.substring(0, 100), { duration: 2000 });
           }
-          return track;
-        });
-        
-        // Update tab title with progress
-        const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
-        const totalSelected = updatedTracks.filter(t => t.selected).length;
-        if (totalSelected > 0) {
-          showDownloadProgress(completedInProgress, totalSelected);
         }
         
-        return updatedTracks;
-      });
+        setTracks(prev => {
+          const updatedTracks = prev.map((track) => {
+            // Match by track name - more reliable than index
+            const trackFullName = `${track.artist} - ${track.name}`;
+            const isMatch = data.trackName && (
+              data.trackName.includes(track.name) || 
+              data.trackName.includes(track.artist) ||
+              trackFullName.includes(data.trackName) ||
+              data.trackName.toLowerCase().includes(track.name.toLowerCase())
+            );
+            
+            if (isMatch && track.selected) {
+              return {
+                ...track,
+                downloadStatus: data.status,
+                downloadProgress: data.progress || 0
+              };
+            }
+            return track;
+          });
+          
+          // Update tab title with progress
+          const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
+          const totalSelected = updatedTracks.filter(t => t.selected).length;
+          if (totalSelected > 0) {
+            showDownloadProgress(completedInProgress, totalSelected);
+          }
+          
+          return updatedTracks;
+        });
     });
 
     socket.on('download:error', (data: any) => {
@@ -2572,24 +2572,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     socket.on('download:complete', (data: any) => {
       console.log('Download complete:', data);
       // Always accept completion events - server is source of truth (supports concurrent downloads)
-      setDownloading(false);
+        setDownloading(false);
       setDownloadId(data.downloadId);
-      setOutputFolder(data.outputFolder);
-      resetTabTitle();
-      
-      // Dismiss persistent attempt toast
-      toast.dismiss('download-attempt');
-      
-      // Collect failed tracks
-      const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
-      if (currentFailedTracks.length > 0 || (data.failedTracks && data.failedTracks.length > 0)) {
-        setFailedTracks(currentFailedTracks);
-      }
-      
-      // Calculate success rate
-      const successRate = data.totalSuccess > 0 ? (data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100 : 0;
-      
-      if (data.totalFailed > 0) {
+        setOutputFolder(data.outputFolder);
+        resetTabTitle();
+        
+        // Dismiss persistent attempt toast
+        toast.dismiss('download-attempt');
+        
+        // Collect failed tracks
+        const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
+        if (currentFailedTracks.length > 0 || (data.failedTracks && data.failedTracks.length > 0)) {
+          setFailedTracks(currentFailedTracks);
+        }
+        
+        // Calculate success rate
+        const successRate = data.totalSuccess > 0 ? (data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100 : 0;
+        
+        if (data.totalFailed > 0) {
           // Partial success - show warning with details
           const failedList = data.failedTracks && data.failedTracks.length > 0 
             ? `\n\nFailed tracks:\n${data.failedTracks.slice(0, 3).join('\n')}${data.failedTracks.length > 3 ? `\n...and ${data.failedTracks.length - 3} more` : ''}`
@@ -3021,27 +3021,27 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
               {/* Select All & Expand - Row on Mobile */}
               <div className="flex items-center gap-3 sm:gap-2">
-                {/* Select All */}
+              {/* Select All */}
                 <div className="flex items-center gap-1.5 sm:gap-2">
-                  <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={toggleSelectAll}
-                    className="h-4 w-4"
-                  />
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleSelectAll}
+                  className="h-4 w-4"
+                />
                   <span className="text-xs sm:text-sm text-muted-foreground">
-                    {allSelected ? 'All' : 'None'}
-                  </span>
-                </div>
+                  {allSelected ? 'All' : 'None'}
+                </span>
+              </div>
 
-                {/* Expand/Collapse */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExpanded(!expanded)}
-                  className="h-8 w-8 p-0 lg:hidden"
-                >
-                  {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </Button>
+              {/* Expand/Collapse */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+                className="h-8 w-8 p-0 lg:hidden"
+              >
+                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </Button>
               </div>
             </div>
           </div>
@@ -3234,134 +3234,134 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     {/* Left Section: Controls (Smaller on Mobile) */}
                     <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0 w-auto sm:w-[140px]">
                       {/* Drag Handle - Hidden on Mobile, Hidden in Preview Mode */}
-                      {!downloading && !isPrivateMode && (
+                    {!downloading && !isPrivateMode && (
                         <div className="hidden sm:block cursor-grab active:cursor-grabbing opacity-0 group-hover/track:opacity-100 transition-opacity">
-                          <GripHorizontal className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                        </div>
-                      )}
-                      
-                      {/* Checkbox */}
-                      <div 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleTrackSelection(track.id, {
-                            shiftKey: e.shiftKey,
-                            ctrlKey: e.ctrlKey,
-                            metaKey: e.metaKey
-                          }, sortedTracks);
-                        }}
-                      >
-                        <Checkbox
-                          checked={track.selected}
-                          onCheckedChange={() => {}} // Handled by wrapper div
+                        <GripHorizontal className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                      </div>
+                    )}
+                    
+                    {/* Checkbox */}
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTrackSelection(track.id, {
+                          shiftKey: e.shiftKey,
+                          ctrlKey: e.ctrlKey,
+                          metaKey: e.metaKey
+                        }, sortedTracks);
+                      }}
+                    >
+                      <Checkbox
+                        checked={track.selected}
+                        onCheckedChange={() => {}} // Handled by wrapper div
                           className="data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all h-4 w-4 sm:h-5 sm:w-5"
-                        />
-                      </div>
-
-                      {/* Track Number with Badge */}
-                      <div className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-lg font-bold text-xs sm:text-sm transition-all ${
-                        currentPlayingTrack?.id === track.id 
-                          ? 'bg-primary/20 text-primary ring-1 ring-primary/50' 
-                          : 'text-muted-foreground group-hover/track:bg-primary/10 group-hover/track:text-primary'
-                      }`}>
-                        {tracks.findIndex(t => t.id === track.id) + 1}
-                      </div>
+                      />
                     </div>
 
+                    {/* Track Number with Badge */}
+                      <div className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-lg font-bold text-xs sm:text-sm transition-all ${
+                      currentPlayingTrack?.id === track.id 
+                        ? 'bg-primary/20 text-primary ring-1 ring-primary/50' 
+                        : 'text-muted-foreground group-hover/track:bg-primary/10 group-hover/track:text-primary'
+                    }`}>
+                      {tracks.findIndex(t => t.id === track.id) + 1}
+                    </div>
+                  </div>
+
                     {/* Album Art with Enhanced Play Button - Smaller on Mobile */}
-                    <button
-                      onClick={() => playTrack(track)}
-                      className="relative group/art cursor-pointer flex-shrink-0"
-                      title={currentPlayingTrack?.id === track.id ? (isPlaying ? "Pause" : "Resume") : "Play"}
-                    >
+                  <button
+                    onClick={() => playTrack(track)}
+                    className="relative group/art cursor-pointer flex-shrink-0"
+                    title={currentPlayingTrack?.id === track.id ? (isPlaying ? "Pause" : "Resume") : "Play"}
+                  >
                       <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden shadow-lg ring-1 ring-border/30 group-hover/art:ring-primary/50 transition-all">
-                        <img
-                          src={track.imageUrl}
-                          alt={track.album}
-                          className="w-full h-full object-cover transition-all group-hover/art:scale-110"
-                        />
-                        <div className={`absolute inset-0 flex items-center justify-center transition-all ${
-                          currentPlayingTrack?.id === track.id && isPlaying
-                            ? 'bg-black/40'
-                            : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
-                        }`}>
+                      <img
+                        src={track.imageUrl}
+                        alt={track.album}
+                        className="w-full h-full object-cover transition-all group-hover/art:scale-110"
+                      />
+                      <div className={`absolute inset-0 flex items-center justify-center transition-all ${
+                        currentPlayingTrack?.id === track.id && isPlaying
+                          ? 'bg-black/40'
+                          : 'bg-gradient-to-br from-black/0 to-black/0 group-hover/art:from-black/60 group-hover/art:to-black/40'
+                      }`}>
                           <div className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-primary/95 backdrop-blur-sm flex items-center justify-center transition-all ${
-                            currentPlayingTrack?.id === track.id && isPlaying
-                              ? 'scale-100 opacity-100'
-                              : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
-                          }`}>
-                            {currentPlayingTrack?.id === track.id && isPlaying ? (
+                          currentPlayingTrack?.id === track.id && isPlaying
+                            ? 'scale-100 opacity-100'
+                            : 'scale-75 opacity-0 group-hover/art:scale-100 group-hover/art:opacity-100'
+                        }`}>
+                          {currentPlayingTrack?.id === track.id && isPlaying ? (
                               <Pause className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
-                            ) : (
+                          ) : (
                               <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white ml-0.5" />
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
-                      {/* Now Playing Indicator */}
-                      {currentPlayingTrack?.id === track.id && (
+                    </div>
+                    {/* Now Playing Indicator */}
+                    {currentPlayingTrack?.id === track.id && (
                         <div className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-primary rounded-full animate-pulse shadow-lg shadow-primary/50 ring-2 ring-background"></div>
-                      )}
-                    </button>
+                    )}
+                  </button>
 
                     {/* Track Info Section - Stack on Mobile */}
                     <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                      {/* Track Name & Artist */}
+                    {/* Track Name & Artist */}
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold text-sm sm:text-base text-foreground truncate group-hover/track:text-primary transition-colors leading-tight mb-0.5 sm:mb-1">
-                          {track.name}
-                        </h4>
+                        {track.name}
+                      </h4>
                         <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                          {track.artist}
-                        </p>
+                        {track.artist}
+                      </p>
                         {/* Album - Show below on Mobile, inline on Desktop */}
                         <p className="text-xs text-muted-foreground/70 truncate sm:hidden mt-0.5">{track.album}</p>
-                      </div>
+                    </div>
 
                       {/* Album - Desktop Only */}
-                      <div className="hidden xl:block flex-1 min-w-0 max-w-[300px]">
-                        <p className="text-sm text-muted-foreground truncate">{track.album}</p>
-                      </div>
+                    <div className="hidden xl:block flex-1 min-w-0 max-w-[300px]">
+                      <p className="text-sm text-muted-foreground truncate">{track.album}</p>
+                    </div>
 
                       {/* Platform Badge - Tablet+ Only */}
-                      <div className="hidden md:flex items-center justify-center flex-shrink-0 w-[110px]">
-                        {track.url.includes('youtube.com') || track.url.includes('youtu.be') ? (
+                    <div className="hidden md:flex items-center justify-center flex-shrink-0 w-[110px]">
+                      {track.url.includes('youtube.com') || track.url.includes('youtu.be') ? (
                           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-br from-red-500/15 to-red-600/10 border border-red-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-red-500/20 transition-all">
                             <Youtube className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-red-500 tracking-wide">YouTube</span>
-                          </div>
-                        ) : (
+                          <span className="text-xs font-semibold text-red-500 tracking-wide">YouTube</span>
+                        </div>
+                      ) : (
                           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-br from-green-500/15 to-green-600/10 border border-green-500/30 rounded-lg shadow-sm hover:shadow-md hover:shadow-green-500/20 transition-all">
                             <Music className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-green-500 tracking-wide">Spotify</span>
-                          </div>
-                        )}
-                      </div>
+                          <span className="text-xs font-semibold text-green-500 tracking-wide">Spotify</span>
+                        </div>
+                      )}
+                    </div>
 
                       {/* Duration Badge - Desktop Only */}
-                      <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-secondary/50 border border-border/50 rounded-lg flex-shrink-0 w-[80px] justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse"></div>
-                        <span className="text-sm text-muted-foreground font-mono tabular-nums font-semibold">
-                          {formatDuration(track.duration)}
-                        </span>
-                      </div>
+                    <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-secondary/50 border border-border/50 rounded-lg flex-shrink-0 w-[80px] justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse"></div>
+                      <span className="text-sm text-muted-foreground font-mono tabular-nums font-semibold">
+                        {formatDuration(track.duration)}
+                      </span>
+                    </div>
 
                       {/* Status Indicator - Desktop Only */}
-                      <div className="hidden xl:flex items-center gap-2 flex-shrink-0 w-[120px]">
-                        {getStatusIcon(track.downloadStatus, track.downloadProgress, track)}
-                        {(() => {
-                          const shouldShowStatus = 
-                            track.downloadStatus === 'downloading' || 
-                            track.downloadStatus === 'completed' || 
-                            track.downloadStatus === 'failed' ||
+                    <div className="hidden xl:flex items-center gap-2 flex-shrink-0 w-[120px]">
+                      {getStatusIcon(track.downloadStatus, track.downloadProgress, track)}
+                      {(() => {
+                        const shouldShowStatus = 
+                          track.downloadStatus === 'downloading' || 
+                          track.downloadStatus === 'completed' || 
+                          track.downloadStatus === 'failed' ||
                             track.downloadStatus === 'pending';
-                          
-                          return shouldShowStatus && (
-                            <span className={`text-xs font-bold uppercase tracking-wider truncate ${getStatusColor(track.downloadStatus)}`}>
-                              {track.downloadStatus === 'downloading' ? `${track.downloadProgress}%` : track.downloadStatus}
-                            </span>
-                          );
-                        })()}
+                        
+                        return shouldShowStatus && (
+                          <span className={`text-xs font-bold uppercase tracking-wider truncate ${getStatusColor(track.downloadStatus)}`}>
+                            {track.downloadStatus === 'downloading' ? `${track.downloadProgress}%` : track.downloadStatus}
+                          </span>
+                        );
+                      })()}
                       </div>
                     </div>
                   </div>
@@ -4228,209 +4228,209 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               playerPosition === 'bottom' ? (
                 /* Bottom Minimized - Horizontal Compact */
                 <div className="flex items-center gap-2 sm:gap-3 w-full">
-                  {/* Album Art with Play Overlay */}
-                  <div className="relative group/mini cursor-pointer flex-shrink-0" onClick={togglePlayPause}>
-                    <img
-                      src={currentPlayingTrack.imageUrl}
-                      alt={currentPlayingTrack.name}
+                {/* Album Art with Play Overlay */}
+                <div className="relative group/mini cursor-pointer flex-shrink-0" onClick={togglePlayPause}>
+                  <img
+                    src={currentPlayingTrack.imageUrl}
+                    alt={currentPlayingTrack.name}
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg object-cover shadow-lg"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/mini:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                      {isPlaying ? (
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/mini:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                    {isPlaying ? (
                         <Pause className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                      ) : (
+                    ) : (
                         <Play className="w-4 h-4 sm:w-5 sm:h-5 text-white ml-0.5" />
-                      )}
-                    </div>
-                    {isPlaying && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-b-lg overflow-hidden">
-                        <div 
-                          className="h-full bg-primary transition-all duration-100"
-                          style={{ width: `${(currentTime / duration) * 100}%` }}
-                        ></div>
-                      </div>
                     )}
                   </div>
+                  {isPlaying && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-b-lg overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-100"
+                        style={{ width: `${(currentTime / duration) * 100}%` }}
+                      ></div>
+                    </div>
+                  )}
+                </div>
 
-                  {/* Track Info */}
-                  <div className="flex-1 min-w-0">
+                {/* Track Info */}
+                <div className="flex-1 min-w-0">
                     <p className="font-semibold text-xs sm:text-sm text-foreground truncate">
-                      {currentPlayingTrack.name}
-                    </p>
+                    {currentPlayingTrack.name}
+                  </p>
                     <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
-                      {currentPlayingTrack.artist}
-                    </p>
-                  </div>
+                    {currentPlayingTrack.artist}
+                  </p>
+                </div>
 
                   {/* Playback Controls - Mobile Responsive */}
                   <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
                     {/* Shuffle indicator - Hidden on mobile */}
-                    {isShuffled && (
+                  {isShuffled && (
                       <Shuffle className="hidden sm:block w-3 h-3 text-primary" />
-                    )}
-                    
+                  )}
+                  
                     {/* Repeat indicator - Hidden on mobile */}
-                    {repeatMode !== 'off' && (
-                      repeatMode === 'one' ? (
+                  {repeatMode !== 'off' && (
+                    repeatMode === 'one' ? (
                         <Repeat1 className="hidden sm:block w-3 h-3 text-primary" />
-                      ) : (
+                    ) : (
                         <Repeat className="hidden sm:block w-3 h-3 text-primary" />
-                      )
-                    )}
+                    )
+                  )}
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={playPrevious}
-                      disabled={isPlayerLoading || !isPlayerReady}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={playPrevious}
+                    disabled={isPlayerLoading || !isPlayerReady}
                       className="hover:bg-primary/20 h-7 w-7 sm:h-8 sm:w-8 p-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                  >
                       <SkipBack className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Button>
+                  </Button>
 
-                    <Button
-                      size="sm"
-                      onClick={togglePlayPause}
-                      disabled={isPlayerLoading || !isPlayerReady}
+                  <Button
+                    size="sm"
+                    onClick={togglePlayPause}
+                    disabled={isPlayerLoading || !isPlayerReady}
                       className="h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 rounded-full bg-primary hover:bg-primary/90 hover:scale-110 transition-all p-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                    >
-                      {isPlayerLoading ? (
+                  >
+                    {isPlayerLoading ? (
                         <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                      ) : isPlaying ? (
+                    ) : isPlaying ? (
                         <Pause className="w-4 h-4 sm:w-5 sm:h-5" />
-                      ) : (
+                    ) : (
                         <Play className="w-4 h-4 sm:w-5 sm:h-5 ml-0.5" />
-                      )}
-                    </Button>
+                    )}
+                  </Button>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={playNext}
-                      disabled={isPlayerLoading || !isPlayerReady}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={playNext}
+                    disabled={isPlayerLoading || !isPlayerReady}
                       className="hover:bg-primary/20 h-7 w-7 sm:h-8 sm:w-8 p-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                  >
                       <SkipForward className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Button>
-                  </div>
+                  </Button>
+                </div>
 
                   {/* Volume Control - Mobile: Icon only */}
-                  <div className="relative group/volume flex-shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={toggleMute}
+                <div className="relative group/volume flex-shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={toggleMute}
                       className="hover:bg-primary/20 h-7 w-7 sm:h-8 sm:w-8 p-0"
-                    >
-                      {isMuted || volume === 0 ? (
+                  >
+                    {isMuted || volume === 0 ? (
                         <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      ) : (
+                    ) : (
                         <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      )}
-                    </Button>
-                    
+                    )}
+                  </Button>
+                  
                     {/* Volume Slider - Shows on Hover/Tap - Desktop only */}
                     <div className="hidden md:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 invisible group-hover/volume:opacity-100 group-hover/volume:visible transition-all duration-200">
-                      <div className="bg-card/98 backdrop-blur-xl border border-border rounded-lg shadow-2xl p-3 min-w-[200px]">
-                        <div className="flex items-center gap-3">
-                          <VolumeX className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="1"
-                            value={isMuted ? 0 : volume}
-                            onChange={(e) => changeVolume(Number(e.target.value))}
-                            className="flex-1 h-2 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
-                          />
-                          <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        </div>
-                        <div className="text-center mt-2">
-                          <span className="text-xs font-mono text-primary font-bold">
-                            {isMuted ? '0%' : `${volume}%`}
-                          </span>
-                        </div>
+                    <div className="bg-card/98 backdrop-blur-xl border border-border rounded-lg shadow-2xl p-3 min-w-[200px]">
+                      <div className="flex items-center gap-3">
+                        <VolumeX className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={isMuted ? 0 : volume}
+                          onChange={(e) => changeVolume(Number(e.target.value))}
+                          className="flex-1 h-2 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                        />
+                        <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       </div>
-                      {/* Arrow pointer */}
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
-                        <div className="w-3 h-3 bg-card border-r border-b border-border rotate-45"></div>
+                      <div className="text-center mt-2">
+                        <span className="text-xs font-mono text-primary font-bold">
+                          {isMuted ? '0%' : `${volume}%`}
+                        </span>
                       </div>
                     </div>
+                    {/* Arrow pointer */}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                      <div className="w-3 h-3 bg-card border-r border-b border-border rotate-45"></div>
+                    </div>
                   </div>
+                </div>
 
                   {/* Action Buttons - Mobile: Hide some buttons */}
                   <div className="hidden sm:flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
-                    {/* Live Listening Button */}
-                    {isLiveHost ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowShareLiveDialog(true)}
-                        className="hover:bg-primary/20 h-8 w-8 p-0 relative"
-                        title={`Live Session Active - ${liveListenerCount} listeners`}
-                      >
-                        <Radio className="w-4 h-4 text-green-500 animate-pulse" />
-                        {liveListenerCount > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
-                            {liveListenerCount}
-                          </span>
-                        )}
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowLiveDialog(true)}
-                        className="hover:bg-primary/20 h-8 w-8 p-0"
-                        title="Start Live Listening"
-                      >
-                        <Radio className="w-4 h-4" />
-                      </Button>
-                    )}
-
-                    {/* Picture-in-Picture Toggle */}
-                    <PictureInPicturePlayer
-                      track={currentPlayingTrack}
-                      isPlaying={isPlaying}
-                      currentTime={currentTime}
-                      duration={duration}
-                      volume={volume}
-                      isShuffled={isShuffled}
-                      repeatMode={repeatMode}
-                      onPlayPause={togglePlayPause}
-                      onNext={playNext}
-                      onPrevious={playPrevious}
-                      onSeek={seekTo}
-                      onVolumeChange={changeVolume}
-                    />
-
+                  {/* Live Listening Button */}
+                  {isLiveHost ? (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setShowFullScreenPlayer(true)}
-                      className="hover:bg-primary/20 h-8 w-8 p-0"
-                      title="Open fullscreen player"
+                      onClick={() => setShowShareLiveDialog(true)}
+                      className="hover:bg-primary/20 h-8 w-8 p-0 relative"
+                      title={`Live Session Active - ${liveListenerCount} listeners`}
                     >
-                      <Maximize className="w-4 h-4" />
+                      <Radio className="w-4 h-4 text-green-500 animate-pulse" />
+                      {liveListenerCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                          {liveListenerCount}
+                        </span>
+                      )}
                     </Button>
-                    
+                  ) : (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={cyclePlayerPosition}
+                      onClick={() => setShowLiveDialog(true)}
                       className="hover:bg-primary/20 h-8 w-8 p-0"
-                      title="Move player"
+                      title="Start Live Listening"
                     >
-                      <GripVertical className="w-4 h-4" />
+                      <Radio className="w-4 h-4" />
                     </Button>
-                    
-                    <Button
-                      onClick={() => setIsPlayerMinimized(false)}
-                      className="h-8 w-8 p-0 bg-primary hover:bg-primary/90 hover:scale-110 transition-all shadow-lg"
-                      title="Restore player"
-                    >
-                      <Maximize2 className="w-4 h-4" />
-                    </Button>
+                  )}
+
+                  {/* Picture-in-Picture Toggle */}
+                  <PictureInPicturePlayer
+                    track={currentPlayingTrack}
+                    isPlaying={isPlaying}
+                    currentTime={currentTime}
+                    duration={duration}
+                    volume={volume}
+                    isShuffled={isShuffled}
+                    repeatMode={repeatMode}
+                    onPlayPause={togglePlayPause}
+                    onNext={playNext}
+                    onPrevious={playPrevious}
+                    onSeek={seekTo}
+                    onVolumeChange={changeVolume}
+                  />
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowFullScreenPlayer(true)}
+                    className="hover:bg-primary/20 h-8 w-8 p-0"
+                    title="Open fullscreen player"
+                  >
+                    <Maximize className="w-4 h-4" />
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={cyclePlayerPosition}
+                    className="hover:bg-primary/20 h-8 w-8 p-0"
+                    title="Move player"
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </Button>
+                  
+                  <Button
+                    onClick={() => setIsPlayerMinimized(false)}
+                    className="h-8 w-8 p-0 bg-primary hover:bg-primary/90 hover:scale-110 transition-all shadow-lg"
+                    title="Restore player"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </Button>
 
                     {/* Close button */}
                     <Button
@@ -4466,15 +4466,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                         <Pause className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                       ) : (
                         <Play className="w-6 h-6 sm:w-7 sm:h-7 text-white ml-0.5" />
-                      )}
-                    </div>
+                  )}
+                </div>
                     {isPlaying && (
                       <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-16 sm:w-20 h-1 bg-secondary rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-primary transition-all duration-100 rounded-full"
                           style={{ width: `${(currentTime / duration) * 100}%` }}
                         ></div>
-                      </div>
+              </div>
                     )}
                     {/* Playing Indicator */}
                     {isPlaying && (
@@ -4644,144 +4644,144 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 /* Bottom Layout - Horizontal */
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center">
-                    {/* Track Info */}
+                  {/* Track Info */}
                     <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                      <img
-                        src={currentPlayingTrack.imageUrl}
-                        alt={currentPlayingTrack.name}
+                    <img
+                      src={currentPlayingTrack.imageUrl}
+                      alt={currentPlayingTrack.name}
                         className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover shadow-lg ring-2 ring-primary/30"
-                      />
-                      <div className="min-w-0 flex-1">
+                    />
+                    <div className="min-w-0 flex-1">
                         <p className="font-bold text-foreground truncate text-sm sm:text-base md:text-lg">
-                          {currentPlayingTrack.name}
-                        </p>
+                        {currentPlayingTrack.name}
+                      </p>
                         <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                          {currentPlayingTrack.artist}
-                        </p>
-                        {isPlayingAll && (
+                        {currentPlayingTrack.artist}
+                      </p>
+                      {isPlayingAll && (
                           <div className="flex items-center gap-1 mt-0.5 sm:mt-1">
                             <Repeat className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary" />
                             <span className="text-[10px] sm:text-xs text-primary font-medium">
-                              Playing {playlistQueue.findIndex(t => t.id === currentPlayingTrack.id) + 1} of {playlistQueue.length}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                            Playing {playlistQueue.findIndex(t => t.id === currentPlayingTrack.id) + 1} of {playlistQueue.length}
+                          </span>
+                        </div>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Player Controls */}
+                  {/* Player Controls */}
                     <div className="flex flex-col items-center gap-1.5 sm:gap-2 flex-1">
                       <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
-                        {/* Shuffle */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={toggleShuffle}
-                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${isShuffled ? 'text-primary' : 'text-muted-foreground'}`}
-                          title={isShuffled ? 'Shuffle on' : 'Shuffle off'}
-                        >
-                          <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={playPrevious}
-                          disabled={isPlayerLoading || !isPlayerReady}
-                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
-                        >
-                          <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </Button>
-                        
-                        <Button
-                          size="lg"
-                          onClick={togglePlayPause}
-                          disabled={isPlayerLoading || !isPlayerReady}
-                          className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 p-0"
-                        >
-                          {isPlayerLoading ? (
-                            <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 animate-spin" />
-                          ) : isPlaying ? (
-                            <Pause className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
-                          ) : (
-                            <Play className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 ml-0.5" />
-                          )}
-                        </Button>
-                        
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={playNext}
-                          disabled={isPlayerLoading || !isPlayerReady}
-                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
-                        >
-                          <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </Button>
-
-                        {/* Repeat */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={toggleRepeatMode}
-                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${repeatMode !== 'off' ? 'text-primary' : 'text-muted-foreground'}`}
-                          title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
-                        >
-                          {repeatMode === 'one' ? (
-                            <Repeat1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          ) : (
-                            <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="flex items-center gap-1.5 sm:gap-2 w-full max-w-lg px-1 sm:px-0">
-                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 text-right flex-shrink-0">
-                          {formatDuration(Math.floor(currentTime))}
-                        </span>
-                        <div className="flex-1 group">
-                          <input
-                            type="range"
-                            min="0"
-                            max={duration || 100}
-                            value={currentTime}
-                            onChange={(e) => seekTo(Number(e.target.value))}
-                            className="w-full h-1 sm:h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:w-4 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform touch-none"
-                          />
-                        </div>
-                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 flex-shrink-0">
-                          {formatDuration(Math.floor(duration))}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Volume & Actions */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 justify-end flex-1">
-                    {/* Volume Control - Mobile: Icon only, Desktop: Icon + Slider */}
-                    <div className="relative group/volume flex items-center gap-1.5 sm:gap-2">
+                      {/* Shuffle */}
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={toggleMute}
-                        className="hover:bg-primary/20 h-8 w-8 sm:h-9 sm:w-9 p-0"
+                        onClick={toggleShuffle}
+                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${isShuffled ? 'text-primary' : 'text-muted-foreground'}`}
+                        title={isShuffled ? 'Shuffle on' : 'Shuffle off'}
                       >
-                        {isMuted || volume === 0 ? (
-                          <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={playPrevious}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
+                      >
+                          <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+                      </Button>
+                      
+                      <Button
+                        size="lg"
+                        onClick={togglePlayPause}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                          className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl hover:shadow-primary/50 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 p-0"
+                      >
+                        {isPlayerLoading ? (
+                            <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 animate-spin" />
+                        ) : isPlaying ? (
+                            <Pause className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                         ) : (
-                          <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <Play className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 ml-0.5" />
                         )}
                       </Button>
-                      {/* Volume Slider - Hidden on mobile, visible on desktop */}
-                      <div className="hidden md:block group">
+                      
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={playNext}
+                        disabled={isPlayerLoading || !isPlayerReady}
+                          className="hover:bg-primary/20 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 p-0"
+                      >
+                          <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+                      </Button>
+
+                      {/* Repeat */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={toggleRepeatMode}
+                          className={`hover:bg-primary/20 transition-all h-8 w-8 sm:h-9 sm:w-9 p-0 ${repeatMode !== 'off' ? 'text-primary' : 'text-muted-foreground'}`}
+                        title={repeatMode === 'off' ? 'Repeat off' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+                      >
+                        {repeatMode === 'one' ? (
+                            <Repeat1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        ) : (
+                            <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Progress Bar */}
+                      <div className="flex items-center gap-1.5 sm:gap-2 w-full max-w-lg px-1 sm:px-0">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 text-right flex-shrink-0">
+                        {formatDuration(Math.floor(currentTime))}
+                      </span>
+                      <div className="flex-1 group">
                         <input
                           type="range"
                           min="0"
-                          max="100"
-                          step="1"
-                          value={isMuted ? 0 : volume}
-                          onChange={(e) => changeVolume(Number(e.target.value))}
-                          className="w-20 lg:w-24 h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                          max={duration || 100}
+                          value={currentTime}
+                          onChange={(e) => seekTo(Number(e.target.value))}
+                            className="w-full h-1 sm:h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:w-4 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform touch-none"
                         />
+                      </div>
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono w-10 sm:w-12 flex-shrink-0">
+                        {formatDuration(Math.floor(duration))}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Volume & Actions */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 justify-end flex-1">
+                    {/* Volume Control - Mobile: Icon only, Desktop: Icon + Slider */}
+                    <div className="relative group/volume flex items-center gap-1.5 sm:gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={toggleMute}
+                        className="hover:bg-primary/20 h-8 w-8 sm:h-9 sm:w-9 p-0"
+                    >
+                      {isMuted || volume === 0 ? (
+                          <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" />
+                      ) : (
+                          <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                      )}
+                    </Button>
+                      {/* Volume Slider - Hidden on mobile, visible on desktop */}
+                      <div className="hidden md:block group">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={isMuted ? 0 : volume}
+                        onChange={(e) => changeVolume(Number(e.target.value))}
+                          className="w-20 lg:w-24 h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg group-hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                      />
                       </div>
                     </div>
                     
@@ -4880,8 +4880,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
-                  </div>
                 </div>
+              </div>
               ) : (
                 /* Vertical Layout - Left/Right Side - Creative & Compact */
                 <div className="flex flex-col gap-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
@@ -4895,8 +4895,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       />
                       {isPlaying && (
                         <div className="absolute inset-0 rounded-2xl bg-primary/10 animate-pulse"></div>
-                      )}
-                    </div>
+            )}
+          </div>
                     
                     {/* Track Info - Centered */}
                     <div className="text-center px-2">
