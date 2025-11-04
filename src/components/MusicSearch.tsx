@@ -411,6 +411,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
           )}
         </Button>
         </div>
+      </div>
 
       {/* Invalid URL Warning */}
       {isInvalidUrl && searchQuery.trim() && (
