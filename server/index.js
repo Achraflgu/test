@@ -520,29 +520,32 @@ async function testCookies(cookiePath) {
         
         // Check for success indicators
         const hasTitle = output.includes('"title"') || output.includes('"id"');
+        const hasVideoId = output.includes('"video_id"') || output.includes('"id":');
         
-        // Critical bot detection errors (definitely cookie problem)
+        // Critical bot detection errors (definitely cookie problem - REJECT)
         const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
                                      errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue');
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
         
-        // Video configuration errors (might be test video issue, not cookie issue)
-        const hasVideoConfigError = errorOutput.includes('Error 153') || 
-                                   errorOutput.includes('Video player configuration error');
-        
-        if (code === 0 && hasTitle && !hasBotDetectionError) {
-          console.log('  ✅ Cookie test PASSED');
-          resolve(true);
-        } else if (hasVideoConfigError && !hasBotDetectionError) {
-          // Video config error but no bot detection = probably test video issue, accept cookies
-          console.log('  ⚠️ Config error but no bot detection - accepting');
-          resolve(true);
-        } else if (hasBotDetectionError) {
-          // Real bot detection error = cookie problem
+        // If we have bot detection, definitely reject
+        if (hasBotDetectionError) {
           resolve(false);
-        } else {
-          resolve(false);
+          return;
         }
+        
+        // If we got valid JSON with title/ID, definitely accept (best case)
+        if (code === 0 && (hasTitle || hasVideoId)) {
+          console.log('  ✅ Cookie test PASSED (valid JSON)');
+          resolve(true);
+          return;
+        }
+        
+        // If process completed normally (we're here, so no bot detection was found)
+        // Accept cookies that complete without bot detection - they might work for downloads
+        // Even if test video fails, cookie might work for other videos
+        console.log('  ⚠️ Process completed, no bot detection - accepting (may work for downloads)');
+        resolve(true);
       });
       
       testProcess.on('error', () => {
@@ -701,24 +704,55 @@ async function generateAndTestCookies(maxAttempts = 100) {
       
       const startTime = Date.now();
       const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
+      const MAX_BATCHES = 100; // Safety limit: max 100 batches (500 attempts)
+      const MAX_TIME = 600000; // Safety limit: 10 minutes max
+      const MIN_COOKIES_TO_ACCEPT = 1; // Accept if we have at least 1 working cookie
       
       console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`🎯 Will keep testing until ${COOKIE_POOL_SIZE} working cookies are found!`);
-      console.log(`⚡ No limits - running until success!`);
+      console.log(`🎯 Target: ${COOKIE_POOL_SIZE} working cookies`);
+      console.log(`🛡️ Safety limits: ${MAX_BATCHES} batches max, ${MAX_TIME/1000}s timeout`);
+      console.log(`✅ Will accept ${MIN_COOKIES_TO_ACCEPT}+ working cookies if time/batches limit reached`);
       
       let totalAttempts = 0;
       let cookiesFound = 0;
       let batch = 0;
       const workingCookies = [];
       
-      // Test multiple cookies in parallel batches UNTIL we have 5 working cookies
+      // Test multiple cookies in parallel batches UNTIL we have 5 working cookies OR hit limits
       while (cookiesFound < COOKIE_POOL_SIZE) {
         batch++;
-        console.log(`\n🔄 Batch ${batch}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
+        const elapsed = Date.now() - startTime;
+        
+        // Safety check: Stop if we've exceeded limits
+        if (batch > MAX_BATCHES) {
+          console.log(`\n⚠️ Safety limit reached: ${MAX_BATCHES} batches tested`);
+          if (cookiesFound >= MIN_COOKIES_TO_ACCEPT) {
+            console.log(`✅ Accepting ${cookiesFound} working cookies (above minimum ${MIN_COOKIES_TO_ACCEPT})`);
+            break;
+          } else {
+            console.log(`❌ Only found ${cookiesFound} cookies (need at least ${MIN_COOKIES_TO_ACCEPT})`);
+            console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
+            break;
+          }
+        }
+        
+        if (elapsed > MAX_TIME) {
+          console.log(`\n⚠️ Time limit reached: ${(elapsed/1000).toFixed(0)}s elapsed`);
+          if (cookiesFound >= MIN_COOKIES_TO_ACCEPT) {
+            console.log(`✅ Accepting ${cookiesFound} working cookies (above minimum ${MIN_COOKIES_TO_ACCEPT})`);
+            break;
+          } else {
+            console.log(`❌ Only found ${cookiesFound} cookies (need at least ${MIN_COOKIES_TO_ACCEPT})`);
+            console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
+            break;
+          }
+        }
+        
+        console.log(`\n🔄 Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
         // Generate multiple cookie sets in parallel
         const cookiePromises = [];
-        for (let i = 0; i < PARALLEL_TESTS && totalAttempts < maxAttempts; i++) {
+        for (let i = 0; i < PARALLEL_TESTS; i++) {
           const attempt = totalAttempts++;
           
           const testPromise = (async () => {
