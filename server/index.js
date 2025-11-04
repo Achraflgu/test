@@ -383,6 +383,10 @@ const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
 const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
+// Lock to prevent concurrent cookie generation
+let isGeneratingCookies = false;
+let cookieGenerationPromise = null;
+
 // Load cookie metadata
 async function loadCookieMetadata() {
   try {
@@ -435,7 +439,7 @@ async function testCookies(cookiePath) {
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 15000 // 15 second timeout
+        timeout: 20000 // 20 second timeout (increased for reliability)
       });
       
       let output = '';
@@ -490,14 +494,16 @@ async function testCookies(cookiePath) {
         resolve(false);
       });
       
-      // Timeout fallback
+      // Timeout fallback (increased to 20 seconds for better reliability)
       setTimeout(() => {
         try {
-          testProcess.kill();
+          testProcess.kill('SIGKILL'); // Force kill on timeout
         } catch {}
-        console.log('  ⏱️ Cookie test TIMEOUT');
+        if (!testProcess.killed) {
+          console.log('  ⏱️ Cookie test TIMEOUT');
+        }
         resolve(false);
-      }, 15000);
+      }, 20000); // Increased from 15s to 20s
     });
   } catch (err) {
     console.log(`  ⚠️ Cookie test exception: ${err.message}`);
@@ -585,80 +591,98 @@ function generateRealisticYouTubeCookies(attempt = 0) {
 
 // Generate and test cookies until one works (retry many times until success)
 async function generateAndTestCookies(maxAttempts = 100) {
-  let attempt = 0;
-  const startTime = Date.now();
+  // 🔒 Prevent concurrent cookie generation
+  if (isGeneratingCookies && cookieGenerationPromise) {
+    console.log('  ⏳ Cookie generation already in progress, waiting for completion...');
+    return await cookieGenerationPromise;
+  }
   
-  console.log(`🔄 Starting cookie generation - will retry up to ${maxAttempts} times until success...`);
-  
-  while (attempt < maxAttempts) {
-    // Generate new cookies
-    const cookieContent = generateRealisticYouTubeCookies(attempt);
-    if (!cookieContent) {
-      attempt++;
-      continue;
-    }
-    
-    // Save to temp file for testing
-    const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}.txt`);
-    await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
-    
-    // Test the cookies
-    const testResult = await testCookies(tempCookiePath);
-    
-    if (testResult) {
-      // ✅ Cookies work! Save them permanently
-      await fs.writeFile(AUTO_COOKIE_PATH, cookieContent, 'utf8');
-      await fs.unlink(tempCookiePath).catch(() => {}); // Clean up temp file
+  // Set lock and create promise
+  isGeneratingCookies = true;
+  cookieGenerationPromise = (async () => {
+    try {
+      let attempt = 0;
+      const startTime = Date.now();
       
-      // Update metadata
-      const metadata = await loadCookieMetadata();
-      metadata.lastTested = new Date().toISOString();
-      metadata.successCount = (metadata.successCount || 0) + 1;
-      metadata.isValid = true;
-      metadata.generationAttempt = attempt + 1;
-      await saveCookieMetadata(metadata);
+      console.log(`🔄 Starting cookie generation - will retry up to ${maxAttempts} times until success...`);
       
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts}) after ${elapsed}s`);
-      return AUTO_COOKIE_PATH;
-    } else {
-      // ❌ Cookies failed, try again
-      await fs.unlink(tempCookiePath).catch(() => {});
-      attempt++;
-      
-      // Show progress every 10 attempts to avoid spam
-      if (attempt % 10 === 0) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`  ⏳ Attempt ${attempt}/${maxAttempts} failed... (${elapsed}s elapsed, continuing...)`);
-      } else {
-        console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
+      while (attempt < maxAttempts) {
+        // Generate new cookies
+        const cookieContent = generateRealisticYouTubeCookies(attempt);
+        if (!cookieContent) {
+          attempt++;
+          continue;
+        }
+        
+        // Save to temp file for testing
+        const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}.txt`);
+        await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+        
+        // Test the cookies
+        const testResult = await testCookies(tempCookiePath);
+        
+        if (testResult) {
+          // ✅ Cookies work! Save them permanently
+          await fs.writeFile(AUTO_COOKIE_PATH, cookieContent, 'utf8');
+          await fs.unlink(tempCookiePath).catch(() => {}); // Clean up temp file
+          
+          // Update metadata
+          const metadata = await loadCookieMetadata();
+          metadata.lastTested = new Date().toISOString();
+          metadata.successCount = (metadata.successCount || 0) + 1;
+          metadata.isValid = true;
+          metadata.generationAttempt = attempt + 1;
+          await saveCookieMetadata(metadata);
+          
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts}) after ${elapsed}s`);
+          return AUTO_COOKIE_PATH;
+        } else {
+          // ❌ Cookies failed, try again
+          await fs.unlink(tempCookiePath).catch(() => {});
+          attempt++;
+          
+          // Show progress every 10 attempts to avoid spam
+          if (attempt % 10 === 0) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`  ⏳ Attempt ${attempt}/${maxAttempts} failed... (${elapsed}s elapsed, continuing...)`);
+          } else {
+            console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
+          }
+          
+          // Small delay between attempts (reduced for faster retries)
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
       
-      // Small delay between attempts (reduced for faster retries)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // All attempts failed - use last generated cookies anyway (fallback)
+      // Note: If all failures were video config errors (not bot detection), cookies might still work
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`⚠️ All ${maxAttempts} cookie test attempts failed after ${elapsed}s`);
+      console.log(`  💡 Saving cookies anyway - they may work despite test failures (will be validated during actual downloads)`);
+      const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
+      if (fallbackContent) {
+        await fs.writeFile(AUTO_COOKIE_PATH, fallbackContent, 'utf8');
+        
+        // Update metadata to indicate cookies were saved but not tested
+        const metadata = await loadCookieMetadata();
+        metadata.lastTested = new Date().toISOString();
+        metadata.isValid = null; // Unknown - will be validated during actual downloads
+        metadata.generationAttempt = maxAttempts;
+        await saveCookieMetadata(metadata);
+        
+        return AUTO_COOKIE_PATH;
+      }
+      
+      return null;
+    } finally {
+      // Release lock
+      isGeneratingCookies = false;
+      cookieGenerationPromise = null;
     }
-  }
+  })();
   
-  // All attempts failed - use last generated cookies anyway (fallback)
-  // Note: If all failures were video config errors (not bot detection), cookies might still work
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`⚠️ All ${maxAttempts} cookie test attempts failed after ${elapsed}s`);
-  console.log(`  💡 Saving cookies anyway - they may work despite test failures (will be validated during actual downloads)`);
-  const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
-  if (fallbackContent) {
-    await fs.writeFile(AUTO_COOKIE_PATH, fallbackContent, 'utf8');
-    
-    // Update metadata to indicate cookies were saved but not tested
-    const metadata = await loadCookieMetadata();
-    metadata.lastTested = new Date().toISOString();
-    metadata.isValid = null; // Unknown - will be validated during actual downloads
-    metadata.generationAttempt = maxAttempts;
-    await saveCookieMetadata(metadata);
-    
-    return AUTO_COOKIE_PATH;
-  }
-  
-  return null;
+  return await cookieGenerationPromise;
 }
 
 // Initialize auto-cookies on startup with smart testing
