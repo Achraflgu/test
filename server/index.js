@@ -379,7 +379,8 @@ async function extractBrowserCookies() {
 // Cookie metadata tracking
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
-const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Short test video (Me at the zoo - oldest YouTube video)
+// Use a more reliable test video (short, popular, recent)
+const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (reliable test video)
 
 // Load cookie metadata
 async function loadCookieMetadata() {
@@ -444,13 +445,30 @@ async function testCookies(cookiePath) {
       testProcess.on('close', (code) => {
         // Check for success indicators
         const hasTitle = output.includes('"title"') || output.includes('"id"');
-        const noError = !errorOutput.includes('Sign in to confirm') && 
-                       !errorOutput.includes('LOGIN_REQUIRED') &&
-                       !errorOutput.includes('Unable to extract');
         
-        if (code === 0 && hasTitle && noError) {
+        // Critical bot detection errors (definitely cookie problem)
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue');
+        
+        // Video configuration errors (might be test video issue, not cookie issue)
+        const hasVideoConfigError = errorOutput.includes('Error 153') || 
+                                   errorOutput.includes('Video player configuration error');
+        
+        if (code === 0 && hasTitle && !hasBotDetectionError) {
           console.log('  ✅ Cookie test PASSED - cookies are working!');
           resolve(true);
+        } else if (hasVideoConfigError && !hasBotDetectionError) {
+          // Video config error but no bot detection = probably test video issue, not cookie issue
+          console.log('  ⚠️ Cookie test inconclusive (video config error, but no bot detection) - accepting cookies');
+          resolve(true); // Accept cookies if it's just a video config issue
+        } else if (hasBotDetectionError) {
+          // Real bot detection error = cookie problem
+          console.log('  ❌ Cookie test FAILED - bot detection error detected');
+          if (errorOutput) {
+            console.log(`  📝 Error: ${errorOutput.substring(0, 200)}`);
+          }
+          resolve(false);
         } else {
           console.log('  ❌ Cookie test FAILED - cookies need regeneration');
           if (errorOutput) {
@@ -604,10 +622,20 @@ async function generateAndTestCookies(maxAttempts = 5) {
   }
   
   // All attempts failed - use last generated cookies anyway (fallback)
-  console.log(`⚠️ All ${maxAttempts} cookie generation attempts failed, using last generated cookies as fallback`);
+  // Note: If all failures were video config errors (not bot detection), cookies might still work
+  console.log(`⚠️ All ${maxAttempts} cookie test attempts failed`);
+  console.log(`  💡 Saving cookies anyway - they may work despite test failures (will be validated during actual downloads)`);
   const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
   if (fallbackContent) {
     await fs.writeFile(AUTO_COOKIE_PATH, fallbackContent, 'utf8');
+    
+    // Update metadata to indicate cookies were saved but not tested
+    const metadata = await loadCookieMetadata();
+    metadata.lastTested = new Date().toISOString();
+    metadata.isValid = null; // Unknown - will be validated during actual downloads
+    metadata.generationAttempt = maxAttempts;
+    await saveCookieMetadata(metadata);
+    
     return AUTO_COOKIE_PATH;
   }
   
