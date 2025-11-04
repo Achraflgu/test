@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Loader2, AlertCircle, Link2, Plus, RefreshCw, Music2, Clipboard, CheckCircle2, X, History, ExternalLink } from "lucide-react";
+import { Search, Loader2, AlertCircle, Link2, Plus, RefreshCw, Music2, Clipboard, CheckCircle2, X, History, ExternalLink, Clock, Music, CheckSquare, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,9 +25,10 @@ interface PlaylistInputProps {
   existingPlaylistName?: string;
   initialUrl?: string;
   onSearchTextDetected?: (searchText: string) => void;
+  currentTracks?: Track[]; // To check for duplicates
 }
 
-export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlaylistName, initialUrl, onSearchTextDetected }: PlaylistInputProps) => {
+export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlaylistName, initialUrl, onSearchTextDetected, currentTracks = [] }: PlaylistInputProps) => {
   const [url, setUrl] = useState(initialUrl || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -60,6 +63,10 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
   
   // NEW: URL validation feedback
   const [isValidUrl, setIsValidUrl] = useState(false);
+  
+  // NEW: Track selection for enhanced dialog
+  const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
+  const [showDuplicateOnly, setShowDuplicateOnly] = useState(false);
 
   // Load recent URLs from localStorage
   useEffect(() => {
@@ -400,12 +407,58 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
     }
   };
 
+  // Initialize track selection when dialog opens
+  useEffect(() => {
+    if (showConfirmDialog && pendingData) {
+      // Auto-select all tracks by default
+      setSelectedTracks(new Set(pendingData.tracks.map(t => t.id)));
+      setShowDuplicateOnly(false);
+    }
+  }, [showConfirmDialog, pendingData]);
+
+  const handleSelectAll = () => {
+    if (pendingData) {
+      if (selectedTracks.size === pendingData.tracks.length) {
+        setSelectedTracks(new Set());
+      } else {
+        setSelectedTracks(new Set(pendingData.tracks.map(t => t.id)));
+      }
+    }
+  };
+
+  const handleToggleTrack = (trackId: string) => {
+    const newSelected = new Set(selectedTracks);
+    if (newSelected.has(trackId)) {
+      newSelected.delete(trackId);
+    } else {
+      newSelected.add(trackId);
+    }
+    setSelectedTracks(newSelected);
+  };
+
+  const handleAddSelected = () => {
+    if (pendingData && selectedTracks.size > 0) {
+      const selectedTracksList = pendingData.tracks.filter(t => selectedTracks.has(t.id));
+      onPlaylistLoaded(
+        { ...pendingData.playlist, totalTracks: selectedTracksList.length },
+        selectedTracksList,
+        'append'
+      );
+      toast.success(`✨ Added ${selectedTracksList.length} selected tracks!`);
+      setShowConfirmDialog(false);
+      setPendingData(null);
+      setSelectedTracks(new Set());
+      setUrl("");
+    }
+  };
+
   const handleAppendToExisting = () => {
     if (pendingData) {
       onPlaylistLoaded(pendingData.playlist, pendingData.tracks, 'append');
       toast.success(`✨ Added ${pendingData.tracks.length} tracks to existing list!`);
       setShowConfirmDialog(false);
       setPendingData(null);
+      setSelectedTracks(new Set());
       setUrl("");
     }
   };
@@ -416,6 +469,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
       toast.success("🎉 Music loaded successfully!");
       setShowConfirmDialog(false);
       setPendingData(null);
+      setSelectedTracks(new Set());
       setUrl("");
     }
   };
@@ -423,6 +477,19 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
   const handleCancelLoad = () => {
     setShowConfirmDialog(false);
     setPendingData(null);
+    setSelectedTracks(new Set());
+  };
+
+  // Check if track is duplicate
+  const isTrackDuplicate = (trackId: string): boolean => {
+    return currentTracks.some(t => t.id === trackId);
+  };
+
+  // Format track duration
+  const formatTrackDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -640,40 +707,246 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
         </div>
       </div>
 
-      {/* Confirmation Dialog */}
+      {/* Enhanced Confirmation Dialog with Track Selection */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent className="sm:max-w-[500px] bg-card border-border">
-          <AlertDialogHeader>
+        <AlertDialogContent className="sm:max-w-4xl w-[95vw] max-h-[90vh] h-[90vh] p-0 gap-0 flex flex-col">
+          {/* Header */}
+          <AlertDialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-accent/5">
             <AlertDialogTitle className="text-2xl font-bold flex items-center gap-2">
               <Music2 className="w-6 h-6 text-primary" />
               Add or Replace Music?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base text-muted-foreground pt-2">
               You already have <span className="font-semibold text-foreground">"{existingPlaylistName}"</span> loaded.
-              <br />
-              <br />
-              What would you like to do with the new music ({pendingData?.tracks.length} tracks)?
+              {pendingData && (
+                <span className="block mt-2">
+                  New playlist: <span className="font-semibold text-foreground">"{pendingData.playlist.name}"</span>
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleReplaceExisting}
-              className="bg-destructive/20 text-destructive hover:bg-destructive/30 border border-destructive/30 rounded-xl"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Clear & Load New
-            </AlertDialogAction>
-            <AlertDialogAction
-              onClick={handleAppendToExisting}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add to Existing
-            </AlertDialogAction>
-          </AlertDialogFooter>
+
+          {/* Playlist Preview Section */}
+          {pendingData && (
+            <div className="px-6 py-4 border-b bg-muted/30">
+              <div className="flex items-start gap-4">
+                {/* Playlist Image */}
+                <div className="relative flex-shrink-0">
+                  {pendingData.playlist.imageUrl ? (
+                    <img
+                      src={pendingData.playlist.imageUrl}
+                      alt={pendingData.playlist.name}
+                      className="w-24 h-24 rounded-lg object-cover shadow-lg"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                      <Music2 className="w-12 h-12 text-primary" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Playlist Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold line-clamp-2">{pendingData.playlist.name}</h3>
+                      <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Music className="h-4 w-4" />
+                          {pendingData.tracks.length} tracks
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {formatDuration(pendingData.playlist.totalDuration)}
+                        </span>
+                      </div>
+                      {/* Playlist URL */}
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => window.open(pendingData.playlist.url, '_blank', 'noopener,noreferrer')}
+                          className="text-xs text-primary hover:underline flex items-center gap-1 transition-colors"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Source
+                        </button>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground truncate max-w-md" title={pendingData.playlist.url}>
+                          {pendingData.playlist.url}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Track Selection Controls */}
+          {pendingData && (
+            <div className="px-6 py-3 border-b bg-card flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-4">
+                <Button
+                  onClick={handleSelectAll}
+                  size="sm"
+                  variant="outline"
+                  className="border-primary/30 hover:bg-primary/10"
+                >
+                  {selectedTracks.size === pendingData.tracks.length ? (
+                    <>
+                      <CheckSquare className="mr-2 h-4 w-4" />
+                      Deselect All
+                    </>
+                  ) : (
+                    <>
+                      <Square className="mr-2 h-4 w-4" />
+                      Select All
+                    </>
+                  )}
+                </Button>
+                
+                <span className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{selectedTracks.size}</span> of {pendingData.tracks.length} selected
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={showDuplicateOnly}
+                    onCheckedChange={(checked) => setShowDuplicateOnly(checked === true)}
+                  />
+                  <span>Show duplicates only</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Track List */}
+          {pendingData && (
+            <ScrollArea className="flex-1 px-6 py-4">
+              <div className="space-y-2">
+                {pendingData.tracks
+                  .filter(track => {
+                    if (showDuplicateOnly) {
+                      return isTrackDuplicate(track.id);
+                    }
+                    return true;
+                  })
+                  .map((track, index) => {
+                    const isDuplicate = isTrackDuplicate(track.id);
+                    const isSelected = selectedTracks.has(track.id);
+                    
+                    return (
+                      <div
+                        key={track.id}
+                        className={`group relative flex items-center gap-4 p-3 rounded-lg border transition-all ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 shadow-md'
+                            : isDuplicate
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-border/50 hover:bg-accent/50 hover:border-primary/30'
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => handleToggleTrack(track.id)}
+                          className="h-5 w-5"
+                        />
+
+                        {/* Track Thumbnail */}
+                        <div className="flex-shrink-0">
+                          {track.imageUrl ? (
+                            <img
+                              src={track.imageUrl}
+                              alt={track.name}
+                              className="w-12 h-12 rounded-md object-cover shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-md bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                              <Music className="h-6 w-6 text-primary" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Track Info */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm line-clamp-1">{track.name}</h4>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{track.artist}</p>
+                          {track.album && (
+                            <p className="text-xs text-muted-foreground/70 line-clamp-1">{track.album}</p>
+                          )}
+                        </div>
+
+                        {/* Duration & Badges */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {formatTrackDuration(track.duration)}
+                          </span>
+                          {isDuplicate && (
+                            <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span className="hidden sm:inline">Duplicate</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Footer Stats & Actions */}
+          {pendingData && (
+            <div className="px-6 py-4 border-t bg-muted/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {selectedTracks.size > 0 ? selectedTracks.size : pendingData.tracks.length} tracks
+                </span>
+                {' '}will be added
+                {currentTracks && currentTracks.length > 0 && (
+                  <span className="block mt-1 text-xs">
+                    Total: <span className="font-medium text-foreground">
+                      {currentTracks.length + (selectedTracks.size > 0 ? selectedTracks.size : pendingData.tracks.length)}
+                    </span> tracks after merge
+                  </span>
+                )}
+              </div>
+
+              <AlertDialogFooter className="gap-2 p-0">
+                <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
+                  Cancel
+                </AlertDialogCancel>
+                
+                <AlertDialogAction
+                  onClick={handleReplaceExisting}
+                  className="bg-destructive/20 text-destructive hover:bg-destructive/30 border border-destructive/30 rounded-xl"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Replace All
+                </AlertDialogAction>
+
+                {selectedTracks.size > 0 && selectedTracks.size < pendingData.tracks.length ? (
+                  <AlertDialogAction
+                    onClick={handleAddSelected}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Selected ({selectedTracks.size})
+                  </AlertDialogAction>
+                ) : (
+                  <AlertDialogAction
+                    onClick={handleAppendToExisting}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add All ({pendingData.tracks.length})
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </div>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </div>

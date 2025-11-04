@@ -517,6 +517,7 @@ const Index = () => {
                 hasExistingData={tracks.length > 0}
                 existingPlaylistName={playlist?.name}
                 initialUrl={detectedUrl}
+                currentTracks={tracks}
                 onSearchTextDetected={handleSearchTextDetected}
                 onPlaylistLoaded={(playlistData, tracksData, mode) => {
                   // Clear detected URL after it's been used
