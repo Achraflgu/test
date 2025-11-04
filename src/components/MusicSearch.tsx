@@ -402,7 +402,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
 
   return (
     <>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-2 sm:left-3 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-muted-foreground" />
@@ -418,88 +418,76 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
               autoFocus
               ref={inputRef}
             />
-            {/* Recent Searches Dropdown - Enhanced Design */}
-            {recentSearches.length > 0 && searchQuery === '' && !isResultsOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-br from-card via-card to-accent/5 border border-primary/20 rounded-xl shadow-2xl shadow-primary/10 z-50 overflow-hidden backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Header */}
-                <div className="px-4 py-3 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/10 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-primary/20 rounded-lg">
-                      <History className="h-3.5 w-3.5 text-primary" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">Recent Searches</span>
-                    <span className="text-xs text-muted-foreground/70 bg-muted/50 px-2 py-0.5 rounded-full">
-                      {recentSearches.length}
-                    </span>
-                  </div>
+          </div>
+          <Button 
+            onClick={handleSearch} 
+            disabled={isSearching || !searchQuery.trim() || isInvalidUrl}
+            className="h-10 sm:h-11 w-full sm:w-auto px-4 sm:px-6"
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                <span className="hidden sm:inline">Searching...</span>
+                <span className="sm:hidden">Searching</span>
+              </>
+            ) : (
+              <>
+                <Search className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                Search
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Recent Searches - Always Visible as Pill Tags */}
+        {recentSearches.length > 0 && (
+          <div className="w-full space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">Recent Searches</span>
+                <span className="text-xs text-muted-foreground/70 bg-muted/50 px-2 py-0.5 rounded-full">
+                  {recentSearches.length}
+                </span>
+              </div>
+              <button
+                onClick={clearRecentSearches}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded-md hover:bg-destructive/10 flex items-center gap-1.5"
+                title="Clear all"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Clear All</span>
+              </button>
+            </div>
+            
+            {/* Pill Tags Grid - 5 per row on desktop, responsive on mobile */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+              {recentSearches.map((search, idx) => (
+                <div
+                  key={idx}
+                  className="group relative inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-br from-muted/50 via-muted/40 to-muted/30 border border-border/50 rounded-full hover:border-primary/40 hover:bg-gradient-to-br hover:from-primary/10 hover:via-primary/5 hover:to-accent/5 transition-all duration-200 hover:shadow-md hover:shadow-primary/10 hover:scale-105 cursor-pointer"
+                  onClick={() => {
+                    setSearchQuery(search);
+                    setTimeout(() => handleSearch(), 100);
+                  }}
+                >
+                  <Search className="h-3.5 w-3.5 text-primary/70 group-hover:text-primary transition-colors flex-shrink-0" />
+                  <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate flex-1">
+                    {search}
+                  </span>
                   <button
-                    onClick={clearRecentSearches}
-                    className="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 flex items-center gap-1"
-                    title="Clear all"
+                    onClick={(e) => removeSearchFromHistory(search, e)}
+                    className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex-shrink-0"
+                    title="Remove"
                   >
-                    <Trash2 className="h-3 w-3" />
-                    <span className="hidden sm:inline">Clear</span>
+                    <X className="h-3 w-3" />
                   </button>
                 </div>
-                
-                {/* Search Items */}
-                <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                  {recentSearches.slice(0, 12).map((search, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setSearchQuery(search);
-                        setTimeout(() => handleSearch(), 100);
-                      }}
-                      className="group w-full text-left px-4 py-3 hover:bg-gradient-to-r hover:from-primary/10 hover:to-accent/5 flex items-center justify-between gap-3 text-sm transition-all duration-200 border-b border-border/30 last:border-b-0 hover:border-primary/20 hover:shadow-sm"
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
-                          <Search className="h-3 w-3 text-primary group-hover:scale-110 transition-transform" />
-                        </div>
-                        <span className="text-foreground font-medium truncate group-hover:text-primary transition-colors">
-                          {search}
-                        </span>
-                      </div>
-                      <button
-                        onClick={(e) => removeSearchFromHistory(search, e)}
-                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                        title="Remove from history"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </button>
-                  ))}
-                </div>
-                
-                {/* Footer */}
-                {recentSearches.length > 12 && (
-                  <div className="px-4 py-2 bg-muted/30 border-t border-border/30 text-xs text-muted-foreground text-center">
-                    Showing 12 of {recentSearches.length} recent searches
-                  </div>
-                )}
-              </div>
-            )}
+              ))}
+            </div>
           </div>
-        <Button 
-          onClick={handleSearch} 
-          disabled={isSearching || !searchQuery.trim() || isInvalidUrl}
-          className="h-10 sm:h-11 w-full sm:w-auto px-4 sm:px-6"
-        >
-          {isSearching ? (
-            <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-              <span className="hidden sm:inline">Searching...</span>
-              <span className="sm:hidden">Searching</span>
-            </>
-          ) : (
-            <>
-              <Search className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              Search
-            </>
-          )}
-        </Button>
-        </div>
+        )}
       </div>
 
       {/* Invalid URL Warning */}
