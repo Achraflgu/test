@@ -3454,9 +3454,8 @@ async function createFolderCoverImage(imageUrls, outputPath) {
     console.log(`✅ Folder cover created successfully: ${outputPath}`);
     return true;
   } catch (error) {
-    console.error('❌ Failed to create folder cover:', error);
-    console.error('   Error details:', error.message);
-    console.error('   Stack:', error.stack);
+    // Reduced logging: Only log error message, not full stack
+    console.error('❌ Failed to create folder cover:', error.message);
     return false;
   }
 }
@@ -4398,8 +4397,8 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
     return true;
     
   } catch (err) {
+    // Reduced logging: Only log error message, not full stack trace
     console.log(`  ❌ YouTubei.js failed: ${err.message}`);
-    console.log(`  📝 Error details:`, err.stack);
     return false;
   }
 }
@@ -4414,7 +4413,7 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
 // 🔥 SMART FALLBACK: Search for alternative video when age-restricted
 async function findAlternativeVideo(track, outputFolder) {
   try {
-    console.log(`  🔍 Age-restricted video detected - searching for alternative...`);
+    // Reduced logging: Only log if alternative is found
     
     // Clean search query: remove special characters, parentheses, etc.
     const cleanQuery = (str) => {
@@ -4444,7 +4443,7 @@ async function findAlternativeVideo(track, outputFolder) {
     // Try each search query variation
     for (const rawQuery of searchQueries) {
       const searchQuery = cleanQuery(rawQuery);
-      console.log(`  🎯 Trying search: "${searchQuery}"`);
+      // Reduced logging: Only log if debugging is needed
       
       // Use yt-dlp to search for alternatives (limit to 10 results for better chances)
       const searchArgs = [
@@ -4643,8 +4642,8 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     return true;
     
   } catch (err) {
+    // Reduced logging: Only log error message, not full stack trace (prevents rate limit)
     console.log(`  ❌ youtube-dl-exec failed: ${err.message}`);
-    console.log(`  📝 Error stack:`, err.stack);
     
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
@@ -4665,11 +4664,11 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     
     // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
     if (hasAgeRestricted) {
-      console.log('  🔒 Age-restricted video detected - searching for alternative...');
+      // Reduced logging: Only log if alternative is found and used
       
       const alternativeUrl = await findAlternativeVideo(track, outputFolder);
       if (alternativeUrl) {
-        console.log(`  🔄 Retrying with alternative video: ${alternativeUrl}`);
+        // Reduced logging: Only log if alternative succeeds
         
         // Create a copy of track with alternative URL
         const alternativeTrack = { ...track, url: alternativeUrl };
@@ -4677,7 +4676,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         try {
           // Retry with alternative video
           const retryResult = await youtubedl(alternativeUrl, downloadOptions);
-          console.log(`  📝 Alternative download result:`, retryResult);
+          // Removed alternative download result log
           
           // Verify file was created
           const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
@@ -5716,7 +5715,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                                            (errorLower.includes('this video is unavailable') && errorLower.includes('sign in'));
               
               if (hasAgeRestricted && !hasBotDetectionError) {
-                console.log('  🔒 Age-restricted video detected in yt-dlp - will try alternative in next method');
+                // Reduced logging: Age-restricted detection (will try alternative in next method)
                 // Signal to try alternative (handled by outer retry logic or next download method)
               }
               
