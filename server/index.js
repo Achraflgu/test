@@ -380,12 +380,17 @@ async function extractBrowserCookies() {
 // Cookie metadata tracking
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
+const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
 const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
 let cookieGenerationPromise = null;
+
+// 🎯 COOKIE POOL SYSTEM - Maintain 5 working cookies
+const COOKIE_POOL_SIZE = 5;
+let cookiePoolIndex = 0; // Round-robin rotation
 
 // Load cookie metadata
 async function loadCookieMetadata() {
@@ -418,11 +423,65 @@ async function saveCookieMetadata(metadata) {
   }
 }
 
-// Test if cookies work by attempting a small download
+// 🎯 COOKIE POOL MANAGEMENT - Save 5 working cookies
+async function initCookiePool() {
+  try {
+    await fs.mkdir(COOKIE_POOL_DIR, { recursive: true });
+  } catch (err) {
+    // Directory may already exist
+  }
+}
+
+async function saveCookieToPool(cookieContent, index) {
+  try {
+    const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${index}.txt`);
+    await fs.writeFile(cookiePath, cookieContent, 'utf8');
+    console.log(`  💾 Saved working cookie to pool (slot ${index + 1}/${COOKIE_POOL_SIZE})`);
+    return cookiePath;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to save cookie to pool: ${err.message}`);
+    return null;
+  }
+}
+
+async function getWorkingCookiesFromPool() {
+  try {
+    await initCookiePool();
+    const files = await fs.readdir(COOKIE_POOL_DIR);
+    const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
+    const cookies = [];
+    
+    for (const file of cookieFiles) {
+      try {
+        const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
+        cookies.push({ path: path.join(COOKIE_POOL_DIR, file), content });
+      } catch {}
+    }
+    
+    return cookies;
+  } catch (err) {
+    return [];
+  }
+}
+
+async function getNextCookieFromPool() {
+  const cookies = await getWorkingCookiesFromPool();
+  if (cookies.length === 0) return null;
+  
+  // Round-robin rotation
+  const cookie = cookies[cookiePoolIndex % cookies.length];
+  cookiePoolIndex++;
+  return cookie.path;
+}
+
+async function replaceCookieInPool(index, newCookieContent) {
+  console.log(`  🔄 Replacing failed cookie in pool (slot ${index + 1}/${COOKIE_POOL_SIZE})...`);
+  return await saveCookieToPool(newCookieContent, index);
+}
+
+// ⚡ FAST cookie test (5s timeout for quick iteration)
 async function testCookies(cookiePath) {
   try {
-    console.log('  🧪 Testing cookies with test video...');
-    
     // Use yt-dlp to test cookies with a short test video
     const testArgs = [
       '-m', 'yt_dlp',
@@ -432,6 +491,7 @@ async function testCookies(cookiePath) {
       '--no-playlist',
       '--quiet',
       '--no-warnings',
+      '--skip-download', // Don't download, just test access
       '--extractor-args', 'youtube:player_client=web_embedded',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
@@ -439,11 +499,12 @@ async function testCookies(cookiePath) {
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 10000 // 10 second timeout (faster for parallel testing)
+        timeout: 5000 // 5 second timeout (2x faster!)
       });
       
       let output = '';
       let errorOutput = '';
+      let resolved = false;
       
       testProcess.stdout.on('data', (data) => {
         output += data.toString();
@@ -454,6 +515,9 @@ async function testCookies(cookiePath) {
       });
       
       testProcess.on('close', (code) => {
+        if (resolved) return;
+        resolved = true;
+        
         // Check for success indicators
         const hasTitle = output.includes('"title"') || output.includes('"id"');
         
@@ -482,19 +546,22 @@ async function testCookies(cookiePath) {
       });
       
       testProcess.on('error', () => {
+        if (resolved) return;
+        resolved = true;
         resolve(false);
       });
       
-      // Faster timeout for parallel testing
+      // Fast timeout for parallel testing (5s instead of 10s)
       setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
         try {
           testProcess.kill('SIGKILL');
         } catch {}
         resolve(false);
-      }, 10000); // Reduced to 10s for faster parallel testing
+      }, 5000); // 2x faster!
     });
   } catch (err) {
-    console.log(`  ⚠️ Cookie test exception: ${err.message}`);
     return false;
   }
 }
@@ -618,7 +685,7 @@ function generateRealisticYouTubeCookies(attempt = 0) {
   }
 }
 
-// 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!)
+// 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!) + EARLY STOP
 async function generateAndTestCookies(maxAttempts = 100) {
   // 🔒 Prevent concurrent cookie generation
   if (isGeneratingCookies && cookieGenerationPromise) {
@@ -630,17 +697,24 @@ async function generateAndTestCookies(maxAttempts = 100) {
   isGeneratingCookies = true;
   cookieGenerationPromise = (async () => {
     try {
+      await initCookiePool(); // Initialize cookie pool directory
+      
       const startTime = Date.now();
       const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
-      const BATCH_SIZE = 10;    // Generate 10 batches max
+      const BATCH_SIZE = 5;     // Only 5 batches max (stop early if failing)
+      const MAX_FAILURES = 3;   // Stop after 3 failed batches in a row
       
       console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`⚡ Up to ${maxAttempts} attempts with ${PARALLEL_TESTS}x speed boost!`);
+      console.log(`⚡ Testing up to ${BATCH_SIZE} batches (${BATCH_SIZE * PARALLEL_TESTS} cookies max)`);
+      console.log(`🛑 Will stop early after ${MAX_FAILURES} failed batches`);
       
       let totalAttempts = 0;
+      let cookiesFound = 0;
+      let consecutiveFailures = 0;
+      const workingCookies = [];
       
       // Test multiple cookies in parallel batches
-      for (let batch = 0; batch < BATCH_SIZE && totalAttempts < maxAttempts; batch++) {
+      for (let batch = 0; batch < BATCH_SIZE && cookiesFound < COOKIE_POOL_SIZE; batch++) {
         console.log(`\n🔄 Batch ${batch + 1}/${BATCH_SIZE}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
         // Generate multiple cookie sets in parallel
@@ -658,7 +732,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
               const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}_${i}.txt`);
               await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
               
-              // Test cookies
+              // Test cookies (5s timeout)
               const testResult = await testCookies(tempCookiePath);
               
               // Clean up temp file
@@ -671,7 +745,6 @@ async function generateAndTestCookies(maxAttempts = 100) {
                 tempPath: tempCookiePath
               };
             } catch (err) {
-              console.log(`  ⚠️ Test ${i + 1} error: ${err.message}`);
               return { success: false, attempt };
             }
           })();
@@ -682,38 +755,71 @@ async function generateAndTestCookies(maxAttempts = 100) {
         // Wait for all parallel tests to complete
         const results = await Promise.all(cookiePromises);
         
-        // Check if any succeeded
-        const successResult = results.find(r => r.success);
+        // Collect ALL successful cookies (not just first one)
+        const successfulResults = results.filter(r => r.success);
         
-        if (successResult) {
-          // ✅ Found working cookies!
-          await fs.writeFile(AUTO_COOKIE_PATH, successResult.cookieContent, 'utf8');
+        if (successfulResults.length > 0) {
+          consecutiveFailures = 0; // Reset failure counter
           
-          // Update metadata
-          const metadata = await loadCookieMetadata();
-          metadata.lastTested = new Date().toISOString();
-          metadata.successCount = (metadata.successCount || 0) + 1;
-          metadata.isValid = true;
-          metadata.generationAttempt = successResult.attempt + 1;
-          await saveCookieMetadata(metadata);
+          // Save ALL working cookies to pool
+          for (const result of successfulResults) {
+            if (cookiesFound >= COOKIE_POOL_SIZE) break;
+            
+            await saveCookieToPool(result.cookieContent, cookiesFound);
+            workingCookies.push(result.cookieContent);
+            
+            // Save first one as primary cookie
+            if (cookiesFound === 0) {
+              await fs.writeFile(AUTO_COOKIE_PATH, result.cookieContent, 'utf8');
+              
+              const metadata = await loadCookieMetadata();
+              metadata.lastTested = new Date().toISOString();
+              metadata.successCount = (metadata.successCount || 0) + 1;
+              metadata.isValid = true;
+              metadata.generationAttempt = result.attempt + 1;
+              await saveCookieMetadata(metadata);
+            }
+            
+            cookiesFound++;
+          }
           
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`✅ Working cookies found (attempt ${successResult.attempt + 1}/${totalAttempts}) after ${elapsed}s`);
-          console.log(`⚡ Parallel testing saved ~${((totalAttempts - successResult.attempt - 1) * 5).toFixed(0)}s!`);
+          console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch + 1}!`);
+          console.log(`📊 Cookie pool: ${cookiesFound}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
           
-          isGeneratingCookies = false;
-          cookieGenerationPromise = null;
-          return AUTO_COOKIE_PATH;
+          // If we have enough cookies, stop testing
+          if (cookiesFound >= COOKIE_POOL_SIZE) {
+            console.log(`🎉 Cookie pool FULL! Saved ${COOKIE_POOL_SIZE} working cookies`);
+            isGeneratingCookies = false;
+            cookieGenerationPromise = null;
+            return AUTO_COOKIE_PATH;
+          }
+        } else {
+          consecutiveFailures++;
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`  ❌ Batch ${batch + 1} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed)`);
+          console.log(`  ⚠️ Consecutive failures: ${consecutiveFailures}/${MAX_FAILURES}`);
+          
+          // Stop early if too many consecutive failures
+          if (consecutiveFailures >= MAX_FAILURES) {
+            console.log(`\n🛑 Stopping early: ${MAX_FAILURES} batches failed in a row`);
+            break;
+          }
         }
-        
-        // Show progress
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`  ⏳ Batch ${batch + 1} complete: ${totalAttempts}/${maxAttempts} tested (${elapsed}s elapsed)`);
         
         // Small delay between batches
-        if (batch < BATCH_SIZE - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        if (batch < BATCH_SIZE - 1 && cookiesFound < COOKIE_POOL_SIZE) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
+      }
+      
+      // Check if we found ANY working cookies
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      if (cookiesFound > 0) {
+        console.log(`\n✅ Cookie generation complete: ${cookiesFound}/${COOKIE_POOL_SIZE} working cookies saved after ${elapsed}s`);
+        isGeneratingCookies = false;
+        cookieGenerationPromise = null;
+        return AUTO_COOKIE_PATH;
       }
       
       // All attempts failed - use last generated cookies anyway (fallback)
