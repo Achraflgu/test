@@ -4394,7 +4394,7 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
       return false;
     }
     
-    console.log(`  ✅ YouTubei.js: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+    // Removed success log to prevent rate limit
     return true;
     
   } catch (err) {
@@ -4532,31 +4532,30 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
   let audioFormat;
   
   try {
-    // Reduced logging: Only log track name (full method name already logged above)
-    console.log(`🔧 ${track.name}`);
+    // MINIMAL LOGGING: Only log errors to prevent Railway rate limit
+    // Removed all verbose logs (track name, video ID, expected file, etc.)
     
     let youtubeUrl = track.url;
     
     // Handle Spotify search - use ytsearch format
     if (track.isSpotifySearch && track.searchTerm) {
       youtubeUrl = `ytsearch1:${track.searchTerm}`;
-      console.log(`  🎵 Using YouTube search: "${track.searchTerm}"`);
-      console.log(`  🔄 Starting download...`);
+      // Removed verbose search logs
     } else {
       // Regular YouTube URL
       if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
-        console.log('  ❌ No YouTube URL available');
+        // Only log errors
+        console.log(`❌ ${track.name}: No YouTube URL available`);
         return false;
       }
       
       const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
       if (!videoId) {
-        console.log('  ❌ Invalid YouTube URL');
+        // Only log errors
+        console.log(`❌ ${track.name}: Invalid YouTube URL`);
         return false;
       }
-      
-      console.log(`  📺 Video ID: ${videoId}`);
-      console.log(`  🔄 Starting download...`);
+      // Removed verbose video ID and starting download logs
     }
     
     // Create safe filename (removes "Unknown Artist" prefix)
@@ -4569,9 +4568,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
     expectedFilePath = `${absoluteOutputPath}.${audioFormat}`;
     
-    // Reduced logging for batch downloads to prevent rate limit issues
-    // Only log file name, not full paths or options
-    console.log(`  📁 Expected file: ${path.basename(expectedFilePath)}`);
+    // Removed expected file log
     
     // Parse quality setting (e.g., "320k" -> "320K")
     const quality = settings.quality ? settings.quality.toUpperCase().replace('K', 'K') : '320K';
@@ -4599,14 +4596,14 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     // Download with youtube-dl-exec
     const result = await youtubedl(youtubeUrl, downloadOptions);
     
-    console.log(`  📝 youtube-dl-exec result:`, result);
+    // Removed result log to prevent rate limit
     
     // Verify file was created
     const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
     if (!fileExists) {
       // Check for other possible extensions and partial filenames
       const folderFiles = await fs.readdir(outputFolder);
-      console.log(`  📂 All files in folder (${folderFiles.length}):`, folderFiles);
+      // Removed folder files log to prevent rate limit
       
       const possibleFile = folderFiles.find(f => {
         const normalized = f.toLowerCase();
@@ -4642,7 +4639,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       return false;
     }
     
-    console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+    // Removed success log to prevent rate limit (only log errors)
     return true;
     
   } catch (err) {
@@ -4807,7 +4804,7 @@ async function tryPipedAPI(track, outputFolder, socket, downloadId) {
         
         // Verify file was created
         const stats = await fs.stat(outputPath);
-        console.log(`  ✅ Piped API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        // Removed success log to prevent rate limit
         return true;
         
       } catch (instanceErr) {
@@ -4920,7 +4917,7 @@ async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
         
         // Verify file was created
         const stats = await fs.stat(outputPath);
-        console.log(`  ✅ Invidious API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        // Removed success log to prevent rate limit
         return true;
         
       } catch (instanceErr) {
@@ -5086,12 +5083,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ? cleanSearchQuery(track.name)
       : cleanSearchQuery(`${track.artist} ${track.name}`);
     
-    // Reduced logging for batch downloads - only log track name to prevent rate limit
-    console.log(`🔄 ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
+    // MINIMAL LOGGING: Removed track name log to prevent rate limit
+    // Only log errors and important milestones
     
     // 🎵 FOR SPOTIFY TRACKS: Find YouTube URL first so all methods can use it
     if (track.url && track.url.includes('spotify.com')) {
-      console.log(`  🎵 Searching YouTube...`);
+      // Removed search log
       
       // Check if we already have a YouTube link from spotdl errors
       let youtubeLink = youtubeLinks[track.url] || youtubeLinks[track.id];
@@ -5101,18 +5098,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         const found = await findBestYouTubeMatch(track);
         if (found) {
           youtubeLink = found;
-          console.log(`  ✅ Found YouTube match: ${youtubeLink}`);
+          // Removed "Found YouTube match" log
         }
-      } else {
-        console.log(`  ✅ Using YouTube link from spotdl: ${youtubeLink}`);
       }
+      // Removed "Using YouTube link" log
       
       // Update track URL to YouTube URL so all methods can use it
       if (youtubeLink) {
         track.url = youtubeLink;
-        console.log(`  🔄 Updated track URL to YouTube: ${youtubeLink}`);
+        // Removed "Updated track URL" log
       } else {
-        console.log(`  ⚠️ Could not find YouTube match - will try yt-dlp search`);
+        // Only log warnings, not every track
+        // Removed "Could not find YouTube match" log
       }
     }
     
@@ -5143,7 +5140,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         try {
           const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
           if (ytdlExecSuccess) {
-            console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
+            // Removed success log to prevent rate limit
             successCount++;
             
             // Mark cookies as working (if auto-generated cookies were used)
@@ -5170,7 +5167,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         try {
           const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
           if (ytdlExecSuccess) {
-            console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
+            // Removed success log to prevent rate limit
             successCount++;
             
             // Mark cookies as working (if auto-generated cookies were used)
