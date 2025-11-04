@@ -557,13 +557,15 @@ const Index = () => {
                     // - Position 0 (first) for single tracks or partial selection
                     // - End for all tracks from a playlist
                     const insertionPosition = (isSingleTrack || !isAddingAllTracks) ? 0 : tracks.length;
-                    // Reset download status for newly added tracks - they shouldn't be locked in pending
-                    const newTracksWithResetStatus = tracksData.map(track => ({
-                      ...track,
-                      downloadStatus: 'completed' as const, // Reset to completed so they're not locked
-                      downloadProgress: 0,
-                      selected: track.selected ?? true // Preserve selection state
-                    }));
+                    // Remove download status from newly added tracks - they shouldn't be locked
+                    const newTracksWithResetStatus = tracksData.map(track => {
+                      const { downloadStatus, downloadProgress, ...trackWithoutStatus } = track;
+                      return {
+                        ...trackWithoutStatus,
+                        downloadProgress: 0,
+                        selected: track.selected ?? true // Preserve selection state
+                      };
+                    });
                     const mergedTracks = [
                       ...tracks.slice(0, insertionPosition),
                       ...newTracksWithResetStatus,
@@ -612,13 +614,15 @@ const Index = () => {
                   } else {
                     // Replace mode: clear and load new
                     setPlaylist(playlistData);
-                    // Reset download status for new tracks - they shouldn't be locked in pending
-                    const tracksWithResetStatus = tracksData.map(track => ({
-                      ...track,
-                      downloadStatus: 'completed' as const, // Reset to completed so they're not locked
-                      downloadProgress: 0,
-                      selected: track.selected ?? true // Preserve selection state
-                    }));
+                    // Remove download status from new tracks - they shouldn't be locked
+                    const tracksWithResetStatus = tracksData.map(track => {
+                      const { downloadStatus, downloadProgress, ...trackWithoutStatus } = track;
+                      return {
+                        ...trackWithoutStatus,
+                        downloadProgress: 0,
+                        selected: track.selected ?? true // Preserve selection state
+                      };
+                    });
                     setTracks(tracksWithResetStatus);
                     // Reset playlist tracking
                     const isPlaylist = playlistData.totalTracks > 1;

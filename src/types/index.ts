@@ -20,9 +20,9 @@ export interface Track {
   imageUrl: string;
   url: string;
   youtubeId?: string; // Optional YouTube video ID
-  downloadStatus: 'pending' | 'downloading' | 'completed' | 'failed';
-  downloadProgress: number;
-  selected: boolean;
+  downloadStatus?: 'pending' | 'downloading' | 'completed' | 'failed';
+  downloadProgress?: number;
+  selected?: boolean;
 }
 
 export interface DownloadSettings {
