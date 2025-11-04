@@ -8,7 +8,7 @@ import { DownloadSettings } from "@/components/DownloadSettings";
 import { MusicSearch } from "@/components/MusicSearch";
 import SavedPlaylists, { savePlaylistToHistory } from "@/components/SavedPlaylists";
 import { Playlist, Track, DownloadSettings as DownloadSettingsType } from "@/types";
-import { checkHealth } from "@/services/api";
+import { checkHealth, getSocket } from "@/services/api";
 import {
   resetTabTitle,
   showDownloadProgress,
@@ -282,10 +282,13 @@ const Index = () => {
         // Cancel download on backend (fire and forget)
         if (activeDownloadId) {
           const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+          const currentSocket = getSocket();
+          const socketId = currentSocket?.id || null;
+          
           fetch(`${API_URL}/api/download/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ downloadId: activeDownloadId }),
+            body: JSON.stringify({ downloadId: activeDownloadId, socketId }),
             keepalive: true // Ensures request completes even if page is closing
           }).catch(err => console.error('Failed to cancel download:', err));
         }

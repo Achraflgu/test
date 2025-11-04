@@ -153,12 +153,16 @@ interface CancelDownloadResponse {
 }
 
 export const cancelDownload = async (downloadId: string): Promise<CancelDownloadResponse> => {
+  // Get socket ID to verify ownership
+  const currentSocket = getSocket();
+  const socketId = currentSocket?.id || null;
+  
   const response = await fetch(`${API_URL}/api/download/cancel`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ downloadId }),
+    body: JSON.stringify({ downloadId, socketId }),
   });
 
   if (!response.ok) {

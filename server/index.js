@@ -3714,13 +3714,31 @@ app.post('/api/download/start', async (req, res) => {
 
 // Cancel download
 app.post('/api/download/cancel', (req, res) => {
-  const { downloadId } = req.body;
+  const { downloadId, socketId } = req.body;
   
   console.log(`\n❌ CANCEL REQUEST: ${downloadId}`);
+  console.log(`   Client Socket ID: ${socketId}`);
   
   const downloadInfo = activeDownloads.get(downloadId);
   if (!downloadInfo) {
     return res.status(404).json({ error: 'Download not found' });
+  }
+  
+  // 🔥 SECURITY: Verify that the requesting client is the one who started the download
+  const downloadSocketId = downloadInfo.socketId;
+  if (socketId && downloadSocketId && socketId !== downloadSocketId) {
+    console.log(`⚠️  Cancel request rejected: Client ${socketId} tried to cancel download started by ${downloadSocketId}`);
+    return res.status(403).json({ error: 'You can only cancel your own downloads' });
+  }
+  
+  // Get the specific client socket to send events only to that client
+  const clientSocket = downloadSocketId ? io.sockets.sockets.get(downloadSocketId) : null;
+  const emitSocket = clientSocket || io; // Fallback to broadcast if no specific socket
+  
+  if (clientSocket) {
+    console.log(`✅ Will send cancellation events to specific client: ${downloadSocketId}`);
+  } else {
+    console.log(`⚠️  No socket ID found, will broadcast cancellation`);
   }
   
   // Kill active process
@@ -3744,8 +3762,8 @@ app.post('/api/download/cancel', (req, res) => {
   downloadInfo.status = 'cancelled';
   downloadInfo.cancelled = true;
   
-  // Emit cancellation event
-  io.emit('download:cancelled', {
+  // Emit cancellation event - ONLY to the client that started the download
+  emitSocket.emit('download:cancelled', {
     downloadId,
     message: '❌ Download cancelled by user'
   });
@@ -7523,6 +7541,52 @@ io.on('connection', (socket) => {
   // ========== HANDLE DISCONNECT ==========
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
+
+    // 🔥 AUTO-CANCEL: Cancel all downloads started by this client
+    const disconnectedSocketId = socket.id;
+    const downloadsToCancel = [];
+    
+    // Find all active downloads for this client
+    for (const [downloadId, downloadInfo] of activeDownloads.entries()) {
+      if (downloadInfo.socketId === disconnectedSocketId && downloadInfo.status !== 'cancelled' && downloadInfo.status !== 'completed') {
+        downloadsToCancel.push(downloadId);
+      }
+    }
+    
+    if (downloadsToCancel.length > 0) {
+      console.log(`🛑 Auto-cancelling ${downloadsToCancel.length} download(s) for disconnected client: ${disconnectedSocketId}`);
+      
+      downloadsToCancel.forEach(downloadId => {
+        const downloadInfo = activeDownloads.get(downloadId);
+        if (!downloadInfo) return;
+        
+        // Kill active process
+        const processInfo = activeProcesses.get(downloadId);
+        if (processInfo && processInfo.process) {
+          console.log(`🔪 Killing process for download ${downloadId} (client disconnected)`);
+          try {
+            processInfo.process.kill('SIGTERM');
+            setTimeout(() => {
+              if (processInfo.process && !processInfo.process.killed) {
+                processInfo.process.kill('SIGKILL');
+              }
+            }, 2000);
+          } catch (err) {
+            console.error('Error killing process:', err.message);
+          }
+        }
+        
+        // Update status
+        downloadInfo.status = 'cancelled';
+        downloadInfo.cancelled = true;
+        
+        // Clean up
+        activeDownloads.delete(downloadId);
+        activeProcesses.delete(downloadId);
+        
+        console.log(`✅ Auto-cancelled download: ${downloadId}`);
+      });
+    }
 
     const roomInfo = socketToRoom.get(socket.id);
     if (!roomInfo) return;
