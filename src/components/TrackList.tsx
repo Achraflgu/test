@@ -3170,41 +3170,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 </>
               )}
             </div>
-
-            {/* Overall Progress - Compact */}
-            {(completedCount > 0 || failedCount > 0) && (
-              <div className="px-4 py-2 border-t border-border">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <Progress value={overallProgress} className="h-1.5 w-20" />
-                    <span className="text-muted-foreground font-mono">
-                      {Math.round(overallProgress)}%
-                    </span>
-                    {completedCount > 0 && (
-                      <span className="text-green-600 text-xs">
-                        {completedCount} done
-                      </span>
-                    )}
-                    {failedCount > 0 && (
-                      <span className="text-red-600 text-xs">
-                        {failedCount} failed
-                      </span>
-                    )}
-                  </div>
-                  {failedCount > 0 && !downloading && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowFailedTracksDialog(true)}
-                      className="h-6 px-2 text-xs"
-                    >
-                      <Terminal className="w-3 h-3 mr-1" />
-                      Commands
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
