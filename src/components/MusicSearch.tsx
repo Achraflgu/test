@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, Plus, Music, CheckSquare, Square } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,8 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentLimit, setCurrentLimit] = useState(15);
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
+  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Update search query when initialSearchText prop changes
@@ -40,6 +42,24 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
     }
   }, [initialSearchText]);
 
+  // Load recent searches from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('music-search-history');
+    if (saved) {
+      try {
+        setRecentSearches(JSON.parse(saved));
+      } catch {}
+    }
+  }, []);
+
+  // Save recent searches
+  const saveSearchToHistory = useCallback((query: string) => {
+    if (!query.trim()) return;
+    const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 10);
+    setRecentSearches(updated);
+    localStorage.setItem('music-search-history', JSON.stringify(updated));
+  }, [recentSearches]);
+
   // Auto-focus and select the search input when entering search mode
   useEffect(() => {
     if (inputRef.current) {
@@ -47,6 +67,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       try { inputRef.current.select(); } catch {}
     }
   }, [initialSearchText]);
+
+  // Keyboard shortcuts - needs to be after handleAddSelected and handleSelectAll are defined
+  // So we'll define it after those functions
 
   // Check if input is a URL
   const isValidMusicUrl = (text: string): boolean => {
@@ -113,6 +136,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       // Select all results by default
       setSelectedResults(new Set(response.results.map(r => r.id)));
       setIsResultsOpen(true);
+      saveSearchToHistory(searchQuery.trim());
       
       if (response.results.length === 0) {
         toast.info('No results found');
@@ -164,7 +188,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
     }
   };
 
-  const handleAddTrack = (result: SearchResult) => {
+  const handleAddTrack = (result: SearchResult, playNext = false) => {
     const track: Track = {
       id: result.id,
       name: result.name,
@@ -179,16 +203,46 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
     };
 
     onAddTracks([track]);
-    toast.success(`Added "${result.name}" to track list`);
+    toast.success(`Added "${result.name}" to track list${playNext ? ' (next)' : ''}`, {
+      description: playNext ? 'Track will play next' : undefined
+    });
+    
+    // Remove from selection
+    const newSelected = new Set(selectedResults);
+    newSelected.delete(result.id);
+    setSelectedResults(newSelected);
   };
 
-  const handleToggleSelect = (resultId: string) => {
+  const handleToggleSelect = (resultId: string, shiftKey = false) => {
     const newSelected = new Set(selectedResults);
-    if (newSelected.has(resultId)) {
-      newSelected.delete(resultId);
+    
+    if (shiftKey && selectedResults.size > 0) {
+      // Multi-select range
+      const resultIds = searchResults.map(r => r.id);
+      const lastSelectedIndex = resultIds.findIndex(id => selectedResults.has(id));
+      const currentIndex = resultIds.indexOf(resultId);
+      
+      if (lastSelectedIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastSelectedIndex, currentIndex);
+        const end = Math.max(lastSelectedIndex, currentIndex);
+        for (let i = start; i <= end; i++) {
+          newSelected.add(resultIds[i]);
+        }
+      } else {
+        if (newSelected.has(resultId)) {
+          newSelected.delete(resultId);
+        } else {
+          newSelected.add(resultId);
+        }
+      }
     } else {
-      newSelected.add(resultId);
+      if (newSelected.has(resultId)) {
+        newSelected.delete(resultId);
+      } else {
+        newSelected.add(resultId);
+      }
     }
+    
     setSelectedResults(newSelected);
   };
 
@@ -224,7 +278,9 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       }));
 
     onAddTracks(selectedTracks);
-    toast.success(`Added ${selectedTracks.length} tracks to list`);
+    toast.success(`Added ${selectedTracks.length} tracks to list`, {
+      description: `${selectedTracks.length} track${selectedTracks.length > 1 ? 's' : ''} added successfully`
+    });
     setSelectedResults(new Set());
     setIsResultsOpen(false);
   };
@@ -270,24 +326,72 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
     }
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!isResultsOpen) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Enter to add selected tracks
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        handleAddSelected();
+      }
+      // Escape to close
+      if (e.key === 'Escape') {
+        setIsResultsOpen(false);
+      }
+      // 'a' to select all
+      if (e.key === 'a' && e.ctrlKey) {
+        e.preventDefault();
+        handleSelectAll();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isResultsOpen, selectedResults, searchResults, handleAddSelected, handleSelectAll]);
+
   return (
     <>
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 sm:left-3 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search for songs, artists, albums..."
-            value={searchQuery}
-            onChange={(e) => handleQueryChange(e.target.value)}
-            onKeyPress={handleKeyPress}
-            onPaste={handlePaste}
-            className={`pl-8 sm:pl-9 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-            disabled={isSearching}
-            autoFocus
-            ref={inputRef}
-          />
-        </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-2 sm:left-3 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search for songs, artists, albums..."
+              value={searchQuery}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              onKeyPress={handleKeyPress}
+              onPaste={handlePaste}
+              className={`pl-8 sm:pl-9 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+              disabled={isSearching}
+              autoFocus
+              ref={inputRef}
+            />
+            {/* Recent Searches Dropdown */}
+            {recentSearches.length > 0 && searchQuery === '' && !isResultsOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                <div className="p-2 text-xs text-muted-foreground font-semibold px-3 py-2 flex items-center gap-2 border-b">
+                  <History className="h-3 w-3" />
+                  Recent Searches
+                </div>
+                {recentSearches.slice(0, 5).map((search, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSearchQuery(search);
+                      setTimeout(() => handleSearch(), 100);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-accent flex items-center gap-2 text-sm transition-colors"
+                  >
+                    <Search className="h-3 w-3 text-muted-foreground" />
+                    {search}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         <Button 
           onClick={handleSearch} 
           disabled={isSearching || !searchQuery.trim() || isInvalidUrl}
@@ -306,7 +410,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
             </>
           )}
         </Button>
-      </div>
+        </div>
 
       {/* Invalid URL Warning */}
       {isInvalidUrl && searchQuery.trim() && (
@@ -332,7 +436,7 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                 </div>
               </div>
               {searchResults.length > 0 && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button 
                     onClick={handleSelectAll} 
                     size="sm" 
@@ -354,12 +458,26 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                     <Plus className="mr-2 h-4 w-4" />
                     Add Selected ({selectedResults.size})
                   </Button>
+                  <Button 
+                    onClick={handleAddAll} 
+                    size="sm" 
+                    variant="outline"
+                    className="border-accent/30 hover:bg-accent/10"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Add All
+                  </Button>
                 </div>
               )}
             </DialogTitle>
-            <DialogDescription className="text-base font-medium">
-              {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'} found
-              {selectedResults.size > 0 && ` • ${selectedResults.size} selected`}
+            <DialogDescription className="text-base font-medium flex items-center justify-between">
+              <span>
+                {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'} found
+                {selectedResults.size > 0 && ` • ${selectedResults.size} selected`}
+              </span>
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Ctrl+Enter: Add Selected • Ctrl+A: Select All • Shift+Click: Multi-select
+              </span>
             </DialogDescription>
           </DialogHeader>
 
@@ -376,13 +494,14 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
               <div className="space-y-3">
                 {searchResults.map((result, index) => {
                   const isSelected = selectedResults.has(result.id);
+                  const isPreviewing = previewTrackId === result.id;
                   return (
                     <div
                       key={result.id}
                       className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border transition-all duration-300 animate-fade-in ${
                         isSelected 
-                          ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20' 
-                          : 'border-border/50 bg-card hover:bg-accent/50 hover:border-primary/30 hover:shadow-lg'
+                          ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]' 
+                          : 'border-border/50 bg-card hover:bg-accent/50 hover:border-primary/30 hover:shadow-lg hover:scale-[1.01]'
                       }`}
                       style={{ animationDelay: `${index * 30}ms` }}
                     >
@@ -390,25 +509,34 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                       <div className="absolute top-3 right-3 sm:relative sm:top-0 sm:right-0 z-10">
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => handleToggleSelect(result.id)}
+                          onCheckedChange={(checked) => {
+                            handleToggleSelect(result.id);
+                          }}
                           className="h-5 w-5 border-2"
                         />
                       </div>
 
-                      {/* Thumbnail */}
+                      {/* Thumbnail with Play Preview */}
                       <div 
-                        className="relative flex-shrink-0 cursor-pointer"
+                        className="relative flex-shrink-0 cursor-pointer group/thumb"
                         onClick={() => handleToggleSelect(result.id)}
+                        onMouseEnter={() => setPreviewTrackId(result.id)}
+                        onMouseLeave={() => setPreviewTrackId(null)}
                       >
                         {result.imageUrl ? (
                           <img
                             src={result.imageUrl}
                             alt={result.name}
-                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md group-hover:shadow-xl transition-shadow"
+                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md group-hover/thumb:shadow-xl transition-all duration-300"
                           />
                         ) : (
                           <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                             <Music className="h-10 w-10 sm:h-8 sm:w-8 text-primary" />
+                          </div>
+                        )}
+                        {isPreviewing && (
+                          <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center transition-opacity duration-300">
+                            <Play className="h-6 w-6 text-white fill-white" />
                           </div>
                         )}
                         <div className="absolute -top-1 -left-1 w-6 h-6 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-md">
@@ -419,7 +547,13 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                       {/* Track Info */}
                       <div 
                         className="flex-1 min-w-0 space-y-1 cursor-pointer"
-                        onClick={() => handleToggleSelect(result.id)}
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            handleToggleSelect(result.id, true);
+                          } else {
+                            handleToggleSelect(result.id);
+                          }
+                        }}
                       >
                         <h4 className={`font-semibold text-base leading-tight line-clamp-1 transition-colors ${
                           isSelected ? 'text-primary' : 'group-hover:text-primary'
@@ -439,17 +573,30 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
 
                       {/* Duration & Actions */}
                       <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                        <span className="text-sm text-muted-foreground font-mono bg-muted/50 px-3 py-1 rounded-full">
+                        <span className="text-sm text-muted-foreground font-mono bg-muted/50 px-3 py-1 rounded-full flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
                           {formatDuration(result.duration)}
                         </span>
-                        <Button 
-                          size="sm" 
-                          onClick={() => handleAddTrack(result)}
-                          className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
-                        >
-                          <Plus className="mr-1 h-4 w-4" />
-                          Add
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleAddTrack(result, false)}
+                            className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
+                            title="Add to list"
+                          >
+                            <Plus className="mr-1 h-4 w-4" />
+                            <span className="hidden sm:inline">Add</span>
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleAddTrack(result, true)}
+                            variant="outline"
+                            className="border-accent/30 hover:bg-accent/10"
+                            title="Add & play next"
+                          >
+                            <Zap className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
