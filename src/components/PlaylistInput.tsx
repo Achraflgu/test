@@ -1098,7 +1098,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                     className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border border-destructive rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
                   >
                     <RefreshCw className="w-4 h-4 mr-2" />
-                    Replace All
+                    Replace Existing Tracklist
                   </AlertDialogAction>
 
                   {selectedTracks.size > 0 && selectedTracks.size < pendingData.tracks.filter(t => !isTrackDuplicate(t.id)).length ? (
@@ -1156,7 +1156,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-semibold"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
-              Yes, Replace All
+              Yes, Replace Existing Tracklist
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
