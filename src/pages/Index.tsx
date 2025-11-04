@@ -557,9 +557,16 @@ const Index = () => {
                     // - Position 0 (first) for single tracks or partial selection
                     // - End for all tracks from a playlist
                     const insertionPosition = (isSingleTrack || !isAddingAllTracks) ? 0 : tracks.length;
+                    // Reset download status for newly added tracks - they shouldn't be locked in pending
+                    const newTracksWithResetStatus = tracksData.map(track => ({
+                      ...track,
+                      downloadStatus: 'completed' as const, // Reset to completed so they're not locked
+                      downloadProgress: 0,
+                      selected: track.selected ?? true // Preserve selection state
+                    }));
                     const mergedTracks = [
                       ...tracks.slice(0, insertionPosition),
-                      ...tracksData,
+                      ...newTracksWithResetStatus,
                       ...tracks.slice(insertionPosition)
                     ];
                     
