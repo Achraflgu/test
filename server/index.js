@@ -3910,6 +3910,7 @@ app.get('/api/preview/:videoId', async (req, res) => {
       '--get-url',
       '--no-warnings',
       '--no-playlist',
+      '--no-check-certificate',
       `https://www.youtube.com/watch?v=${videoId}`
     ];
 
@@ -3924,9 +3925,14 @@ app.get('/api/preview/:videoId', async (req, res) => {
       // No cookies available
     }
 
-    const process = spawn(PYTHON_CMD, args);
+    const process = spawn(PYTHON_CMD, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 15000 // 15 second timeout
+    });
+    
     let audioUrl = '';
     let errorOutput = '';
+    let resolved = false;
 
     process.stdout.on('data', (data) => {
       audioUrl += data.toString().trim();
@@ -3936,19 +3942,39 @@ app.get('/api/preview/:videoId', async (req, res) => {
       errorOutput += data.toString();
     });
 
+    // Timeout handler
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        process.kill('SIGTERM');
+        console.error(`⏱️ Preview timeout for: ${videoId}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Preview request timed out' });
+        }
+      }
+    }, 15000);
+
     process.on('close', async (code) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+
       if (code === 0 && audioUrl && audioUrl.trim()) {
         try {
           const streamUrl = audioUrl.trim();
           console.log(`✅ Got audio stream URL for preview: ${videoId}`);
           
-          // Fetch the audio stream
+          // Fetch the audio stream with timeout
+          const controller = new AbortController();
+          const fetchTimeout = setTimeout(() => controller.abort(), 20000); // 20s timeout for fetch
+          
           const audioResponse = await fetch(streamUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Referer': 'https://www.youtube.com/'
-            }
-          });
+            },
+            signal: controller.signal
+          }).finally(() => clearTimeout(fetchTimeout));
 
           if (!audioResponse.ok) {
             console.error(`❌ Failed to fetch audio stream: ${audioResponse.status}`);
@@ -3998,21 +4024,44 @@ app.get('/api/preview/:videoId', async (req, res) => {
           });
         } catch (err) {
           console.error('Preview fetch error:', err);
-          res.status(500).json({ error: 'Failed to fetch preview' });
+          if (err.name === 'AbortError') {
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Preview request timed out' });
+            }
+          } else {
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Failed to fetch preview' });
+            }
+          }
         }
       } else {
-        console.error('❌ yt-dlp error:', errorOutput || 'No output');
-        res.status(500).json({ error: 'Failed to get audio URL' });
+        console.error(`❌ yt-dlp error for ${videoId}:`, errorOutput || 'No output', `(exit code: ${code})`);
+        if (!res.headersSent) {
+          res.status(500).json({ 
+            error: 'Failed to get audio URL',
+            details: errorOutput ? errorOutput.substring(0, 200) : 'Unknown error'
+          });
+        }
       }
     });
 
     process.on('error', (err) => {
-      console.error('Process error:', err);
-      res.status(500).json({ error: 'Process error' });
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      console.error(`❌ Process error for ${videoId}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'Process error',
+          details: err.message
+        });
+      }
     });
   } catch (error) {
     console.error('Preview error:', error);
-    res.status(500).json({ error: 'Preview failed' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Preview failed', details: error.message });
+    }
   }
 });
 
