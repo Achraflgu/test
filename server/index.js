@@ -3528,7 +3528,7 @@ app.post('/api/download/start', async (req, res) => {
   console.log('\n=== DOWNLOAD REQUEST ===');
   console.log('Client Socket ID:', socketId); // Log which client initiated this
   console.log('Received tracks count:', tracks?.length);
-  console.log('Tracks data:', JSON.stringify(tracks, null, 2));
+  // REMOVED: JSON.stringify of all tracks - causes massive log spam with 200+ tracks
 
   if (!tracks || !settings) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -5118,10 +5118,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     // ====================================
     // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
     if (attemptNumber < 6) { // Increased attempts for better success
-      // Reduced logging: Only log method name for first attempt to prevent log spam
-      if (attemptNumber === 0) {
-        console.log(`\n🎯 METHOD 1: youtube-dl-exec...`);
-      }
+      // REMOVED: Method log - causes rate limit when 16 tracks log simultaneously
       
       // For Spotify tracks without YouTube URL, use search format
       if (!track.url || track.url.includes('spotify.com')) {
@@ -5129,7 +5126,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           ? track.name.trim()
           : `${track.artist} ${track.name}`.trim();
         
-        console.log(`  🎵 Spotify track → YouTube search: "${searchTerm}"`);
+        // REMOVED: Spotify search log - causes rate limit
         
         // Temporarily set URL to search format for youtube-dl-exec
         const originalUrl = track.url;
