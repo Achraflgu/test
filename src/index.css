@@ -188,16 +188,6 @@ All colors MUST be HSL.
     animation: shimmer 2s infinite;
   }
 
-  /* Preview popup progress bar animation */
-  @keyframes shrink {
-    from { width: 100%; }
-    to { width: 0%; }
-  }
-  
-  .animate-shrink {
-    animation: shrink 30s linear forwards;
-  }
-
   /* Custom Scrollbar */
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
