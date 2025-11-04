@@ -1685,13 +1685,16 @@ function createSafeFilename(track) {
   const artist = track.artist || 'Unknown Artist';
   const trackName = track.name;
   
+  // Sanitize non-ASCII characters (Arabic, etc.) to prevent filename mismatches with yt-dlp
+  const sanitizeNonAscii = (str) => str.replace(/[^\x00-\x7F]/g, '');
+  
   // If artist is "Unknown Artist" or "Unknown", just use track name
   if (artist === 'Unknown Artist' || artist === 'Unknown') {
-    return trackName.replace(/[/\\?%*:|"<>]/g, '-');
+    return sanitizeNonAscii(trackName).replace(/[/\\?%*:|"<>]/g, '-');
   }
   
   // Otherwise use "Artist - Track Name" format
-  return `${artist} - ${trackName}`.replace(/[/\\?%*:|"<>]/g, '-');
+  return `${sanitizeNonAscii(artist)} - ${sanitizeNonAscii(trackName)}`.replace(/[/\\?%*:|"<>]/g, '-');
 }
 
 // Helper function to detect URL type
@@ -3487,7 +3490,11 @@ function sanitizeForFs(name) {
 // Helper function to get expected filename for a track (matches createSafeFilename logic)
 function getExpectedFileName(track, extension = 'mp3') {
   const artist = track.artist || 'Unknown Artist';
-  const trackName = sanitizeForFs(track.name);
+  
+  // Sanitize non-ASCII characters (Arabic, etc.) to match createSafeFilename behavior
+  const sanitizeNonAscii = (str) => str.replace(/[^\x00-\x7F]/g, '');
+  const trackName = sanitizeForFs(sanitizeNonAscii(track.name));
+  const sanitizedArtist = sanitizeNonAscii(artist);
   
   // If artist is "Unknown Artist" or "Unknown", just use track name (matches createSafeFilename)
   if (artist === 'Unknown Artist' || artist === 'Unknown') {
@@ -3495,7 +3502,7 @@ function getExpectedFileName(track, extension = 'mp3') {
   }
   
   // Otherwise use "Artist - Track Name" format
-  return `${artist} - ${trackName}.${extension}`;
+  return `${sanitizedArtist} - ${trackName}.${extension}`;
 }
 
 // Helper function to check if a file exists for a track (handles "Unknown Artist" correctly)
@@ -5083,19 +5090,29 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
-    // Clean search query helper (removes parentheses, limits length)
+    // Clean search query helper (removes parentheses, special chars, limits length)
     const cleanSearchQuery = (str) => {
       return str
         .replace(/\([^)]*\)/g, '') // Remove parentheses and their content
+        .replace(/\[[^\]]*\]/g, '') // Remove square brackets and their content
+        .replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters (Arabic, etc.)
+        .replace(/[^\w\s-]/g, ' ') // Remove special characters except word chars, spaces, and hyphens
         .replace(/\s+/g, ' ') // Collapse multiple spaces
         .trim()
-        .substring(0, 100); // Limit length to 100 chars
+        .substring(0, 60); // Limit length to 60 chars (shorter = better search results)
     };
     
     // Build search query - skip "Unknown Artist" to improve search results
-    const searchQuery = track.artist === 'Unknown Artist' 
-      ? cleanSearchQuery(track.name)
-      : cleanSearchQuery(`${track.artist} ${track.name}`);
+    // Try multiple variations: full query, artist only, track name only
+    const searchQueries = track.artist === 'Unknown Artist' 
+      ? [cleanSearchQuery(track.name)]
+      : [
+          cleanSearchQuery(`${track.artist} ${track.name}`),
+          cleanSearchQuery(`${track.artist} - ${track.name}`),
+          cleanSearchQuery(track.name), // Fallback to track name only
+          cleanSearchQuery(track.artist) // Last resort: artist only
+        ];
+    const searchQuery = searchQueries[0]; // Use first query by default
     
     console.log(`\n🔄 Trying download for: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
     console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
@@ -5417,12 +5434,17 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     
     // Build search method args if needed
     if (useSearchMethod || (!youtubeLink || youtubeLinks[`retry_${track.id}`])) {
-      console.log(`  Searching YouTube: "ytsearch1:${searchQuery}"`);
+      // If search failed before, try next query from the array (simpler queries)
+      const retryIndex = youtubeLinks[`retry_${track.id}`] ? 
+        (youtubeLinks[`retry_${track.id}_attempt`] || 0) + 1 : 0;
+      const finalSearchQuery = searchQueries[Math.min(retryIndex, searchQueries.length - 1)];
+      
+      console.log(`  Searching YouTube: "ytsearch1:${finalSearchQuery}" (attempt ${retryIndex + 1}/${searchQueries.length})`);
       
       // Build args - include metadata only if not "Unknown Artist"
       ytdlpArgs = [
         '-m', 'yt_dlp',
-        `ytsearch1:${searchQuery}`,
+        `ytsearch1:${finalSearchQuery}`,
         '-x',
         '--audio-format', settings.format || 'mp3',
         '--audio-quality', settings.quality || '320K',
@@ -5566,10 +5588,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           if (hasBotDetectionError && !cookieRegenerated) {
             console.log('  🚨 BOT DETECTION ERROR DETECTED during download!');
             cookieRegenerated = true; // Flag to prevent multiple regenerations
+            // Mark cookies as failed immediately
+            markCookiesAsFailed().catch(() => {});
             // Regenerate cookies in background (don't await to avoid blocking)
             regenerateCookiesOnFailure().then(success => {
               if (success) {
                 console.log('  ✅ Cookies regenerated - future downloads will use new cookies');
+              } else {
+                console.log('  ⚠️ Cookie regeneration failed - will continue with cookie-less methods');
               }
             });
           }
@@ -5586,17 +5612,29 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           // 🚀 OPTIMIZATION: Detect "Downloading 0 items" for search method
           if (useSearchMethod && (txt.includes('Downloading 0 items') || txt.includes('Playlist') && txt.includes('Downloading 0 items'))) {
             searchReturnedZeroItems = true;
-            console.log(`  ⚠️ Search returned 0 items - will fallback to direct URL`);
+            console.log(`  ⚠️ Search returned 0 items - will try next query or fallback`);
           }
         });
         
         ytdlpProcess.on('close', async (code) => {
-          // 🚀 OPTIMIZATION: If search returned 0 items, immediately try direct URL
-          if (useSearchMethod && searchReturnedZeroItems && youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
-            console.log(`  🔄 Search returned 0 items - falling back to direct URL immediately...`);
-            youtubeLinks[`retry_${track.id}`] = true;
-            resolve('search_zero_items'); // Signal to try direct URL
-            return;
+          // 🚀 OPTIMIZATION: If search returned 0 items, try next query or fallback to direct URL
+          if (useSearchMethod && searchReturnedZeroItems) {
+            const currentAttempt = youtubeLinks[`retry_${track.id}_attempt`] || 0;
+            const nextAttempt = currentAttempt + 1;
+            
+            // If we have more search queries to try, use them
+            if (nextAttempt < searchQueries.length) {
+              console.log(`  🔄 Search returned 0 items - trying next query variation (${nextAttempt + 1}/${searchQueries.length})...`);
+              youtubeLinks[`retry_${track.id}_attempt`] = nextAttempt;
+              resolve('search_zero_items'); // Signal to retry with next query
+              return;
+            } else if (youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
+              // All search queries failed, try direct URL
+              console.log(`  🔄 All search queries returned 0 items - falling back to direct URL...`);
+              youtubeLinks[`retry_${track.id}`] = true;
+              resolve('search_zero_items'); // Signal to try direct URL
+              return;
+            }
           }
           
           if (code === 0) {
@@ -5611,23 +5649,25 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             let fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
             
             // 🚀 OPTIMIZATION: For search method, scan for any MP3 files that might match (yt-dlp may use different filename)
-            if (!fileExists && useSearchMethod) {
+            // ⚠️ CRITICAL: For single-track downloads, NEVER use fuzzy matching - only exact match!
+            // This prevents incorrectly matching files from previous downloads (e.g., matching "Ta3oun" when downloading "Psyco Sh-t")
+            if (!fileExists && useSearchMethod && tracks.length > 1) {
+              // Only use fuzzy matching for multi-track downloads
               console.log(`  🔍 Expected file not found, scanning for matching files...`);
               const folderFiles = await fs.readdir(outputFolder).catch(() => []);
               const musicFiles = folderFiles.filter(f => f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.webm') || f.endsWith('.opus'));
               
-              // Try to find a file that matches the track (check for artist/title keywords)
-              const trackKeywords = [
-                track.name.toLowerCase().substring(0, 10),
-                sanitizeForFs(track.name).toLowerCase().substring(0, 10)
-              ];
-              if (track.artist !== 'Unknown Artist') {
-                trackKeywords.push(track.artist.toLowerCase().substring(0, 10));
-              }
+              // 🔒 STRICT MATCHING: Require BOTH artist AND track name to match (not just one)
+              const trackNameLower = track.name.toLowerCase();
+              const artistLower = track.artist !== 'Unknown Artist' ? track.artist.toLowerCase() : '';
               
               const matchingFile = musicFiles.find(f => {
                 const normalized = f.toLowerCase();
-                return trackKeywords.some(keyword => normalized.includes(keyword)) && 
+                // Require track name to be in filename (not just artist)
+                const hasTrackName = trackNameLower.split(' ').some(word => word.length > 3 && normalized.includes(word));
+                const hasArtist = !artistLower || normalized.includes(artistLower.substring(0, 10));
+                // Both must match for multi-track downloads
+                return hasTrackName && hasArtist && 
                        (normalized.endsWith('.mp3') || normalized.endsWith('.m4a') || normalized.endsWith('.webm') || normalized.endsWith('.opus'));
               });
               
@@ -5640,16 +5680,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                   fileExists = true;
                 } catch (renameError) {
                   console.log(`  ⚠️  Could not rename file: ${renameError.message}`);
-                  // Use the found file anyway
                   fileExists = true;
-                  // Update mp3Path to the found file
-                  const actualPath = path.join(outputFolder, matchingFile);
-                  if (matchingFile.endsWith('.mp3')) {
-                    // File is already MP3, use it
-                  } else {
-                    // File is in another format, but we'll mark it as found (conversion might be in progress)
-                    console.log(`  ⚠️  Found file in different format: ${matchingFile}`);
-                  }
                 }
               } else {
                 // Try one more time with exact expected filename
@@ -5658,6 +5689,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                   if (fileExists) break;
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
+              }
+            } else if (!fileExists && useSearchMethod && tracks.length === 1) {
+              // Single-track download: Only check exact filename, no fuzzy matching
+              // Try one more time with exact expected filename
+              for (let i = 0; i < 3; i++) {
+                fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
+                if (fileExists) break;
+                await new Promise(resolve => setTimeout(resolve, 500));
               }
             } else if (!fileExists) {
               // For non-search methods, try multiple times
