@@ -1685,16 +1685,18 @@ function createSafeFilename(track) {
   const artist = track.artist || 'Unknown Artist';
   const trackName = track.name;
   
-  // Sanitize non-ASCII characters (Arabic, etc.) to prevent filename mismatches with yt-dlp
-  const sanitizeNonAscii = (str) => str.replace(/[^\x00-\x7F]/g, '');
+  // Only sanitize filesystem-invalid characters (keep non-ASCII like Arabic, emojis, etc.)
+  // yt-dlp on Linux typically preserves these characters, so we should match that behavior
+  const sanitizeForFs = (str) => str.replace(/[/\\?%*:|"<>]/g, '-').trim();
   
   // If artist is "Unknown Artist" or "Unknown", just use track name
   if (artist === 'Unknown Artist' || artist === 'Unknown') {
-    return sanitizeNonAscii(trackName).replace(/[/\\?%*:|"<>]/g, '-');
+    return sanitizeForFs(trackName);
   }
   
   // Otherwise use "Artist - Track Name" format
-  return `${sanitizeNonAscii(artist)} - ${sanitizeNonAscii(trackName)}`.replace(/[/\\?%*:|"<>]/g, '-');
+  // Keep original characters (including Arabic, emojis, etc.) - only sanitize filesystem-invalid chars
+  return `${sanitizeForFs(artist)} - ${sanitizeForFs(trackName)}`.replace(/[/\\?%*:|"<>]/g, '-');
 }
 
 // Helper function to detect URL type
@@ -3489,20 +3491,9 @@ function sanitizeForFs(name) {
 
 // Helper function to get expected filename for a track (matches createSafeFilename logic)
 function getExpectedFileName(track, extension = 'mp3') {
-  const artist = track.artist || 'Unknown Artist';
-  
-  // Sanitize non-ASCII characters (Arabic, etc.) to match createSafeFilename behavior
-  const sanitizeNonAscii = (str) => str.replace(/[^\x00-\x7F]/g, '');
-  const trackName = sanitizeForFs(sanitizeNonAscii(track.name));
-  const sanitizedArtist = sanitizeNonAscii(artist);
-  
-  // If artist is "Unknown Artist" or "Unknown", just use track name (matches createSafeFilename)
-  if (artist === 'Unknown Artist' || artist === 'Unknown') {
-    return `${trackName}.${extension}`;
-  }
-  
-  // Otherwise use "Artist - Track Name" format
-  return `${sanitizedArtist} - ${trackName}.${extension}`;
+  // Use createSafeFilename to ensure exact match
+  const safeFilename = createSafeFilename(track);
+  return `${safeFilename}.${extension}`;
 }
 
 // Helper function to check if a file exists for a track (handles "Unknown Artist" correctly)
