@@ -701,21 +701,20 @@ async function generateAndTestCookies(maxAttempts = 100) {
       
       const startTime = Date.now();
       const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
-      const BATCH_SIZE = 5;     // Only 5 batches max (stop early if failing)
-      const MAX_FAILURES = 3;   // Stop after 3 failed batches in a row
       
       console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`⚡ Testing up to ${BATCH_SIZE} batches (${BATCH_SIZE * PARALLEL_TESTS} cookies max)`);
-      console.log(`🛑 Will stop early after ${MAX_FAILURES} failed batches`);
+      console.log(`🎯 Will keep testing until ${COOKIE_POOL_SIZE} working cookies are found!`);
+      console.log(`⚡ No limits - running until success!`);
       
       let totalAttempts = 0;
       let cookiesFound = 0;
-      let consecutiveFailures = 0;
+      let batch = 0;
       const workingCookies = [];
       
-      // Test multiple cookies in parallel batches
-      for (let batch = 0; batch < BATCH_SIZE && cookiesFound < COOKIE_POOL_SIZE; batch++) {
-        console.log(`\n🔄 Batch ${batch + 1}/${BATCH_SIZE}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
+      // Test multiple cookies in parallel batches UNTIL we have 5 working cookies
+      while (cookiesFound < COOKIE_POOL_SIZE) {
+        batch++;
+        console.log(`\n🔄 Batch ${batch}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
         // Generate multiple cookie sets in parallel
         const cookiePromises = [];
@@ -759,8 +758,6 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const successfulResults = results.filter(r => r.success);
         
         if (successfulResults.length > 0) {
-          consecutiveFailures = 0; // Reset failure counter
-          
           // Save ALL working cookies to pool
           for (const result of successfulResults) {
             if (cookiesFound >= COOKIE_POOL_SIZE) break;
@@ -784,63 +781,26 @@ async function generateAndTestCookies(maxAttempts = 100) {
           }
           
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch + 1}!`);
+          console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch}!`);
           console.log(`📊 Cookie pool: ${cookiesFound}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
-          
-          // If we have enough cookies, stop testing
-          if (cookiesFound >= COOKIE_POOL_SIZE) {
-            console.log(`🎉 Cookie pool FULL! Saved ${COOKIE_POOL_SIZE} working cookies`);
-            isGeneratingCookies = false;
-            cookieGenerationPromise = null;
-            return AUTO_COOKIE_PATH;
-          }
         } else {
-          consecutiveFailures++;
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`  ❌ Batch ${batch + 1} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed)`);
-          console.log(`  ⚠️ Consecutive failures: ${consecutiveFailures}/${MAX_FAILURES}`);
-          
-          // Stop early if too many consecutive failures
-          if (consecutiveFailures >= MAX_FAILURES) {
-            console.log(`\n🛑 Stopping early: ${MAX_FAILURES} batches failed in a row`);
-            break;
-          }
+          console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
         // Small delay between batches
-        if (batch < BATCH_SIZE - 1 && cookiesFound < COOKIE_POOL_SIZE) {
+        if (cookiesFound < COOKIE_POOL_SIZE) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
       
-      // Check if we found ANY working cookies
+      // Success! We have our full pool of working cookies
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      if (cookiesFound > 0) {
-        console.log(`\n✅ Cookie generation complete: ${cookiesFound}/${COOKIE_POOL_SIZE} working cookies saved after ${elapsed}s`);
-        isGeneratingCookies = false;
-        cookieGenerationPromise = null;
-        return AUTO_COOKIE_PATH;
-      }
-      
-      // All attempts failed - use last generated cookies anyway (fallback)
-      // Note: If all failures were video config errors (not bot detection), cookies might still work
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`⚠️ All ${maxAttempts} cookie test attempts failed after ${elapsed}s`);
-      console.log(`  💡 Saving cookies anyway - they may work despite test failures (will be validated during actual downloads)`);
-      const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
-      if (fallbackContent) {
-        await fs.writeFile(AUTO_COOKIE_PATH, fallbackContent, 'utf8');
-        
-        // Update metadata to indicate cookies were saved but not tested
-        const metadata = await loadCookieMetadata();
-        metadata.lastTested = new Date().toISOString();
-        metadata.isValid = null; // Unknown - will be validated during actual downloads
-        metadata.generationAttempt = maxAttempts;
-        await saveCookieMetadata(metadata);
-        
-        return AUTO_COOKIE_PATH;
-      }
-      
+      console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+      console.log(`📦 Pool ready at: ${COOKIE_POOL_DIR}`);
+      return AUTO_COOKIE_PATH;
+    } catch (err) {
+      console.log(`  ⚠️ Cookie generation error: ${err.message}`);
       return null;
     } finally {
       // Release lock
@@ -850,6 +810,53 @@ async function generateAndTestCookies(maxAttempts = 100) {
   })();
   
   return await cookieGenerationPromise;
+}
+
+// 🔄 REGENERATE SINGLE COOKIE SLOT (when one dies during download)
+async function regenerateSingleCookie(slotIndex) {
+  try {
+    console.log(`\n🔄 Regenerating cookie slot ${slotIndex + 1}/${COOKIE_POOL_SIZE} (dead cookie detected)...`);
+    const startTime = Date.now();
+    let attempts = 0;
+    const maxAttempts = 50; // Try up to 50 times to find a working replacement
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      // Generate new cookie
+      const cookieContent = generateRealisticYouTubeCookies(attempts - 1);
+      if (!cookieContent) continue;
+      
+      // Save to temp file for testing
+      const tempCookiePath = path.join(__dirname, `.temp_regenerate_${slotIndex}_${Date.now()}.txt`);
+      await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+      
+      // Test the cookie
+      const testResult = await testCookies(tempCookiePath);
+      
+      // Clean up temp file
+      await fs.unlink(tempCookiePath).catch(() => {});
+      
+      if (testResult) {
+        // Success! Replace the dead cookie
+        await saveCookieToPool(cookieContent, slotIndex);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ Cookie slot ${slotIndex + 1} regenerated successfully after ${attempts} attempts (${elapsed}s)`);
+        return true;
+      }
+      
+      // Show progress every 10 attempts
+      if (attempts % 10 === 0) {
+        console.log(`  ⏳ Regeneration attempt ${attempts}/${maxAttempts}...`);
+      }
+    }
+    
+    console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${maxAttempts} attempts`);
+    return false;
+  } catch (err) {
+    console.log(`❌ Error regenerating cookie slot ${slotIndex + 1}: ${err.message}`);
+    return false;
+  }
 }
 
 // Initialize auto-cookies on startup with smart testing
