@@ -732,7 +732,6 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                   const isSelected = selectedResults.has(result.id);
                   const isPreviewing = previewTrackId === result.id;
                   const isInPlaylist = isTrackInPlaylist(result.id);
-                  const isPlayingPreview = playingPreviewId === result.id;
                   return (
                     <div
                       key={result.id}
