@@ -222,7 +222,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     };
 
     if (playNext && onAddTracksAndPlay) {
-      // Add track and play it immediately
+      // Add track and play it immediately (Play button)
       onAddTracks([track]);
       // Small delay to ensure track is added to list first
       setTimeout(() => {
@@ -232,28 +232,9 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
         description: 'Track added and started playing'
       });
     } else {
-      // Just add track - but auto-play if nothing is playing and player is ready
+      // Just add track - NEVER auto-play (Add button only)
       onAddTracks([track]);
-      
-      // Check if we should auto-play (player is ready but nothing is playing)
-      if (onCheckPlayingState && onAddTracksAndPlay) {
-        const state = onCheckPlayingState();
-        if (!state.isPlaying && state.isPlayerReady) {
-          // Player is ready but nothing playing - start playing this track
-          setTimeout(() => {
-            if (onAddTracksAndPlay) {
-              onAddTracksAndPlay(track);
-            }
-          }, 100);
-          toast.success(`Added "${result.name}" and started playing`, {
-            description: 'Player was ready, started playback'
-          });
-        } else {
-          toast.success(`Added "${result.name}" to track list`);
-        }
-      } else {
-        toast.success(`Added "${result.name}" to track list`);
-      }
+      toast.success(`Added "${result.name}" to track list`);
     }
     
     // Remove from selection
