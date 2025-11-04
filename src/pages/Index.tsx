@@ -605,7 +605,14 @@ const Index = () => {
                   } else {
                     // Replace mode: clear and load new
                     setPlaylist(playlistData);
-                    setTracks(tracksData);
+                    // Reset download status for new tracks - they shouldn't be locked in pending
+                    const tracksWithResetStatus = tracksData.map(track => ({
+                      ...track,
+                      downloadStatus: 'completed' as const, // Reset to completed so they're not locked
+                      downloadProgress: 0,
+                      selected: track.selected ?? true // Preserve selection state
+                    }));
+                    setTracks(tracksWithResetStatus);
                     // Reset playlist tracking
                     const isPlaylist = playlistData.totalTracks > 1;
                     setPlaylistNames(isPlaylist ? [playlistData.name] : []);
