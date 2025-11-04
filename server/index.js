@@ -391,6 +391,10 @@ let cookieGenerationPromise = null;
 // 🎯 COOKIE POOL SYSTEM - Maintain 5 working cookies
 const COOKIE_POOL_SIZE = 5;
 let cookiePoolIndex = 0; // Round-robin rotation
+const COOKIE_POOL_METADATA_PATH = path.join(__dirname, '.cookie_pool_metadata.json');
+
+// 📊 COOKIE HEALTH TRACKING
+let cookieStats = new Map(); // In-memory stats (index -> stats)
 
 // Load cookie metadata
 async function loadCookieMetadata() {
@@ -427,15 +431,112 @@ async function saveCookieMetadata(metadata) {
 async function initCookiePool() {
   try {
     await fs.mkdir(COOKIE_POOL_DIR, { recursive: true });
+    await loadCookiePoolMetadata(); // Load stats on init
   } catch (err) {
     // Directory may already exist
   }
+}
+
+// 📊 Load cookie pool metadata (stats per cookie)
+async function loadCookiePoolMetadata() {
+  try {
+    const content = await fs.readFile(COOKIE_POOL_METADATA_PATH, 'utf8');
+    const metadata = JSON.parse(content);
+    
+    // Initialize stats map
+    cookieStats.clear();
+    for (const [index, stats] of Object.entries(metadata)) {
+      cookieStats.set(parseInt(index), stats);
+    }
+    
+    return metadata;
+  } catch (err) {
+    // File doesn't exist yet, initialize empty
+    cookieStats.clear();
+    return {};
+  }
+}
+
+// 💾 Save cookie pool metadata
+async function saveCookiePoolMetadata() {
+  try {
+    const metadata = {};
+    for (const [index, stats] of cookieStats.entries()) {
+      metadata[index] = stats;
+    }
+    await fs.writeFile(COOKIE_POOL_METADATA_PATH, JSON.stringify(metadata, null, 2), 'utf8');
+  } catch (err) {
+    // Silent fail
+  }
+}
+
+// 📈 Initialize cookie stats if not exists
+function initCookieStats(index) {
+  if (!cookieStats.has(index)) {
+    cookieStats.set(index, {
+      successCount: 0,
+      failureCount: 0,
+      lastUsed: null,
+      lastSuccess: null,
+      lastFailure: null,
+      created: new Date().toISOString(),
+      consecutiveFailures: 0,
+      totalDownloads: 0,
+      successRate: 1.0, // Start optimistic
+      tier: 1 // Tier 1 = best
+    });
+  }
+  return cookieStats.get(index);
+}
+
+// 📊 Update cookie success
+function recordCookieSuccess(index) {
+  const stats = initCookieStats(index);
+  stats.successCount++;
+  stats.totalDownloads++;
+  stats.lastUsed = new Date().toISOString();
+  stats.lastSuccess = new Date().toISOString();
+  stats.consecutiveFailures = 0;
+  stats.successRate = stats.successCount / stats.totalDownloads;
+  
+  // Update tier based on success rate
+  if (stats.successRate >= 0.99) stats.tier = 1;
+  else if (stats.successRate >= 0.95) stats.tier = 2;
+  else if (stats.successRate >= 0.90) stats.tier = 3;
+  else stats.tier = 4; // Mark for replacement
+  
+  cookieStats.set(index, stats);
+  saveCookiePoolMetadata(); // Save asynchronously (don't await)
+}
+
+// 📊 Update cookie failure
+function recordCookieFailure(index) {
+  const stats = initCookieStats(index);
+  stats.failureCount++;
+  stats.totalDownloads++;
+  stats.lastUsed = new Date().toISOString();
+  stats.lastFailure = new Date().toISOString();
+  stats.consecutiveFailures++;
+  stats.successRate = stats.successCount / stats.totalDownloads;
+  
+  // Update tier based on success rate
+  if (stats.successRate >= 0.99) stats.tier = 1;
+  else if (stats.successRate >= 0.95) stats.tier = 2;
+  else if (stats.successRate >= 0.90) stats.tier = 3;
+  else stats.tier = 4; // Mark for replacement
+  
+  cookieStats.set(index, stats);
+  saveCookiePoolMetadata(); // Save asynchronously (don't await)
 }
 
 async function saveCookieToPool(cookieContent, index) {
   try {
     const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${index}.txt`);
     await fs.writeFile(cookiePath, cookieContent, 'utf8');
+    
+    // Initialize stats for new cookie
+    initCookieStats(index);
+    
     console.log(`  💾 Saved working cookie to pool (slot ${index + 1}/${COOKIE_POOL_SIZE})`);
     return cookiePath;
   } catch (err) {
@@ -464,14 +565,92 @@ async function getWorkingCookiesFromPool() {
   }
 }
 
+// 🎯 SMART COOKIE SELECTION (Priority Queue - Best Cookies First)
 async function getNextCookieFromPool() {
   const cookies = await getWorkingCookiesFromPool();
   if (cookies.length === 0) return null;
   
-  // Round-robin rotation
-  const cookie = cookies[cookiePoolIndex % cookies.length];
+  // Load metadata to get stats
+  await loadCookiePoolMetadata();
+  
+  // Build array with cookies and their stats
+  const cookiesWithStats = cookies.map((cookie, idx) => {
+    const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+    const stats = cookieStats.get(index) || initCookieStats(index);
+    return { cookie, index, stats };
+  });
+  
+  // Sort by priority:
+  // 1. Tier (1 = best, 4 = worst)
+  // 2. Success rate (higher = better)
+  // 3. Recent success (last 5 minutes = bonus)
+  // 4. Least used recently (load balancing)
+  const now = Date.now();
+  cookiesWithStats.sort((a, b) => {
+    // Tier priority (lower tier number = better)
+    if (a.stats.tier !== b.stats.tier) {
+      return a.stats.tier - b.stats.tier;
+    }
+    
+    // Success rate (higher = better)
+    if (Math.abs(a.stats.successRate - b.stats.successRate) > 0.01) {
+      return b.stats.successRate - a.stats.successRate;
+    }
+    
+    // Recent success bonus (last 5 minutes)
+    const aRecentSuccess = a.stats.lastSuccess ? 
+      (now - new Date(a.stats.lastSuccess).getTime()) < 300000 : false;
+    const bRecentSuccess = b.stats.lastSuccess ? 
+      (now - new Date(b.stats.lastSuccess).getTime()) < 300000 : false;
+    if (aRecentSuccess !== bRecentSuccess) {
+      return aRecentSuccess ? -1 : 1;
+    }
+    
+    // Load balancing: least recently used
+    const aLastUsed = a.stats.lastUsed ? new Date(a.stats.lastUsed).getTime() : 0;
+    const bLastUsed = b.stats.lastUsed ? new Date(b.stats.lastUsed).getTime() : 0;
+    return aLastUsed - bLastUsed;
+  });
+  
+  // Use the best cookie
+  const best = cookiesWithStats[0];
   cookiePoolIndex++;
-  return cookie.path;
+  
+  return best.cookie.path;
+}
+
+// 🔄 GET ALL COOKIES FROM POOL (for smart retry)
+async function getAllCookiesFromPool() {
+  const cookies = await getWorkingCookiesFromPool();
+  if (cookies.length === 0) return [];
+  
+  await loadCookiePoolMetadata();
+  
+  // Return with stats sorted by priority
+  const cookiesWithStats = cookies.map((cookie) => {
+    const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+    const stats = cookieStats.get(index) || initCookieStats(index);
+    return { path: cookie.path, index, stats };
+  });
+  
+  // Sort by priority (same as getNextCookieFromPool)
+  const now = Date.now();
+  cookiesWithStats.sort((a, b) => {
+    if (a.stats.tier !== b.stats.tier) return a.stats.tier - b.stats.tier;
+    if (Math.abs(a.stats.successRate - b.stats.successRate) > 0.01) {
+      return b.stats.successRate - a.stats.successRate;
+    }
+    const aRecentSuccess = a.stats.lastSuccess ? 
+      (now - new Date(a.stats.lastSuccess).getTime()) < 300000 : false;
+    const bRecentSuccess = b.stats.lastSuccess ? 
+      (now - new Date(b.stats.lastSuccess).getTime()) < 300000 : false;
+    if (aRecentSuccess !== bRecentSuccess) return aRecentSuccess ? -1 : 1;
+    const aLastUsed = a.stats.lastUsed ? new Date(a.stats.lastUsed).getTime() : 0;
+    const bLastUsed = b.stats.lastUsed ? new Date(b.stats.lastUsed).getTime() : 0;
+    return aLastUsed - bLastUsed;
+  });
+  
+  return cookiesWithStats;
 }
 
 async function replaceCookieInPool(index, newCookieContent) {
@@ -729,6 +908,18 @@ async function generateAndTestCookies(maxAttempts = 100) {
     try {
       await initCookiePool(); // Initialize cookie pool directory
       
+      // Check which slots are already filled
+      const existingCookies = await getWorkingCookiesFromPool();
+      const existingIndices = existingCookies.map(c => 
+        parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0')
+      );
+      const cookiesNeeded = COOKIE_POOL_SIZE - existingIndices.length;
+      
+      if (cookiesNeeded <= 0) {
+        console.log(`✅ Cookie pool already full (${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE}) - no generation needed`);
+        return AUTO_COOKIE_PATH;
+      }
+      
       const startTime = Date.now();
       const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
       const MAX_BATCHES = 100; // Safety limit: max 100 batches (500 attempts)
@@ -736,7 +927,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
       const MIN_COOKIES_TO_ACCEPT = 1; // Accept if we have at least 1 working cookie
       
       console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`🎯 Target: ${COOKIE_POOL_SIZE} working cookies`);
+      console.log(`🎯 Target: ${cookiesNeeded} new cookies (${existingIndices.length}/${COOKIE_POOL_SIZE} already exist)`);
       console.log(`🛡️ Safety limits: ${MAX_BATCHES} batches max, ${MAX_TIME/1000}s timeout`);
       console.log(`✅ Will accept ${MIN_COOKIES_TO_ACCEPT}+ working cookies if time/batches limit reached`);
       
@@ -744,9 +935,18 @@ async function generateAndTestCookies(maxAttempts = 100) {
       let cookiesFound = 0;
       let batch = 0;
       const workingCookies = [];
+      let nextAvailableSlot = 0;
       
-      // Test multiple cookies in parallel batches UNTIL we have 5 working cookies OR hit limits
-      while (cookiesFound < COOKIE_POOL_SIZE) {
+      // Find first available slot
+      for (let i = 0; i < COOKIE_POOL_SIZE; i++) {
+        if (!existingIndices.includes(i)) {
+          nextAvailableSlot = i;
+          break;
+        }
+      }
+      
+      // Test multiple cookies in parallel batches UNTIL we have enough cookies OR hit limits
+      while (cookiesFound < cookiesNeeded) {
         batch++;
         const elapsed = Date.now() - startTime;
         
@@ -819,15 +1019,24 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const successfulResults = results.filter(r => r.success);
         
         if (successfulResults.length > 0) {
-          // Save ALL working cookies to pool
+          // Save ALL working cookies to pool (fill missing slots)
           for (const result of successfulResults) {
-            if (cookiesFound >= COOKIE_POOL_SIZE) break;
+            if (cookiesFound >= cookiesNeeded) break;
             
-            await saveCookieToPool(result.cookieContent, cookiesFound);
+            // Find next available slot
+            while (existingIndices.includes(nextAvailableSlot)) {
+              nextAvailableSlot++;
+              if (nextAvailableSlot >= COOKIE_POOL_SIZE) nextAvailableSlot = 0;
+            }
+            
+            const slotIndex = nextAvailableSlot;
+            await saveCookieToPool(result.cookieContent, slotIndex);
+            existingIndices.push(slotIndex); // Mark as filled
             workingCookies.push(result.cookieContent);
+            nextAvailableSlot++; // Move to next slot
             
-            // Save first one as primary cookie
-            if (cookiesFound === 0) {
+            // Save first one as primary cookie (if slot 0 is empty)
+            if (slotIndex === 0 || (cookiesFound === 0 && !existingIndices.includes(0))) {
               await fs.writeFile(AUTO_COOKIE_PATH, result.cookieContent, 'utf8');
               
               const metadata = await loadCookieMetadata();
@@ -841,23 +1050,25 @@ async function generateAndTestCookies(maxAttempts = 100) {
             cookiesFound++;
           }
           
+          const totalCookies = existingIndices.length;
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch}!`);
-          console.log(`📊 Cookie pool: ${cookiesFound}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
+          console.log(`📊 Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
         } else {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
         // Small delay between batches
-        if (cookiesFound < COOKIE_POOL_SIZE) {
+        if (cookiesFound < cookiesNeeded) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
       
-      // Success! We have our full pool of working cookies
+      // Success! We have filled the missing slots
+      const totalCookies = existingIndices.length;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+      console.log(`\n🎉 SUCCESS! Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
       console.log(`📦 Pool ready at: ${COOKIE_POOL_DIR}`);
       return AUTO_COOKIE_PATH;
     } catch (err) {
@@ -920,12 +1131,216 @@ async function regenerateSingleCookie(slotIndex) {
   }
 }
 
+// ⚡ FAST COOKIE VALIDATION (2s timeout for quick startup validation)
+async function quickValidateCookie(cookiePath, index = null) {
+  try {
+    const testArgs = [
+      '-m', 'yt_dlp',
+      `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`,
+      '--cookies', cookiePath,
+      '--dump-json',
+      '--no-playlist',
+      '--quiet',
+      '--no-warnings',
+      '--skip-download',
+      '--extractor-args', 'youtube:player_client=web_embedded',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    ];
+    
+    return new Promise((resolve) => {
+      const testProcess = spawn(PYTHON_CMD, testArgs, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 2000 // 2s timeout for fast validation
+      });
+      
+      let errorOutput = '';
+      let resolved = false;
+      
+      testProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      testProcess.on('close', (code) => {
+        if (resolved) return;
+        resolved = true;
+        
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
+        
+        // Only reject if bot detection found
+        resolve(!hasBotDetectionError);
+      });
+      
+      testProcess.on('error', () => {
+        if (resolved) return;
+        resolved = true;
+        resolve(false);
+      });
+      
+      setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        try { testProcess.kill('SIGKILL'); } catch {}
+        // Timeout = accept (might just be slow)
+        resolve(true);
+      }, 2000);
+    });
+  } catch (err) {
+    return false;
+  }
+}
+
+// ✅ VALIDATE COOKIE POOL ON STARTUP
+async function validateCookiePool() {
+  try {
+    await initCookiePool();
+    const cookies = await getWorkingCookiesFromPool();
+    
+    if (cookies.length === 0) {
+      console.log('  📝 Cookie pool is empty - will generate new cookies');
+      return { valid: 0, total: 0, needGeneration: true };
+    }
+    
+    console.log(`  🧪 Validating ${cookies.length} existing cookies in pool (fast test)...`);
+    
+    // Validate all cookies in parallel (fast 2s test each)
+    const validationPromises = cookies.map(async (cookie) => {
+      const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      const isValid = await quickValidateCookie(cookie.path, index);
+      return { index, path: cookie.path, isValid };
+    });
+    
+    const results = await Promise.all(validationPromises);
+    const validCookies = results.filter(r => r.isValid);
+    const invalidCookies = results.filter(r => !r.isValid);
+    
+    // Remove invalid cookies
+    for (const invalid of invalidCookies) {
+      try {
+        await fs.unlink(invalid.path);
+        console.log(`  ❌ Removed dead cookie (slot ${invalid.index + 1})`);
+        cookieStats.delete(invalid.index);
+      } catch {}
+    }
+    
+    await saveCookiePoolMetadata();
+    
+    console.log(`  ✅ Cookie pool validation: ${validCookies.length}/${cookies.length} cookies valid`);
+    
+    // Update primary cookie if needed
+    if (validCookies.length > 0) {
+      const primaryCookie = validCookies[0];
+      const content = await fs.readFile(primaryCookie.path, 'utf8');
+      await fs.writeFile(AUTO_COOKIE_PATH, content, 'utf8');
+      console.log(`  💾 Updated primary cookie from pool`);
+    }
+    
+    return {
+      valid: validCookies.length,
+      total: cookies.length,
+      needGeneration: validCookies.length < COOKIE_POOL_SIZE
+    };
+  } catch (err) {
+    console.log(`  ⚠️ Cookie pool validation error: ${err.message}`);
+    return { valid: 0, total: 0, needGeneration: true };
+  }
+}
+
+// 🔄 SMART RETRY WITH COOKIE ROTATION
+async function smartRetryWithCookies(operation, maxRetries = 5) {
+  const cookies = await getAllCookiesFromPool();
+  
+  if (cookies.length === 0) {
+    // No cookies available, just try operation once
+    return await operation(null);
+  }
+  
+  // Try each cookie in priority order
+  for (let attempt = 0; attempt < Math.min(cookies.length, maxRetries); attempt++) {
+    const cookie = cookies[attempt];
+    
+    try {
+      const result = await operation(cookie.path);
+      
+      // Success! Record it
+      if (result !== false && result !== null) {
+        recordCookieSuccess(cookie.index);
+        return result;
+      }
+      
+      // Operation failed but didn't throw - record failure
+      recordCookieFailure(cookie.index);
+    } catch (err) {
+      // Check if it's a bot detection error
+      const errorMsg = err.message || err.toString() || '';
+      const isBotDetection = errorMsg.includes('Sign in to confirm') ||
+                            errorMsg.includes('LOGIN_REQUIRED') ||
+                            errorMsg.includes("you're not a bot");
+      
+      if (isBotDetection) {
+        recordCookieFailure(cookie.index);
+        console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - trying next...`);
+        
+        // If 3 consecutive failures, mark for regeneration
+        const stats = cookieStats.get(cookie.index);
+        if (stats && stats.consecutiveFailures >= 3) {
+          console.log(`  🔄 Cookie ${cookie.index + 1} has 3 consecutive failures - marking for regeneration`);
+          // Regenerate in background (don't await)
+          regenerateSingleCookie(cookie.index).catch(() => {});
+        }
+      }
+      
+      // Continue to next cookie
+      continue;
+    }
+  }
+  
+  // All cookies failed
+  return null;
+}
+
 // Initialize auto-cookies on startup with smart testing
 async function initializeAutoCookies() {
   try {
     console.log('🔄 Checking auto-generated cookies...');
     
-    // Check if cookies exist
+    // ✅ NEW: Validate cookie pool first (fast validation)
+    const poolStatus = await validateCookiePool();
+    
+    if (poolStatus.valid >= COOKIE_POOL_SIZE) {
+      console.log(`  ✅ Cookie pool is full (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - ready to use!`);
+      return AUTO_COOKIE_PATH;
+    }
+    
+    if (poolStatus.valid > 0) {
+      console.log(`  ⚠️ Cookie pool has ${poolStatus.valid}/${COOKIE_POOL_SIZE} cookies - filling ${COOKIE_POOL_SIZE - poolStatus.valid} missing slots...`);
+      // Only generate missing cookies (not all 5)
+      const missingSlots = COOKIE_POOL_SIZE - poolStatus.valid;
+      const existingCookies = await getWorkingCookiesFromPool();
+      const existingIndices = existingCookies.map(c => 
+        parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0')
+      );
+      
+      // Find first available slot
+      let nextSlot = 0;
+      for (let i = 0; i < COOKIE_POOL_SIZE; i++) {
+        if (!existingIndices.includes(i)) {
+          nextSlot = i;
+          break;
+        }
+      }
+      
+      // Generate only missing cookies
+      console.log(`  🔄 Generating ${missingSlots} missing cookies to fill pool...`);
+      const newCookies = await generateAndTestCookies(100); // Will fill remaining slots
+      if (newCookies) {
+        return AUTO_COOKIE_PATH;
+      }
+    }
+    
+    // Check if primary cookie exists
     let cookiesExist = false;
     try {
       await fs.access(AUTO_COOKIE_PATH);
@@ -933,7 +1348,7 @@ async function initializeAutoCookies() {
       
       if (existingContent && existingContent.length > 200 && existingContent.includes('VISITOR_INFO1_LIVE')) {
         cookiesExist = true;
-        console.log('  📁 Found existing cookies, testing...');
+        console.log('  📁 Found existing primary cookie, testing...');
         
         // Test existing cookies
         const testResult = await testCookies(AUTO_COOKIE_PATH);
