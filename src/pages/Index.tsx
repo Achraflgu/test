@@ -48,6 +48,10 @@ const Index = () => {
   const [inputMode, setInputMode] = useState<'url' | 'search'>('url');
   // Ref for scrolling to input section
   const inputSectionRef = useRef<HTMLDivElement>(null);
+  // Ref for playTrack function from TrackList
+  const playTrackRef = useRef<((track: Track) => Promise<void>) | null>(null);
+  // Ref for playing state getter from TrackList
+  const getPlayingStateRef = useRef<(() => { isPlaying: boolean; isPlayerReady: boolean }) | null>(null);
   // Detected URL from search mode
   const [detectedUrl, setDetectedUrl] = useState<string>('');
   // Detected search text from URL mode
@@ -579,6 +583,24 @@ const Index = () => {
                 <MusicSearch 
                   onUrlDetected={handleUrlDetected}
                   initialSearchText={detectedSearchText}
+                  onCheckPlayingState={() => {
+                    // Get current playing state from TrackList
+                    if (getPlayingStateRef.current) {
+                      return getPlayingStateRef.current();
+                    }
+                    return { isPlaying: false, isPlayerReady: false };
+                  }}
+                  onAddTracksAndPlay={(track) => {
+                    // Play the track if playTrack function is available
+                    if (playTrackRef.current) {
+                      playTrackRef.current(track).catch(err => {
+                        console.error('Error playing track:', err);
+                        toast.error('Failed to play track');
+                      });
+                    } else {
+                      toast.warning('Player not ready yet. Track added to list.');
+                    }
+                  }}
                   onAddTracks={(newTracks) => {
                     // Clear detected search text after it's been used
                     setDetectedSearchText('');
@@ -687,6 +709,12 @@ const Index = () => {
                 }
               }}
               onDownloadingChange={handleDownloadingChange}
+              onPlayTrackReady={(playTrack) => {
+                playTrackRef.current = playTrack;
+              }}
+              onPlayingStateReady={(getState) => {
+                getPlayingStateRef.current = getState;
+              }}
             />
           </div>
         )}

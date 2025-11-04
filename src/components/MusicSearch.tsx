@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap } from 'lucide-react';
+import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2 } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,13 @@ import { toast } from 'sonner';
 
 interface MusicSearchProps {
   onAddTracks: (tracks: Track[]) => void;
+  onAddTracksAndPlay?: (track: Track) => void;
+  onCheckPlayingState?: () => { isPlaying: boolean; isPlayerReady: boolean };
   onUrlDetected?: (url: string) => void;
   initialSearchText?: string;
 }
 
-export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: MusicSearchProps) {
+export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingState, onUrlDetected, initialSearchText }: MusicSearchProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchText || '');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -59,6 +61,23 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
     setRecentSearches(updated);
     localStorage.setItem('music-search-history', JSON.stringify(updated));
   }, [recentSearches]);
+
+  // Remove a search from history
+  const removeSearchFromHistory = useCallback((search: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const updated = recentSearches.filter(s => s !== search);
+    setRecentSearches(updated);
+    localStorage.setItem('music-search-history', JSON.stringify(updated));
+    toast.success('Removed from history');
+  }, [recentSearches]);
+
+  // Clear all recent searches
+  const clearRecentSearches = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecentSearches([]);
+    localStorage.setItem('music-search-history', JSON.stringify([]));
+    toast.success('Recent searches cleared');
+  }, []);
 
   // Auto-focus and select the search input when entering search mode
   useEffect(() => {
@@ -202,10 +221,40 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
       selected: false,
     };
 
-    onAddTracks([track]);
-    toast.success(`Added "${result.name}" to track list${playNext ? ' (next)' : ''}`, {
-      description: playNext ? 'Track will play next' : undefined
-    });
+    if (playNext && onAddTracksAndPlay) {
+      // Add track and play it immediately
+      onAddTracks([track]);
+      // Small delay to ensure track is added to list first
+      setTimeout(() => {
+        onAddTracksAndPlay(track);
+      }, 100);
+      toast.success(`Added "${result.name}" and playing now`, {
+        description: 'Track added and started playing'
+      });
+    } else {
+      // Just add track - but auto-play if nothing is playing and player is ready
+      onAddTracks([track]);
+      
+      // Check if we should auto-play (player is ready but nothing is playing)
+      if (onCheckPlayingState && onAddTracksAndPlay) {
+        const state = onCheckPlayingState();
+        if (!state.isPlaying && state.isPlayerReady) {
+          // Player is ready but nothing playing - start playing this track
+          setTimeout(() => {
+            if (onAddTracksAndPlay) {
+              onAddTracksAndPlay(track);
+            }
+          }, 100);
+          toast.success(`Added "${result.name}" and started playing`, {
+            description: 'Player was ready, started playback'
+          });
+        } else {
+          toast.success(`Added "${result.name}" to track list`);
+        }
+      } else {
+        toast.success(`Added "${result.name}" to track list`);
+      }
+    }
     
     // Remove from selection
     const newSelected = new Set(selectedResults);
@@ -369,26 +418,66 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
               autoFocus
               ref={inputRef}
             />
-            {/* Recent Searches Dropdown */}
+            {/* Recent Searches Dropdown - Enhanced Design */}
             {recentSearches.length > 0 && searchQuery === '' && !isResultsOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                <div className="p-2 text-xs text-muted-foreground font-semibold px-3 py-2 flex items-center gap-2 border-b">
-                  <History className="h-3 w-3" />
-                  Recent Searches
-                </div>
-                {recentSearches.slice(0, 5).map((search, idx) => (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-br from-card via-card to-accent/5 border border-primary/20 rounded-xl shadow-2xl shadow-primary/10 z-50 overflow-hidden backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* Header */}
+                <div className="px-4 py-3 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/10 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-primary/20 rounded-lg">
+                      <History className="h-3.5 w-3.5 text-primary" />
+                    </div>
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">Recent Searches</span>
+                    <span className="text-xs text-muted-foreground/70 bg-muted/50 px-2 py-0.5 rounded-full">
+                      {recentSearches.length}
+                    </span>
+                  </div>
                   <button
-                    key={idx}
-                    onClick={() => {
-                      setSearchQuery(search);
-                      setTimeout(() => handleSearch(), 100);
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-accent flex items-center gap-2 text-sm transition-colors"
+                    onClick={clearRecentSearches}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded hover:bg-destructive/10 flex items-center gap-1"
+                    title="Clear all"
                   >
-                    <Search className="h-3 w-3 text-muted-foreground" />
-                    {search}
+                    <Trash2 className="h-3 w-3" />
+                    <span className="hidden sm:inline">Clear</span>
                   </button>
-                ))}
+                </div>
+                
+                {/* Search Items */}
+                <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                  {recentSearches.slice(0, 8).map((search, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setSearchQuery(search);
+                        setTimeout(() => handleSearch(), 100);
+                      }}
+                      className="group w-full text-left px-4 py-3 hover:bg-gradient-to-r hover:from-primary/10 hover:to-accent/5 flex items-center justify-between gap-3 text-sm transition-all duration-200 border-b border-border/30 last:border-b-0 hover:border-primary/20 hover:shadow-sm"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
+                          <Search className="h-3 w-3 text-primary group-hover:scale-110 transition-transform" />
+                        </div>
+                        <span className="text-foreground font-medium truncate group-hover:text-primary transition-colors">
+                          {search}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => removeSearchFromHistory(search, e)}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        title="Remove from history"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Footer */}
+                {recentSearches.length > 8 && (
+                  <div className="px-4 py-2 bg-muted/30 border-t border-border/30 text-xs text-muted-foreground text-center">
+                    Showing 8 of {recentSearches.length} recent searches
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -592,10 +681,11 @@ export function MusicSearch({ onAddTracks, onUrlDetected, initialSearchText }: M
                             size="sm" 
                             onClick={() => handleAddTrack(result, true)}
                             variant="outline"
-                            className="border-accent/30 hover:bg-accent/10"
-                            title="Add & play next"
+                            className="border-accent/30 hover:bg-accent/10 hover:border-accent/50"
+                            title="Add and play now"
                           >
-                            <Zap className="h-4 w-4" />
+                            <Zap className="mr-1 h-4 w-4" />
+                            <span className="hidden sm:inline text-xs">Play</span>
                           </Button>
                         </div>
                       </div>

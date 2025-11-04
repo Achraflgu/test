@@ -31,9 +31,11 @@ interface TrackListProps {
   isPrivateMode?: boolean;
   onTracksUpdate?: (tracks: Track[]) => void;
   onDownloadingChange?: (isDownloading: boolean, downloadId?: string) => void;
+  onPlayTrackReady?: (playTrack: (track: Track) => Promise<void>) => void;
+  onPlayingStateReady?: (getState: () => { isPlaying: boolean; isPlayerReady: boolean }) => void;
 }
 
-export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], isPrivateMode = false, onTracksUpdate, onDownloadingChange }: TrackListProps) => {
+export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", playlistName = "", playlistImages = [], isPrivateMode = false, onTracksUpdate, onDownloadingChange, onPlayTrackReady, onPlayingStateReady }: TrackListProps) => {
   const [tracks, setTracks] = useState(initialTracks);
   const [downloading, setDownloading] = useState(false);
   const [showDuplicatesDialog, setShowDuplicatesDialog] = useState(false);
@@ -1522,10 +1524,21 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
   };
 
-  // Keep playTrack ref updated
+  // Keep playTrack ref updated and expose callbacks
   useEffect(() => {
     playTrackRef.current = playTrack;
-  }, [playTrack]);
+    // Expose playTrack to parent component
+    if (onPlayTrackReady) {
+      onPlayTrackReady(playTrack);
+    }
+    // Expose playing state getter to parent component
+    if (onPlayingStateReady) {
+      onPlayingStateReady(() => ({
+        isPlaying,
+        isPlayerReady
+      }));
+    }
+  }, [playTrack, onPlayTrackReady, onPlayingStateReady, isPlaying, isPlayerReady]);
 
   // Update current time
   useEffect(() => {
