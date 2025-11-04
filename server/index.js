@@ -21,12 +21,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
-// 🍪 Persistent cookie values for stability (reuse across regenerations)
-let persistentVisitorId = null;
-let persistentDeviceId = null;
-let persistentSessionUserAgent = null;
-let cookieGenerationCount = 0;
-
 // Set server timeouts for large file downloads (unlimited size support)
 httpServer.timeout = 7200000; // 2 hours (in milliseconds)
 httpServer.keepAliveTimeout = 7200000; // 2 hours
@@ -521,60 +515,41 @@ async function testCookies(cookiePath) {
 function generateRealisticYouTubeCookies(attempt = 0) {
   try {
     console.log(`  🤖 Generating professional YouTube cookies (attempt ${attempt + 1})...`);
-    cookieGenerationCount++;
     
     // Generate realistic values with better patterns
     const timestamp = Date.now();
-    const now = Math.floor(timestamp / 1000);
+    const expiry = Math.floor(timestamp / 1000) + (365 * 24 * 60 * 60); // 1 year
+    const sessionExpiry = Math.floor(timestamp / 1000) + (30 * 24 * 60 * 60); // 30 days
     
-    // ⚡ More realistic expiry times (like real browsers)
-    const shortExpiry = now + (7 * 24 * 60 * 60);      // 7 days (session)
-    const mediumExpiry = now + (90 * 24 * 60 * 60);    // 90 days (visitor)
-    const longExpiry = now + (400 * 24 * 60 * 60);     // 400 days (persistent)
-    
-    // 🎯 PERSISTENCE: Reuse visitor ID across regenerations (like real browser)
-    if (!persistentVisitorId) {
-      // Generate realistic VISITOR_INFO1_LIVE (starts with letter, 11 chars)
-      const start = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-      persistentVisitorId = start.charAt(Math.floor(Math.random() * start.length));
-      for (let i = 0; i < 10; i++) {
-        persistentVisitorId += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      console.log(`  🎯 Generated persistent visitor ID (will reuse): ${persistentVisitorId}`);
-    }
-    
-    // 🎯 PERSISTENCE: Reuse device ID
-    if (!persistentDeviceId) {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-      persistentDeviceId = '';
-      for (let i = 0; i < 32; i++) {
-        persistentDeviceId += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-    }
-    
-    // Generate realistic YSC (YouTube Session Cookie - 12 chars with variety)
-    const generateYSC = () => {
+    // Generate realistic VISITOR_INFO1_LIVE (format: [a-zA-Z0-9_-]{11})
+    const generateVisitorId = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
       let result = '';
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 11; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    };
+    
+    // Generate realistic YSC (YouTube Session Cookie)
+    const generateYSC = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let result = '';
+      for (let i = 0; i < 11; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return result;
     };
     
     // Generate realistic PREF value with variation
-    const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'America/Chicago', 'Asia/Shanghai'];
+    const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
     const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=${timezones[Math.floor(Math.random() * timezones.length)]}&f6=40000000`;
     
-    // ⚡ IMPROVED: Use CURRENT date for CONSENT (more realistic)
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const consentValue = `YES+cb.${year}${month}${day}-00-p0.en+FX+${Math.floor(Math.random() * 1000)}`;
+    // Generate realistic CONSENT value (updated format)
+    const consentDates = ['20210328-17-p0', '20210428-17-p0', '20210528-17-p0', '20210628-17-p0', '20210728-17-p0'];
+    const consentValue = `YES+cb.${consentDates[Math.floor(Math.random() * consentDates.length)]}.en+FX+${Math.floor(Math.random() * 1000)}`;
     
-    // Generate realistic session IDs with better patterns
+    // Generate realistic session IDs
     const generateSessionId = (length) => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
       let result = '';
@@ -584,53 +559,27 @@ function generateRealisticYouTubeCookies(attempt = 0) {
       return result;
     };
     
-    // Generate realistic hex IDs for Google cookies
-    const generateHexId = (length) => {
-      const chars = '0123456789abcdef';
-      let result = '';
-      for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    };
-    
-    // Generate activity cookies (simulate user history)
-    const lastVisit = now - Math.floor(Math.random() * 86400); // Random time in last 24h
-    const videoCount = Math.floor(Math.random() * 50) + 10; // Watched 10-60 videos
-    
-    // ⚡ ENHANCED: More comprehensive cookie content with Google auth cookies
+    // Create comprehensive cookie content
     const cookieContent = `# Netscape HTTP Cookie File
 # This is a generated file. Do not edit.
 # Auto-generated by TrackM Backend - ${new Date().toISOString()}
-# Generation attempt: ${attempt + 1} (Total: ${cookieGenerationCount})
-# Persistent Visitor ID: ${persistentVisitorId}
+# Generation attempt: ${attempt + 1}
 
 # Essential YouTube cookies for authentication
-.youtube.com	TRUE	/	TRUE	${mediumExpiry}	VISITOR_INFO1_LIVE	${persistentVisitorId}
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	YSC	${generateYSC()}
-.youtube.com	TRUE	/	TRUE	${longExpiry}	PREF	${prefValue}
-.youtube.com	TRUE	/	TRUE	${longExpiry}	CONSENT	${consentValue}
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	GPS	1
+.youtube.com	TRUE	/	TRUE	${expiry}	VISITOR_INFO1_LIVE	${generateVisitorId()}
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	YSC	${generateYSC()}
+.youtube.com	TRUE	/	TRUE	${expiry}	PREF	${prefValue}
+.youtube.com	TRUE	/	TRUE	${expiry}	CONSENT	${consentValue}
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	GPS	1
 
-# ⚡ CRITICAL: Google authentication cookies (required for stable downloads)
-.google.com	TRUE	/	TRUE	${longExpiry}	HSID	${generateHexId(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	SSID	${generateHexId(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	APISID	${generateHexId(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	SAPISID	${generateHexId(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	NID	${generateSessionId(20)}
-.google.com	TRUE	/	TRUE	${longExpiry}	SID	${generateSessionId(20)}
-.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PSID	${generateSessionId(40)}
-.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PAPISID	${generateHexId(16)}
+# Additional cookies for better compatibility
+.google.com	TRUE	/	TRUE	${expiry}	NID	${generateSessionId(20)}
+.google.com	TRUE	/	TRUE	${expiry}	SID	${generateSessionId(20)}
+.google.com	TRUE	/	TRUE	${expiry}	__Secure-3PSID	${generateSessionId(40)}
 
 # YouTube-specific session cookies
-.youtube.com	TRUE	/	TRUE	${shortExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
-
-# ⚡ Device and activity cookies (simulate real user)
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	DEVICE_INFO	${persistentDeviceId}
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	wide	1
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	LAST_VISIT	${lastVisit}
-.youtube.com	TRUE	/	TRUE	${mediumExpiry}	VISITOR_PRIVACY_METADATA	CgJVUxIA
+.youtube.com	TRUE	/	TRUE	${sessionExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
+.youtube.com	TRUE	/	FALSE	${sessionExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
 `;
     
     return cookieContent;
@@ -1279,11 +1228,10 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'Device-Type:TV');
     args.push('--format', 'bestaudio[ext=m4a]/bestaudio');
     
-    // Human-like delays (⚡ improved stability)
-    args.push('--sleep-requests', '1.5');    // ⚡ 1.5 second delay between requests
-    args.push('--sleep-interval', '3');      // ⚡ 3 second delay between videos
+    // Human-like delays
+    args.push('--sleep-requests', '2');      // 2 second delay between requests
     args.push('--min-sleep-interval', '1');  // Minimum 1 second
-    args.push('--max-sleep-interval', '8');  // ⚡ Random delay up to 8 seconds
+    args.push('--max-sleep-interval', '5');  // Maximum 5 seconds (random)
     
     // Add advanced bot bypass methods
     addAdvancedBotBypass(args, 'BrowserAutomation', attempt);
@@ -1504,11 +1452,11 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   args.push('--add-header', 'Connection:keep-alive');
   args.push('--add-header', 'Upgrade-Insecure-Requests:1');
   
-  // Formats + Human delays (⚡ improved stability)
+  // Formats + Human delays
   args.push('--format', 'bestaudio/best');
-  args.push('--sleep-requests', '1.5');    // ⚡ Improved delay
-  args.push('--sleep-interval', '3');      // ⚡ Between videos
-  args.push('--max-sleep-interval', '8');  // ⚡ Random delay
+  args.push('--sleep-requests', '2');
+  args.push('--sleep-interval', '3');
+  args.push('--max-sleep-interval', '8');
   args.push('--limit-rate', '750K');
   
   // Always use free proxy in desperation mode
