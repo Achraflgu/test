@@ -441,7 +441,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
 
         {/* Recent Searches - Always Visible as Pill Tags */}
         {recentSearches.length > 0 && (
-          <div className="w-full space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 py-2">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -461,30 +461,55 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
               </button>
             </div>
             
-            {/* Pill Tags Grid - 5 per row on desktop, responsive on mobile */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-              {recentSearches.map((search, idx) => (
-                <div
-                  key={idx}
-                  className="group relative inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-br from-muted/50 via-muted/40 to-muted/30 border border-border/50 rounded-full hover:border-primary/40 hover:bg-gradient-to-br hover:from-primary/10 hover:via-primary/5 hover:to-accent/5 transition-all duration-200 hover:shadow-md hover:shadow-primary/10 hover:scale-105 cursor-pointer"
-                  onClick={() => {
-                    setSearchQuery(search);
-                    setTimeout(() => handleSearch(), 100);
-                  }}
-                >
-                  <Search className="h-3.5 w-3.5 text-primary/70 group-hover:text-primary transition-colors flex-shrink-0" />
-                  <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate flex-1">
-                    {search}
-                  </span>
-                  <button
-                    onClick={(e) => removeSearchFromHistory(search, e)}
-                    className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex-shrink-0"
-                    title="Remove"
+            {/* Pill Tags - Flex wrap layout, size adapts to keyword length */}
+            <div className="flex flex-wrap gap-2.5 max-w-full">
+              {recentSearches.map((search, idx) => {
+                // Calculate pill size based on keyword length - more adaptive sizing
+                const searchLength = search.length;
+                let textSize, paddingX, paddingY;
+                
+                if (searchLength <= 10) {
+                  textSize = 'text-sm';
+                  paddingX = 'px-4';
+                  paddingY = 'py-2.5';
+                } else if (searchLength <= 20) {
+                  textSize = 'text-sm';
+                  paddingX = 'px-3.5';
+                  paddingY = 'py-2.5';
+                } else if (searchLength <= 30) {
+                  textSize = 'text-xs';
+                  paddingX = 'px-3.5';
+                  paddingY = 'py-2';
+                } else {
+                  textSize = 'text-xs';
+                  paddingX = 'px-3';
+                  paddingY = 'py-2';
+                }
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`group relative inline-flex items-center gap-2 ${paddingX} ${paddingY} ${textSize} bg-gradient-to-br from-muted/50 via-muted/40 to-muted/30 border border-border/50 rounded-full hover:border-primary/40 hover:bg-gradient-to-br hover:from-primary/10 hover:via-primary/5 hover:to-accent/5 transition-all duration-200 hover:shadow-md hover:shadow-primary/10 hover:scale-105 cursor-pointer min-w-fit max-w-full`}
+                    onClick={() => {
+                      setSearchQuery(search);
+                      // Auto-search immediately - no delay
+                      handleSearch();
+                    }}
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+                    <Search className="h-3.5 w-3.5 text-primary/70 group-hover:text-primary transition-colors flex-shrink-0" />
+                    <span className="font-medium text-foreground group-hover:text-primary transition-colors whitespace-nowrap">
+                      {search}
+                    </span>
+                    <button
+                      onClick={(e) => removeSearchFromHistory(search, e)}
+                      className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex-shrink-0"
+                      title="Remove"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

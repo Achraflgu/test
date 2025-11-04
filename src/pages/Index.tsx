@@ -573,7 +573,7 @@ const Index = () => {
           {inputMode === 'search' && (
             <div className="relative group animate-fade-in">
               <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="relative bg-card rounded-2xl border border-border p-8 sm:p-10 shadow-card backdrop-blur-sm min-h-[450px]">
+              <div className="relative bg-card rounded-2xl border border-border p-8 sm:p-10 shadow-card backdrop-blur-sm" style={{ minHeight: 'clamp(450px, 60vh, 800px)' }}>
                 <div className="flex items-center gap-3 mb-8">
                   <div className="p-2 bg-primary/10 rounded-lg">
                     <Search className="w-5 h-5 text-primary" />
