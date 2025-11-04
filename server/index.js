@@ -21,10 +21,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
-// Set server timeouts for large file downloads
-httpServer.timeout = 3600000; // 1 hour (in milliseconds)
-httpServer.keepAliveTimeout = 3600000; // 1 hour
-httpServer.headersTimeout = 3610000; // Slightly higher than keepAlive
+// Set server timeouts for large file downloads (unlimited size support)
+httpServer.timeout = 7200000; // 2 hours (in milliseconds)
+httpServer.keepAliveTimeout = 7200000; // 2 hours
+httpServer.headersTimeout = 7210000; // Slightly higher than keepAlive
 
 // Keep process alive for Koyeb/Vercel
 process.on('SIGTERM', () => {
@@ -7626,9 +7626,9 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     return res.status(400).json({ error: 'Download not completed yet' });
   }
 
-  // Set longer timeout for this specific request
-  req.setTimeout(3600000); // 1 hour
-  res.setTimeout(3600000); // 1 hour
+  // Set longer timeout for this specific request (unlimited size support)
+  req.setTimeout(7200000); // 2 hours
+  res.setTimeout(7200000); // 2 hours
 
   const { outputFolder, tracks } = downloadInfo;
   
@@ -7728,13 +7728,13 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       console.warn('Could not calculate total size:', e.message);
     }
     
-    // Create archive with optimized compression for music files
-    // Enable ZIP64 for large files (>4GB support)
+    // Create archive optimized for music files (already compressed formats)
+    // Enable ZIP64 for unlimited file size support
     const archive = archiver('zip', {
-      zlib: { level: 1 }, // Fast compression (MP3s are already compressed)
+      store: true, // ⚡ NO COMPRESSION - MP3/M4A files are already compressed!
       forceLocalTime: true, // Better compatibility
       forceZip64: true, // Enable ZIP64 for large files (>4GB support)
-      store: false // Use compression (can be disabled for faster creation)
+      highWaterMark: 1024 * 1024 * 16 // 16MB buffer for faster streaming
     });
     
     // Set high water mark to prevent memory issues with large files
@@ -7770,9 +7770,10 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     // Add progress monitoring for better user experience
     let processedFiles = 0;
     archive.on('progress', (progress) => {
-      processedFiles = progress.entries.processed;
-      const bytesProcessed = progress.bytes.processed;
-      const percent = totalSize > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
+      // Safe access to progress properties (they may be undefined in some scenarios)
+      processedFiles = progress?.entries?.processed || 0;
+      const bytesProcessed = progress?.bytes?.processed || 0;
+      const percent = totalSize > 0 && bytesProcessed > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
       console.log(`📦 ZIP Progress: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
     });
     
