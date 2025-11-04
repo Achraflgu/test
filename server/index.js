@@ -3937,33 +3937,46 @@ app.get('/api/preview/:videoId', async (req, res) => {
     });
 
     process.on('close', async (code) => {
-      if (code === 0 && audioUrl) {
+      if (code === 0 && audioUrl && audioUrl.trim()) {
         try {
+          const streamUrl = audioUrl.trim();
+          console.log(`✅ Got audio stream URL for preview: ${videoId}`);
+          
           // Fetch the audio stream
-          const audioResponse = await fetch(audioUrl, {
+          const audioResponse = await fetch(streamUrl, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Referer': 'https://www.youtube.com/'
             }
           });
 
           if (!audioResponse.ok) {
+            console.error(`❌ Failed to fetch audio stream: ${audioResponse.status}`);
             return res.status(500).json({ error: 'Failed to fetch audio stream' });
           }
 
           // Set headers for streaming
-          res.setHeader('Content-Type', 'audio/mpeg');
-          res.setHeader('Content-Length', audioResponse.headers.get('content-length') || '');
+          const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+          res.setHeader('Content-Type', contentType);
           res.setHeader('Accept-Ranges', 'bytes');
           res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Access-Control-Allow-Origin', '*');
 
           // Stream the audio (limit to ~30 seconds worth)
           const reader = audioResponse.body;
+          if (!reader) {
+            return res.status(500).json({ error: 'No stream body' });
+          }
+
           let bytesRead = 0;
           const maxBytes = 2 * 1024 * 1024; // ~2MB for 30 seconds of audio
 
           reader.on('data', (chunk) => {
             bytesRead += chunk.length;
             if (bytesRead <= maxBytes) {
+              if (!res.headersSent) {
+                res.writeHead(200);
+              }
               res.write(chunk);
             } else {
               reader.destroy();
@@ -3977,14 +3990,18 @@ app.get('/api/preview/:videoId', async (req, res) => {
 
           reader.on('error', (err) => {
             console.error('Stream error:', err);
-            res.status(500).json({ error: 'Stream error' });
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Stream error' });
+            } else {
+              res.end();
+            }
           });
         } catch (err) {
           console.error('Preview fetch error:', err);
           res.status(500).json({ error: 'Failed to fetch preview' });
         }
       } else {
-        console.error('yt-dlp error:', errorOutput);
+        console.error('❌ yt-dlp error:', errorOutput || 'No output');
         res.status(500).json({ error: 'Failed to get audio URL' });
       }
     });
