@@ -583,6 +583,7 @@ const Index = () => {
                 <MusicSearch 
                   onUrlDetected={handleUrlDetected}
                   initialSearchText={detectedSearchText}
+                  currentTracks={tracks}
                   onCheckPlayingState={() => {
                     // Get current playing state from TrackList
                     if (getPlayingStateRef.current) {

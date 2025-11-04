@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2 } from 'lucide-react';
+import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2, Mic, CheckCircle2, Volume2 } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -21,9 +21,10 @@ interface MusicSearchProps {
   onCheckPlayingState?: () => { isPlaying: boolean; isPlayerReady: boolean };
   onUrlDetected?: (url: string) => void;
   initialSearchText?: string;
+  currentTracks?: Track[]; // To check for duplicates
 }
 
-export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingState, onUrlDetected, initialSearchText }: MusicSearchProps) {
+export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingState, onUrlDetected, initialSearchText, currentTracks = [] }: MusicSearchProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchText || '');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -35,7 +36,11 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Update search query when initialSearchText prop changes
   useEffect(() => {
@@ -77,6 +82,172 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     setRecentSearches([]);
     localStorage.setItem('music-search-history', JSON.stringify([]));
     toast.success('Recent searches cleared');
+  }, []);
+
+  // Check if track already exists in playlist
+  const isTrackInPlaylist = useCallback((trackId: string): boolean => {
+    return currentTracks.some(t => t.id === trackId);
+  }, [currentTracks]);
+
+  // Filter duplicates from tracks
+  const filterDuplicates = useCallback((tracks: Track[]): Track[] => {
+    const existingIds = new Set(currentTracks.map(t => t.id));
+    return tracks.filter(t => !existingIds.has(t.id));
+  }, [currentTracks]);
+
+  // Preview playback (30 seconds)
+  const handlePreviewPlay = useCallback(async (result: SearchResult) => {
+    // Stop any currently playing preview
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.currentTime = 0;
+      setPreviewAudio(null);
+    }
+
+    if (playingPreviewId === result.id) {
+      // Already playing this preview - stop it
+      setPlayingPreviewId(null);
+      return;
+    }
+
+    try {
+      // Create YouTube embed URL for preview
+      const youtubeId = result.id.replace('search-', '');
+      const embedUrl = `https://www.youtube.com/embed/${youtubeId}?autoplay=1&start=0&end=30&enablejsapi=1`;
+      
+      // For audio preview, we'll use the YouTube URL directly
+      // Note: This is a simplified approach - in production you might want to use YouTube API
+      const audio = new Audio();
+      audio.src = `https://www.youtube.com/watch?v=${youtubeId}`;
+      audio.currentTime = 0;
+      
+      // Set to play for 30 seconds max
+      audio.addEventListener('timeupdate', () => {
+        if (audio.currentTime >= 30) {
+          audio.pause();
+          setPlayingPreviewId(null);
+          setPreviewAudio(null);
+        }
+      });
+
+      audio.addEventListener('ended', () => {
+        setPlayingPreviewId(null);
+        setPreviewAudio(null);
+      });
+
+      audio.play().catch(err => {
+        console.error('Preview playback error:', err);
+        toast.error('Could not play preview. Try opening the track directly.');
+      });
+
+      setPreviewAudio(audio);
+      setPlayingPreviewId(result.id);
+      toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
+    } catch (error) {
+      console.error('Preview error:', error);
+      toast.error('Could not start preview');
+    }
+  }, [playingPreviewId, previewAudio]);
+
+  // Stop preview playback
+  const stopPreview = useCallback(() => {
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.currentTime = 0;
+      setPreviewAudio(null);
+    }
+    setPlayingPreviewId(null);
+  }, [previewAudio]);
+
+  // Cleanup preview on unmount
+  useEffect(() => {
+    return () => {
+      if (previewAudio) {
+        previewAudio.pause();
+        previewAudio.currentTime = 0;
+      }
+    };
+  }, [previewAudio]);
+
+  // Voice search functionality
+  const startVoiceSearch = useCallback(async () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      toast.error('Voice search not supported in your browser');
+      return;
+    }
+
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.info('Listening... Speak now', { duration: 2000 });
+    };
+
+    recognition.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      setIsListening(false);
+      recognitionRef.current = null;
+      toast.success('Search query set', { duration: 1000 });
+      
+      // Auto-search after voice input
+      const query = transcript.trim();
+      if (!query) return;
+      
+      setIsSearching(true);
+      try {
+        const initialLimit = 15;
+        const response = await searchMusic(query, initialLimit);
+        setSearchResults(response.results);
+        setCurrentQuery(query);
+        setCurrentLimit(initialLimit);
+        setSelectedResults(new Set(response.results.map(r => r.id)));
+        setIsResultsOpen(true);
+        saveSearchToHistory(query);
+        
+        if (response.results.length === 0) {
+          toast.info('No results found');
+        } else {
+          toast.success(`Found ${response.results.length} results`);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        toast.error('Failed to search. Please try again.');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      recognitionRef.current = null;
+      if (event.error === 'no-speech') {
+        toast.error('No speech detected. Try again.');
+      } else {
+        toast.error('Voice search error. Please try again.');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [saveSearchToHistory]);
+
+  const stopVoiceSearch = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
   }, []);
 
   // Auto-focus and select the search input when entering search mode
@@ -208,6 +379,14 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   };
 
   const handleAddTrack = (result: SearchResult, playNext = false) => {
+    // Check if track already exists
+    if (isTrackInPlaylist(result.id)) {
+      toast.warning(`"${result.name}" is already in your playlist`, {
+        description: 'Duplicate track not added'
+      });
+      return;
+    }
+
     const track: Track = {
       id: result.id,
       name: result.name,
@@ -329,8 +508,26 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
       selected: false,
     }));
 
-    onAddTracks(tracks);
-    toast.success(`Added ${tracks.length} tracks to list`);
+    // Filter out duplicates
+    const uniqueTracks = filterDuplicates(tracks);
+    const duplicateCount = tracks.length - uniqueTracks.length;
+
+    if (uniqueTracks.length === 0) {
+      toast.warning('All tracks are already in your playlist', {
+        description: 'No new tracks to add'
+      });
+      return;
+    }
+
+    onAddTracks(uniqueTracks);
+    
+    if (duplicateCount > 0) {
+      toast.success(`Added ${uniqueTracks.length} tracks to list`, {
+        description: `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} skipped`
+      });
+    } else {
+      toast.success(`Added ${uniqueTracks.length} tracks to list`);
+    }
     setIsResultsOpen(false);
   };
 
@@ -394,11 +591,24 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
               onChange={(e) => handleQueryChange(e.target.value)}
               onKeyPress={handleKeyPress}
               onPaste={handlePaste}
-              className={`pl-8 sm:pl-9 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-              disabled={isSearching}
+              className={`pl-8 sm:pl-9 pr-10 sm:pr-12 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+              disabled={isSearching || isListening}
               autoFocus
               ref={inputRef}
             />
+            {/* Voice Search Button */}
+            <button
+              onClick={isListening ? stopVoiceSearch : startVoiceSearch}
+              className={`absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all ${
+                isListening 
+                  ? 'bg-red-500/20 text-red-500 animate-pulse' 
+                  : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
+              }`}
+              title={isListening ? 'Stop voice search' : 'Voice search'}
+              disabled={isSearching}
+            >
+              <Mic className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${isListening ? 'animate-pulse' : ''}`} />
+            </button>
           </div>
           <Button 
             onClick={handleSearch} 
@@ -579,16 +789,27 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                 {searchResults.map((result, index) => {
                   const isSelected = selectedResults.has(result.id);
                   const isPreviewing = previewTrackId === result.id;
+                  const isInPlaylist = isTrackInPlaylist(result.id);
+                  const isPlayingPreview = playingPreviewId === result.id;
                   return (
                     <div
                       key={result.id}
                       className={`group relative flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border transition-all duration-300 animate-fade-in ${
                         isSelected 
                           ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]' 
+                          : isInPlaylist
+                          ? 'border-amber-500/30 bg-amber-500/5'
                           : 'border-border/50 bg-card hover:bg-accent/50 hover:border-primary/30 hover:shadow-lg hover:scale-[1.01]'
                       }`}
                       style={{ animationDelay: `${index * 30}ms` }}
                     >
+                      {/* Already in Playlist Badge */}
+                      {isInPlaylist && (
+                        <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-amber-500/90 text-amber-50 px-2 py-1 rounded-full text-xs font-semibold shadow-md">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span className="hidden sm:inline">In Playlist</span>
+                        </div>
+                      )}
                       {/* Checkbox */}
                       <div className="absolute top-3 right-3 sm:relative sm:top-0 sm:right-0 z-10">
                         <Checkbox
@@ -662,11 +883,29 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                           {formatDuration(result.duration)}
                         </span>
                         <div className="flex gap-2">
+                          {/* Preview Button */}
+                          <Button 
+                            size="sm" 
+                            onClick={() => handlePreviewPlay(result)}
+                            variant="outline"
+                            className={`border-primary/30 hover:bg-primary/10 hover:border-primary/50 ${
+                              isPlayingPreview ? 'bg-primary/20 border-primary/50' : ''
+                            }`}
+                            title={isPlayingPreview ? 'Stop preview' : 'Preview (30s)'}
+                          >
+                            {isPlayingPreview ? (
+                              <Volume2 className="mr-1 h-4 w-4 animate-pulse" />
+                            ) : (
+                              <Play className="mr-1 h-4 w-4" />
+                            )}
+                            <span className="hidden sm:inline text-xs">Preview</span>
+                          </Button>
                           <Button 
                             size="sm" 
                             onClick={() => handleAddTrack(result, false)}
                             className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
-                            title="Add to list"
+                            title={isInPlaylist ? 'Already in playlist' : 'Add to list'}
+                            disabled={isInPlaylist}
                           >
                             <Plus className="mr-1 h-4 w-4" />
                             <span className="hidden sm:inline">Add</span>
@@ -676,7 +915,8 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                             onClick={() => handleAddTrack(result, true)}
                             variant="outline"
                             className="border-accent/30 hover:bg-accent/10 hover:border-accent/50"
-                            title="Add and play now"
+                            title={isInPlaylist ? 'Already in playlist' : 'Add and play now'}
+                            disabled={isInPlaylist}
                           >
                             <Zap className="mr-1 h-4 w-4" />
                             <span className="hidden sm:inline text-xs">Play</span>
