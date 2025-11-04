@@ -583,9 +583,12 @@ function generateRealisticYouTubeCookies(attempt = 0) {
   }
 }
 
-// Generate and test cookies until one works (max 5 attempts)
-async function generateAndTestCookies(maxAttempts = 5) {
+// Generate and test cookies until one works (retry many times until success)
+async function generateAndTestCookies(maxAttempts = 100) {
   let attempt = 0;
+  const startTime = Date.now();
+  
+  console.log(`🔄 Starting cookie generation - will retry up to ${maxAttempts} times until success...`);
   
   while (attempt < maxAttempts) {
     // Generate new cookies
@@ -615,22 +618,31 @@ async function generateAndTestCookies(maxAttempts = 5) {
       metadata.generationAttempt = attempt + 1;
       await saveCookieMetadata(metadata);
       
-      console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts})`);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts}) after ${elapsed}s`);
       return AUTO_COOKIE_PATH;
     } else {
       // ❌ Cookies failed, try again
       await fs.unlink(tempCookiePath).catch(() => {});
       attempt++;
-      console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
       
-      // Small delay between attempts
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Show progress every 10 attempts to avoid spam
+      if (attempt % 10 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`  ⏳ Attempt ${attempt}/${maxAttempts} failed... (${elapsed}s elapsed, continuing...)`);
+      } else {
+        console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
+      }
+      
+      // Small delay between attempts (reduced for faster retries)
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
   
   // All attempts failed - use last generated cookies anyway (fallback)
   // Note: If all failures were video config errors (not bot detection), cookies might still work
-  console.log(`⚠️ All ${maxAttempts} cookie test attempts failed`);
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`⚠️ All ${maxAttempts} cookie test attempts failed after ${elapsed}s`);
   console.log(`  💡 Saving cookies anyway - they may work despite test failures (will be validated during actual downloads)`);
   const fallbackContent = generateRealisticYouTubeCookies(maxAttempts - 1);
   if (fallbackContent) {
@@ -692,9 +704,9 @@ async function initializeAutoCookies() {
       console.log('  📝 No existing cookies found');
     }
     
-    // Generate and test new cookies
+    // Generate and test new cookies (retry many times until working cookies found)
     console.log('  🔄 Generating and testing new cookies...');
-    const cookiePath = await generateAndTestCookies(5); // Try up to 5 times
+    const cookiePath = await generateAndTestCookies(100); // Try up to 100 times until success
     
     if (cookiePath) {
       console.log(`🍪 Auto-cookies available at: ${cookiePath}`);
@@ -752,8 +764,8 @@ async function regenerateCookiesOnFailure() {
   try {
     console.log('🔄 Bot detection detected during download - regenerating cookies immediately...');
     
-    // Generate and test new cookies
-    const cookiePath = await generateAndTestCookies(3); // Try 3 times (faster than startup)
+    // Generate and test new cookies (retry many times until working cookies found)
+    const cookiePath = await generateAndTestCookies(50); // Try 50 times until success
     
     if (cookiePath) {
       console.log('✅ New cookies regenerated and saved!');
