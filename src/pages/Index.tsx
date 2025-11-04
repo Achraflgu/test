@@ -522,6 +522,17 @@ const Index = () => {
                   // Clear detected URL after it's been used
                   setDetectedUrl('');
                   
+                  // NEW: Enhanced post-load experience
+                  if (mode === 'replace') {
+                    // Scroll to track list after a short delay
+                    setTimeout(() => {
+                      const trackListElement = document.querySelector('[data-track-list]');
+                      if (trackListElement) {
+                        trackListElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 300);
+                  }
+                  
                   if (mode === 'append' && playlist && tracks.length > 0) {
                     // Append mode: merge tracks and update playlist name
                     const mergedTracks = [...tracks, ...tracksData];
