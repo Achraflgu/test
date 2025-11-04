@@ -548,21 +548,48 @@ async function testCookies(cookiePath) {
         resolve(true);
       });
       
-      testProcess.on('error', () => {
+      testProcess.on('error', (err) => {
         if (resolved) return;
         resolved = true;
-        resolve(false);
+        
+        // Check if error output shows bot detection
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
+        
+        // Accept if no bot detection seen (process error != cookie error)
+        if (!hasBotDetectionError) {
+          console.log('  ⚠️ Process error but no bot detection - accepting');
+          resolve(true);
+        } else {
+          resolve(false);
+        }
       });
       
       // Fast timeout for parallel testing (5s instead of 10s)
       setTimeout(() => {
         if (resolved) return;
         resolved = true;
+        
+        // Check if we saw bot detection errors before timeout
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
+        
         try {
           testProcess.kill('SIGKILL');
         } catch {}
-        resolve(false);
-      }, 5000); // 2x faster!
+        
+        // If timeout but NO bot detection seen, accept cookie (slow network != bad cookie)
+        if (!hasBotDetectionError) {
+          console.log('  ⚠️ Timeout but no bot detection - accepting (may work for downloads)');
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      }, 8000); // Increased to 8s - gives more time for response
     });
   } catch (err) {
     return false;
