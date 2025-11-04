@@ -3588,27 +3588,37 @@ app.post('/api/download/start', async (req, res) => {
     // For multiple tracks, create a subfolder with incremental naming
     const baseFolderName = sanitizeFolderName(folderName || `Spotify_Playlist_${new Date().toISOString().split('T')[0]}`);
     
+    console.log(`📁 Creating playlist folder: "${baseFolderName}"`);
+    console.log(`📁 Folder name from request: "${folderName || 'NOT PROVIDED'}"`);
+    
     // Find available folder name with Windows-style incremental suffix
     let counter = 0;
+    let finalFolderName;
     
     while (true) {
-      const folderName = counter === 0 
+      finalFolderName = counter === 0 
         ? baseFolderName 
         : `${baseFolderName} (${counter})`;
-      outputFolder = path.join(os.homedir(), 'Downloads', folderName);
+      outputFolder = path.join(os.homedir(), 'Downloads', finalFolderName);
       
       try {
         await fs.access(outputFolder);
+        console.log(`📁 Folder exists: "${finalFolderName}" - trying next...`);
         counter++; // Folder exists, try next number
       } catch {
         break; // Folder doesn't exist, use this name
       }
     }
 
+    console.log(`📁 Selected folder name: "${finalFolderName}"`);
+    console.log(`📁 Full path: ${outputFolder}`);
+
   // Create output folder
   try {
     await fs.mkdir(outputFolder, { recursive: true });
+    console.log(`✅ Output folder created successfully: ${outputFolder}\n`);
   } catch (error) {
+    console.error(`❌ Failed to create output folder: ${error.message}`);
     return res.status(500).json({ error: 'Failed to create output folder' });
   }
 
@@ -5090,6 +5100,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
+    // Log output folder for this track to ensure consistency
+    console.log(`\n📂 Downloading track to folder: ${outputFolder}`);
+    
     // Clean search query helper (removes parentheses, special chars, limits length)
     const cleanSearchQuery = (str) => {
       return str
@@ -5307,13 +5320,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       message: `🔄 yt-dlp fallback: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
     });
     
-    // Sanitize filename to avoid issues
-    // If artist is "Unknown Artist", just use the track name
-    const filenameBase = track.artist === 'Unknown Artist' 
-      ? track.name 
-      : `${track.artist} - ${track.name}`;
-    const sanitizedFilename = filenameBase.replace(/[<>:"/\\|?*]/g, '_');
-    const outputPath = path.join(outputFolder, `${sanitizedFilename}.%(ext)s`);
+    // Sanitize filename to avoid issues - use createSafeFilename for consistency
+    const safeFilename = createSafeFilename(track);
+    const outputPath = path.join(outputFolder, `${safeFilename}.%(ext)s`);
     
     // Try to get YouTube link from multiple sources:
     // 1. Check if track.url itself is a YouTube URL
