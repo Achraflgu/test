@@ -3137,8 +3137,11 @@ app.post('/api/playlist/metadata', async (req, res) => {
         // Extract playlist info from first song
         const firstSong = songs[0];
         
-        // MINIMAL LOGGING: Removed verbose JSON.stringify to prevent rate limit
-        // Only log if debugging is explicitly needed
+        // DEBUG: Log all available fields to find owner
+        console.log('\n=== SPOTDL METADATA FALLBACK ===');
+        console.log('Available fields:', Object.keys(firstSong));
+        console.log('Full first song data:', JSON.stringify(firstSong, null, 2));
+        console.log('=========================\n');
         
         // Use playlist name from web scraping, or fallback to metadata
         if (!playlistName || playlistName === 'Unknown Playlist') {
@@ -3451,8 +3454,9 @@ async function createFolderCoverImage(imageUrls, outputPath) {
     console.log(`✅ Folder cover created successfully: ${outputPath}`);
     return true;
   } catch (error) {
-    // Reduced logging: Only log error message, not full stack
-    console.error('❌ Failed to create folder cover:', error.message);
+    console.error('❌ Failed to create folder cover:', error);
+    console.error('   Error details:', error.message);
+    console.error('   Stack:', error.stack);
     return false;
   }
 }
@@ -3524,7 +3528,7 @@ app.post('/api/download/start', async (req, res) => {
   console.log('\n=== DOWNLOAD REQUEST ===');
   console.log('Client Socket ID:', socketId); // Log which client initiated this
   console.log('Received tracks count:', tracks?.length);
-  // REMOVED: JSON.stringify of all tracks - causes massive log spam with 200+ tracks
+  console.log('Tracks data:', JSON.stringify(tracks, null, 2));
 
   if (!tracks || !settings) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -3543,7 +3547,7 @@ app.post('/api/download/start', async (req, res) => {
   }
 
   console.log('Selected tracks count:', selectedTracks.length);
-  // MINIMAL LOGGING: Removed track URL list to prevent rate limit with many tracks
+  console.log('Selected track URLs:', selectedTracks.map(t => ({ name: t.name, url: t.url })));
 
   const downloadId = `download_${Date.now()}`;
   let outputFolder;
@@ -4390,12 +4394,12 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
       return false;
     }
     
-    // Removed success log to prevent rate limit
+    console.log(`  ✅ YouTubei.js: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
     return true;
     
   } catch (err) {
-    // Reduced logging: Only log error message, not full stack trace
     console.log(`  ❌ YouTubei.js failed: ${err.message}`);
+    console.log(`  📝 Error details:`, err.stack);
     return false;
   }
 }
@@ -4410,7 +4414,7 @@ async function tryYouTubeiJS(track, outputFolder, socket, downloadId) {
 // 🔥 SMART FALLBACK: Search for alternative video when age-restricted
 async function findAlternativeVideo(track, outputFolder) {
   try {
-    // Reduced logging: Only log if alternative is found
+    console.log(`  🔍 Age-restricted video detected - searching for alternative...`);
     
     // Clean search query: remove special characters, parentheses, etc.
     const cleanQuery = (str) => {
@@ -4440,7 +4444,7 @@ async function findAlternativeVideo(track, outputFolder) {
     // Try each search query variation
     for (const rawQuery of searchQueries) {
       const searchQuery = cleanQuery(rawQuery);
-      // Reduced logging: Only log if debugging is needed
+      console.log(`  🎯 Trying search: "${searchQuery}"`);
       
       // Use yt-dlp to search for alternatives (limit to 10 results for better chances)
       const searchArgs = [
@@ -4528,30 +4532,30 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
   let audioFormat;
   
   try {
-    // MINIMAL LOGGING: Only log errors to prevent Railway rate limit
-    // Removed all verbose logs (track name, video ID, expected file, etc.)
+    console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
     
     let youtubeUrl = track.url;
     
     // Handle Spotify search - use ytsearch format
     if (track.isSpotifySearch && track.searchTerm) {
       youtubeUrl = `ytsearch1:${track.searchTerm}`;
-      // Removed verbose search logs
+      console.log(`  🎵 Using YouTube search: "${track.searchTerm}"`);
+      console.log(`  🔄 Starting download...`);
     } else {
       // Regular YouTube URL
       if (!youtubeUrl || !youtubeUrl.includes('youtube.com')) {
-        // Only log errors
-        console.log(`❌ ${track.name}: No YouTube URL available`);
+        console.log('  ❌ No YouTube URL available');
         return false;
       }
       
       const videoId = youtubeUrl.split('v=')[1]?.split('&')[0];
       if (!videoId) {
-        // Only log errors
-        console.log(`❌ ${track.name}: Invalid YouTube URL`);
+        console.log('  ❌ Invalid YouTube URL');
         return false;
       }
-      // Removed verbose video ID and starting download logs
+      
+      console.log(`  📺 Video ID: ${videoId}`);
+      console.log(`  🔄 Starting download...`);
     }
     
     // Create safe filename (removes "Unknown Artist" prefix)
@@ -4564,7 +4568,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
     expectedFilePath = `${absoluteOutputPath}.${audioFormat}`;
     
-    // Removed expected file log
+    console.log(`  📁 Output folder: ${outputFolder}`);
+    console.log(`  📁 Expected file: ${path.basename(expectedFilePath)}`);
+    console.log(`  📁 Absolute path: ${absoluteOutputPath}`);
     
     // Parse quality setting (e.g., "320k" -> "320K")
     const quality = settings.quality ? settings.quality.toUpperCase().replace('K', 'K') : '320K';
@@ -4587,19 +4593,19 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
     };
     
-    // Reduced logging: Don't log full download options JSON (too verbose for batch downloads)
+    console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
     // Download with youtube-dl-exec
     const result = await youtubedl(youtubeUrl, downloadOptions);
     
-    // Removed result log to prevent rate limit
+    console.log(`  📝 youtube-dl-exec result:`, result);
     
     // Verify file was created
     const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
     if (!fileExists) {
       // Check for other possible extensions and partial filenames
       const folderFiles = await fs.readdir(outputFolder);
-      // Removed folder files log to prevent rate limit
+      console.log(`  📂 All files in folder (${folderFiles.length}):`, folderFiles);
       
       const possibleFile = folderFiles.find(f => {
         const normalized = f.toLowerCase();
@@ -4623,8 +4629,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         }
       }
       
-      console.log(`  ❌ File not found: ${path.basename(expectedFilePath)}`);
-      // MINIMAL LOGGING: Removed file list to prevent rate limit
+      console.log(`  ❌ File not found after download: ${path.basename(expectedFilePath)}`);
+      console.log(`  📂 Expected in: ${outputFolder}`);
+      console.log(`  📂 Files found: ${folderFiles.join(', ')}`);
       return false;
     }
     
@@ -4634,12 +4641,12 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       return false;
     }
     
-    // Removed success log to prevent rate limit (only log errors)
+    console.log(`  ✅ youtube-dl-exec: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
     return true;
     
   } catch (err) {
-    // Reduced logging: Only log error message, not full stack trace (prevents rate limit)
     console.log(`  ❌ youtube-dl-exec failed: ${err.message}`);
+    console.log(`  📝 Error stack:`, err.stack);
     
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
@@ -4660,11 +4667,11 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     
     // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
     if (hasAgeRestricted) {
-      // Reduced logging: Only log if alternative is found and used
+      console.log('  🔒 Age-restricted video detected - searching for alternative...');
       
       const alternativeUrl = await findAlternativeVideo(track, outputFolder);
       if (alternativeUrl) {
-        // Reduced logging: Only log if alternative succeeds
+        console.log(`  🔄 Retrying with alternative video: ${alternativeUrl}`);
         
         // Create a copy of track with alternative URL
         const alternativeTrack = { ...track, url: alternativeUrl };
@@ -4672,7 +4679,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         try {
           // Retry with alternative video
           const retryResult = await youtubedl(alternativeUrl, downloadOptions);
-          // Removed alternative download result log
+          console.log(`  📝 Alternative download result:`, retryResult);
           
           // Verify file was created
           const fileExists = await fs.access(expectedFilePath).then(() => true).catch(() => false);
@@ -4799,7 +4806,7 @@ async function tryPipedAPI(track, outputFolder, socket, downloadId) {
         
         // Verify file was created
         const stats = await fs.stat(outputPath);
-        // Removed success log to prevent rate limit
+        console.log(`  ✅ Piped API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         return true;
         
       } catch (instanceErr) {
@@ -4912,7 +4919,7 @@ async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
         
         // Verify file was created
         const stats = await fs.stat(outputPath);
-        // Removed success log to prevent rate limit
+        console.log(`  ✅ Invidious API: Successfully downloaded ${track.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         return true;
         
       } catch (instanceErr) {
@@ -5078,12 +5085,13 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ? cleanSearchQuery(track.name)
       : cleanSearchQuery(`${track.artist} ${track.name}`);
     
-    // MINIMAL LOGGING: Removed track name log to prevent rate limit
-    // Only log errors and important milestones
+    console.log(`\n🔄 Trying download for: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
+    console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
+    console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
     
     // 🎵 FOR SPOTIFY TRACKS: Find YouTube URL first so all methods can use it
     if (track.url && track.url.includes('spotify.com')) {
-      // Removed search log
+      console.log(`  🎵 Spotify track detected - searching YouTube...`);
       
       // Check if we already have a YouTube link from spotdl errors
       let youtubeLink = youtubeLinks[track.url] || youtubeLinks[track.id];
@@ -5093,18 +5101,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         const found = await findBestYouTubeMatch(track);
         if (found) {
           youtubeLink = found;
-          // Removed "Found YouTube match" log
+          console.log(`  ✅ Found YouTube match: ${youtubeLink}`);
         }
+      } else {
+        console.log(`  ✅ Using YouTube link from spotdl: ${youtubeLink}`);
       }
-      // Removed "Using YouTube link" log
       
       // Update track URL to YouTube URL so all methods can use it
       if (youtubeLink) {
         track.url = youtubeLink;
-        // Removed "Updated track URL" log
+        console.log(`  🔄 Updated track URL to YouTube: ${youtubeLink}`);
       } else {
-        // Only log warnings, not every track
-        // Removed "Could not find YouTube match" log
+        console.log(`  ⚠️ Could not find YouTube match - will try yt-dlp search`);
       }
     }
     
@@ -5113,7 +5121,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     // ====================================
     // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
     if (attemptNumber < 6) { // Increased attempts for better success
-      // REMOVED: Method log - causes rate limit when 16 tracks log simultaneously
+      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
       
       // For Spotify tracks without YouTube URL, use search format
       if (!track.url || track.url.includes('spotify.com')) {
@@ -5121,7 +5129,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           ? track.name.trim()
           : `${track.artist} ${track.name}`.trim();
         
-        // REMOVED: Spotify search log - causes rate limit
+        console.log(`  🎵 Spotify track → YouTube search: "${searchTerm}"`);
         
         // Temporarily set URL to search format for youtube-dl-exec
         const originalUrl = track.url;
@@ -5132,7 +5140,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         try {
           const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
           if (ytdlExecSuccess) {
-            // Removed success log to prevent rate limit
+            console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
             successCount++;
             
             // Mark cookies as working (if auto-generated cookies were used)
@@ -5159,7 +5167,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         try {
           const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
           if (ytdlExecSuccess) {
-            // Removed success log to prevent rate limit
+            console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
             successCount++;
             
             // Mark cookies as working (if auto-generated cookies were used)
@@ -5711,7 +5719,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                                            (errorLower.includes('this video is unavailable') && errorLower.includes('sign in'));
               
               if (hasAgeRestricted && !hasBotDetectionError) {
-                // Reduced logging: Age-restricted detection (will try alternative in next method)
+                console.log('  🔒 Age-restricted video detected in yt-dlp - will try alternative in next method');
                 // Signal to try alternative (handled by outer retry logic or next download method)
               }
               
@@ -5929,23 +5937,20 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             shell: false
           });
           
-          // MINIMAL LOGGING: Suppress yt-dlp output to prevent rate limit
-          // Only log errors, not progress output
-          searchProcess.stdout.on('data', () => {
-            // Suppressed: too verbose for batch downloads
+          searchProcess.stdout.on('data', (data) => {
+            console.log(`  yt-dlp search: ${data.toString().trim()}`);
           });
           
           searchProcess.stderr.on('data', (data) => {
-            // Only log critical errors, not progress
             const txt = data.toString();
-            if (txt.includes('ERROR') || txt.includes('WARNING')) {
-              console.log(`  yt-dlp error: ${txt.trim().substring(0, 200)}`);
+            if (txt.includes('[download]') || txt.includes('[ExtractAudio]')) {
+              console.log(`  yt-dlp search: ${txt.trim()}`);
             }
           });
           
           searchProcess.on('close', (code) => {
             if (code === 0) {
-              // MINIMAL LOGGING: Only log failures to prevent rate limit
+              console.log(`✅ yt-dlp SEARCH SUCCESS: ${searchQuery}`);
               successCount++;
               
               socket.emit('download:progress', {
@@ -5956,8 +5961,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                 message: `✅ Downloaded via yt-dlp search: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
               });
             } else {
-              // Only log failures
-              console.log(`❌ yt-dlp search failed: ${searchQuery.substring(0, 50)}`);
+              console.log(`❌ yt-dlp SEARCH FAILED: ${searchQuery}`);
             }
             resolve();
           });
@@ -5979,24 +5983,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     batches.push(failedTracks.slice(i, i + batchSize));
   }
   
-  // MINIMAL LOGGING: Only log batch summary if multiple batches
-  if (batches.length > 1) {
-    console.log(`📦 Processing ${batches.length} batches`);
-  }
+  console.log(`📦 Split into ${batches.length} batches of up to ${batchSize} tracks`);
   
   for (let i = 0; i < batches.length; i++) {
     // Check for cancellation before starting each batch
     const downloadInfo = activeDownloads.get(downloadId);
     if (!downloadInfo || downloadInfo.cancelled) {
-      console.log(`🛑 Download cancelled`);
+      console.log(`🛑 Download cancelled - stopping batch processing`);
       break;
     }
     
     const batch = batches[i];
-    // MINIMAL LOGGING: Only log for first batch or if multiple batches
-    if (i === 0 || batches.length > 1) {
-      console.log(`⚡ Batch ${i + 1}/${batches.length}: ${batch.length} tracks`);
-    }
+    console.log(`\n⚡ Batch ${i + 1}/${batches.length}: Downloading ${batch.length} tracks in parallel...`);
     
     socket.emit('download:status', {
       downloadId,
@@ -6009,7 +6007,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     
     // Check for cancellation again after batch
     if (!downloadInfo || downloadInfo.cancelled) {
-      console.log(`🛑 Download cancelled`);
+      console.log(`🛑 Download cancelled - stopping batch processing`);
       break;
     }
     
@@ -6017,19 +6015,16 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     const batchSuccesses = results.filter(r => r.status === 'fulfilled').length;
     successCount += batchSuccesses;
     
-    // MINIMAL LOGGING: Only log batch completion if multiple batches
-    if (batches.length > 1) {
-      console.log(`✅ Batch ${i + 1}: ${batchSuccesses}/${batch.length}`);
-    }
+    console.log(`✅ Batch ${i + 1} complete: ${batchSuccesses}/${batch.length} successful`);
     
     // Small delay between batches to avoid rate limiting
     if (i < batches.length - 1) {
+      console.log(`⏳ Waiting 2s before next batch...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
   
-  // MINIMAL LOGGING: Only log completion summary
-  console.log(`✅ YT-DLP fallback complete: ${successCount} tracks`);
+  console.log(`\n=== YT-DLP FALLBACK COMPLETE ===`);
   // Note: successCount may not be accurate due to file checking logic
   // The actual success count is determined by checking files in the output folder
   
@@ -6190,9 +6185,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         
         console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
         
-        // MINIMAL LOGGING: Only log count, not file list
+        // Log files found for debugging
         if (musicFiles.length > 0) {
-          // Removed file list logging to prevent rate limit
+          console.log(`\n✅ Files found in folder:`);
+          musicFiles.slice(0, 5).forEach(f => console.log(`   - ${f}`));
           if (musicFiles.length > 5) {
             console.log(`   ... and ${musicFiles.length - 5} more`);
           }
@@ -6272,8 +6268,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         }).map(t => t.name);
           
           if (failedTracksList.length > 0) {
-            // MINIMAL LOGGING: Only log count, not full list to prevent rate limit
-            console.log(`\n❌ Failed tracks: ${failedTracksList.length}`);
+            console.log(`\n❌ Failed tracks (${failedTracksList.length}):`);
+            failedTracksList.forEach(name => console.log(`   - ${name}`));
           }
           
           socket.emit('download:complete', {
@@ -6358,8 +6354,13 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         
         console.log(`\n📊 Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)`);
         
-        // MINIMAL LOGGING: Removed file list to prevent rate limit
-        // Files are verified silently
+        if (musicFiles.length > 0) {
+          console.log(`\n✅ Files found in folder:`);
+          musicFiles.slice(0, 5).forEach(f => console.log(`   - ${f}`));
+          if (musicFiles.length > 5) {
+            console.log(`   ... and ${musicFiles.length - 5} more`);
+          }
+        }
         
         // Emit track-level status updates
         tracks.forEach(track => {
@@ -6531,7 +6532,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       '--yt-dlp-args', ytdlpArgs
     ];
 
-    // MINIMAL LOGGING: Removed verbose spotdl command and track count logs
+    console.log('Running spotdl command:', `${PYTHON_CMD} ${spotdlArgs.slice(0, 6).join(' ')}... (${spotifyUrls.length} Spotify URLs)`);
+    console.log(`Downloading ${spotifyUrls.length} Spotify tracks`);
 
     const spotdlProcess = spawn(PYTHON_CMD, spotdlArgs, {
       cwd: outputFolder,
@@ -6685,8 +6687,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           });
         } else {
           // Wrong track downloaded! Delete it and mark as failed
-          // MINIMAL LOGGING: Only log summary, not full track list
-          console.log(`⚠️  Wrong track downloaded: "${downloadedTrackName}" - retrying...`);
+          console.log(`⚠️  WRONG TRACK DOWNLOADED! Expected one of:`);
+          tracks.forEach(t => console.log(`   - ${t.artist} - ${t.name}`));
+          console.log(`   But got: "${downloadedTrackName}"`);
+          console.log(`   🗑️  Will delete wrong file and retry with yt-dlp...`);
           
           // Try to delete the wrong file (non-blocking)
           fs.readdir(outputFolder).then(files => {
@@ -6897,10 +6901,13 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               .trim();
           };
           
-          // MINIMAL LOGGING: Removed verbose debug file listing
+          console.log('\n🔍 DEBUG: Initial missing tracks check:');
+          console.log(`   📁 Files in folder: ${musicFiles.length}`);
+          musicFiles.forEach(f => console.log(`      - ${f}`));
           
-          // MINIMAL LOGGING: Removed verbose track-by-track and file-by-file logging
           const missingTracks = tracks.filter(track => {
+            console.log(`\n   🔍 Checking: ${track.artist} - ${track.name}`);
+            
             const exists = musicFiles.some(file => {
               const fileNormalized = normalizeString(file.toLowerCase());
               const artistNormalized = normalizeString(track.artist.toLowerCase().trim());
@@ -6914,10 +6921,26 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               
               const isMatch = hasArtist && hasEnoughNameMatch;
               
+              // Debug output for each file comparison
+              console.log(`      📄 File: "${file}"`);
+              console.log(`         Normalized file: "${fileNormalized}"`);
+              console.log(`         Normalized artist: "${artistNormalized}"`);
+              console.log(`         Normalized name: "${nameNormalized}"`);
+              console.log(`         Name keywords: [${nameWords.join(', ')}]`);
+              console.log(`         Artist match: ${hasArtist}`);
+              console.log(`         Matching keywords: [${matchingWords.join(', ')}]`);
+              console.log(`         Has enough name match: ${hasEnoughNameMatch} (${matchingWords.length} >= ${Math.min(2, nameWords.length)})`);
+              console.log(`         ✅ MATCH: ${isMatch ? 'YES' : 'NO'}`);
+              
               return isMatch;
             });
             
-            // MINIMAL LOGGING: Removed per-track found/missing logs
+            if (exists) {
+              console.log(`   ✅ Found: ${track.artist} - ${track.name}`);
+            } else {
+              console.log(`   ❌ Missing: ${track.artist} - ${track.name}`);
+            }
+            
             return !exists;
           });
           
@@ -6961,8 +6984,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             
             // Build failed tracks list
             const failedTracksList = missingTracks.map(t => `${t.artist} - ${t.name}`);
-            // MINIMAL LOGGING: Only log count, not full list to prevent rate limit
-            console.log(`\n❌ Failed tracks: ${failedTracksList.length}`);
+            console.log(`\n❌ Failed tracks (${failedTracksList.length}):`);
+            failedTracksList.forEach(name => console.log(`   - ${name}`));
 
             socket.emit('download:complete', {
               downloadId,
@@ -7010,10 +7033,13 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                   f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
                 );
                 
-                // MINIMAL LOGGING: Only log summary to prevent Railway rate limit
-                // Removed verbose file-by-file and track-by-track logging
+                console.log('\n🔍 Verifying downloaded files:');
+                console.log(`   📁 Files in folder: ${musicFilesAfterCheck.length}`);
+                musicFilesAfterCheck.forEach(f => console.log(`      - ${f}`));
                 
                 const stillMissing = tracks.filter(track => {
+                  console.log(`\n   🔍 Checking: ${track.artist} - ${track.name}`);
+                  
                   // Case-insensitive matching with special character handling
                   const exists = musicFilesAfterCheck.some(file => {
                     const fileLower = file.toLowerCase();
@@ -7043,18 +7069,34 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                     
                     const isMatch = hasArtist && hasEnoughNameMatch;
                     
+                    // Debug output for each file comparison
+                    console.log(`      📄 File: "${file}"`);
+                    console.log(`         Normalized file: "${fileNormalized}"`);
+                    console.log(`         Normalized artist: "${artistNormalized}"`);
+                    console.log(`         Normalized name: "${nameNormalized}"`);
+                    console.log(`         Name keywords: [${nameWords.join(', ')}]`);
+                    console.log(`         Artist match: ${hasArtist}`);
+                    console.log(`         Matching keywords: [${matchingWords.join(', ')}]`);
+                    console.log(`         Has enough name match: ${hasEnoughNameMatch} (${matchingWords.length} >= ${Math.min(2, nameWords.length)})`);
+                    console.log(`         ✅ MATCH: ${isMatch ? 'YES' : 'NO'}`);
+                    
                     return isMatch;
                   });
+                  
+                  if (exists) {
+                    console.log(`   ✅ Found: ${track.artist} - ${track.name}`);
+                  } else {
+                    console.log(`   ❌ Missing: ${track.artist} - ${track.name}`);
+                  }
                   
                   return !exists;
                 });
                 
-                // Only log summary, not individual tracks
-                console.log(`📊 Verified: ${tracks.length - stillMissing.length}/${tracks.length} tracks found`);
+                console.log(`\n📊 After yt-dlp fallback: ${tracks.length - stillMissing.length}/${tracks.length} tracks found`);
                 
                 // Check if we have YouTube tracks to download (Phase 2 for mixed sources)
                 if (downloadInfo.hasYouTubeTracks && downloadInfo.youtubeTracks && downloadInfo.youtubeTracks.length > 0) {
-                  // MINIMAL LOGGING: Removed verbose phase 2 log
+                  console.log('\n📺 Phase 2: Downloading YouTube tracks with yt-dlp...');
                   socket.emit('download:status', {
                     downloadId,
                     status: 'downloading',
@@ -7066,7 +7108,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                   
                   // Clear flag so we don't download them again
                   downloadInfo.hasYouTubeTracks = false;
-                  // MINIMAL LOGGING: Removed phase 2 complete log
+                  console.log(`✅ Phase 2 complete - YouTube tracks downloaded`);
                 }
                 
                 // If we got all tracks, we're done
@@ -7794,9 +7836,6 @@ checkAndUpdateVersions().then(async () => {
 ║  Status: Ready to download playlists                       ║
 ╚════════════════════════════════════════════════════════════╝
     `);
-    
-    console.log('⚠️  Note: Downloads in progress are stored in memory and will be lost on server restart.');
-    console.log('   If the server restarts during a download, you will need to restart the download.\n');
     
     // Keep-alive mechanism for Koyeb
     setInterval(() => {
