@@ -410,18 +410,29 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
   // Initialize track selection when dialog opens
   useEffect(() => {
     if (showConfirmDialog && pendingData) {
-      // Auto-select all tracks by default
-      setSelectedTracks(new Set(pendingData.tracks.map(t => t.id)));
+      // Auto-select only non-duplicate tracks by default
+      const nonDuplicateTracks = pendingData.tracks.filter(t => !isTrackDuplicate(t.id));
+      setSelectedTracks(new Set(nonDuplicateTracks.map(t => t.id)));
       setShowDuplicateOnly(false);
     }
   }, [showConfirmDialog, pendingData]);
 
   const handleSelectAll = () => {
     if (pendingData) {
-      if (selectedTracks.size === pendingData.tracks.length) {
+      // Get all non-duplicate tracks
+      const nonDuplicateTracks = pendingData.tracks.filter(t => !isTrackDuplicate(t.id));
+      const nonDuplicateIds = new Set(nonDuplicateTracks.map(t => t.id));
+      
+      // Check if all non-duplicates are selected
+      const allNonDuplicatesSelected = nonDuplicateTracks.length > 0 && 
+        nonDuplicateTracks.every(t => selectedTracks.has(t.id));
+      
+      if (allNonDuplicatesSelected) {
+        // Deselect all
         setSelectedTracks(new Set());
       } else {
-        setSelectedTracks(new Set(pendingData.tracks.map(t => t.id)));
+        // Select all non-duplicates
+        setSelectedTracks(nonDuplicateIds);
       }
     }
   };
@@ -438,13 +449,34 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
 
   const handleAddSelected = () => {
     if (pendingData && selectedTracks.size > 0) {
-      const selectedTracksList = pendingData.tracks.filter(t => selectedTracks.has(t.id));
+      // Filter out duplicates from selected tracks
+      const selectedTracksList = pendingData.tracks.filter(t => 
+        selectedTracks.has(t.id) && !isTrackDuplicate(t.id)
+      );
+      
+      const duplicateCount = selectedTracks.size - selectedTracksList.length;
+      
+      if (selectedTracksList.length === 0) {
+        toast.warning('All selected tracks are duplicates and were not added', {
+          description: `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} skipped`
+        });
+        return;
+      }
+      
       onPlaylistLoaded(
         { ...pendingData.playlist, totalTracks: selectedTracksList.length },
         selectedTracksList,
         'append'
       );
-      toast.success(`✨ Added ${selectedTracksList.length} selected tracks!`);
+      
+      if (duplicateCount > 0) {
+        toast.success(`✨ Added ${selectedTracksList.length} tracks!`, {
+          description: `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} skipped`
+        });
+      } else {
+        toast.success(`✨ Added ${selectedTracksList.length} selected tracks!`);
+      }
+      
       setShowConfirmDialog(false);
       setPendingData(null);
       setSelectedTracks(new Set());
@@ -454,8 +486,31 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
 
   const handleAppendToExisting = () => {
     if (pendingData) {
-      onPlaylistLoaded(pendingData.playlist, pendingData.tracks, 'append');
-      toast.success(`✨ Added ${pendingData.tracks.length} tracks to existing list!`);
+      // Filter out duplicates from all tracks
+      const nonDuplicateTracks = pendingData.tracks.filter(t => !isTrackDuplicate(t.id));
+      const duplicateCount = pendingData.tracks.length - nonDuplicateTracks.length;
+      
+      if (nonDuplicateTracks.length === 0) {
+        toast.warning('All tracks are duplicates and were not added', {
+          description: `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} skipped`
+        });
+        return;
+      }
+      
+      onPlaylistLoaded(
+        { ...pendingData.playlist, totalTracks: nonDuplicateTracks.length },
+        nonDuplicateTracks,
+        'append'
+      );
+      
+      if (duplicateCount > 0) {
+        toast.success(`✨ Added ${nonDuplicateTracks.length} tracks!`, {
+          description: `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} skipped`
+        });
+      } else {
+        toast.success(`✨ Added ${nonDuplicateTracks.length} tracks to existing list!`);
+      }
+      
       setShowConfirmDialog(false);
       setPendingData(null);
       setSelectedTracks(new Set());
@@ -782,44 +837,56 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
           )}
 
           {/* Track Selection Controls */}
-          {pendingData && (
-            <div className="px-6 py-3 border-b bg-card flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-4">
-                <Button
-                  onClick={handleSelectAll}
-                  size="sm"
-                  variant="outline"
-                  className="border-primary/30 hover:bg-primary/10"
-                >
-                  {selectedTracks.size === pendingData.tracks.length ? (
-                    <>
-                      <CheckSquare className="mr-2 h-4 w-4" />
-                      Deselect All
-                    </>
-                  ) : (
-                    <>
-                      <Square className="mr-2 h-4 w-4" />
-                      Select All
-                    </>
-                  )}
-                </Button>
-                
-                <span className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{selectedTracks.size}</span> of {pendingData.tracks.length} selected
-                </span>
-              </div>
+          {pendingData && (() => {
+            const nonDuplicateTracks = pendingData.tracks.filter(t => !isTrackDuplicate(t.id));
+            const duplicateCount = pendingData.tracks.length - nonDuplicateTracks.length;
+            const allNonDuplicatesSelected = nonDuplicateTracks.length > 0 && 
+              nonDuplicateTracks.every(t => selectedTracks.has(t.id));
+            
+            return (
+              <div className="px-6 py-3 border-b bg-card flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <Button
+                    onClick={handleSelectAll}
+                    size="sm"
+                    variant="outline"
+                    className="border-primary/30 hover:bg-primary/10"
+                  >
+                    {allNonDuplicatesSelected ? (
+                      <>
+                        <CheckSquare className="mr-2 h-4 w-4" />
+                        Deselect All
+                      </>
+                    ) : (
+                      <>
+                        <Square className="mr-2 h-4 w-4" />
+                        Select All
+                      </>
+                    )}
+                  </Button>
+                  
+                  <span className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">{selectedTracks.size}</span> of {nonDuplicateTracks.length} selectable
+                    {duplicateCount > 0 && (
+                      <span className="ml-2 text-amber-600 dark:text-amber-400">
+                        • {duplicateCount} duplicate{duplicateCount !== 1 ? 's' : ''} (auto-skipped)
+                      </span>
+                    )}
+                  </span>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox
-                    checked={showDuplicateOnly}
-                    onCheckedChange={(checked) => setShowDuplicateOnly(checked === true)}
-                  />
-                  <span>Show duplicates only</span>
-                </label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={showDuplicateOnly}
+                      onCheckedChange={(checked) => setShowDuplicateOnly(checked === true)}
+                    />
+                    <span>Show duplicates only</span>
+                  </label>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Track List */}
           {pendingData && (
@@ -847,10 +914,11 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                             : 'border-border/50 hover:bg-accent/50 hover:border-primary/30'
                         }`}
                       >
-                        {/* Checkbox */}
+                        {/* Checkbox - Disabled for duplicates */}
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => handleToggleTrack(track.id)}
+                          onCheckedChange={() => !isDuplicate && handleToggleTrack(track.id)}
+                          disabled={isDuplicate}
                           className="h-5 w-5"
                         />
 
@@ -898,55 +966,71 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
           )}
 
           {/* Footer Stats & Actions */}
-          {pendingData && (
-            <div className="px-6 py-4 border-t bg-muted/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  {selectedTracks.size > 0 ? selectedTracks.size : pendingData.tracks.length} tracks
-                </span>
-                {' '}will be added
-                {currentTracks && currentTracks.length > 0 && (
-                  <span className="block mt-1 text-xs">
-                    Total: <span className="font-medium text-foreground">
-                      {currentTracks.length + (selectedTracks.size > 0 ? selectedTracks.size : pendingData.tracks.length)}
-                    </span> tracks after merge
+          {pendingData && (() => {
+            // Filter out duplicates from selected/all tracks
+            const tracksToAdd = selectedTracks.size > 0 
+              ? pendingData.tracks.filter(t => selectedTracks.has(t.id) && !isTrackDuplicate(t.id))
+              : pendingData.tracks.filter(t => !isTrackDuplicate(t.id));
+            const duplicateCount = (selectedTracks.size > 0 
+              ? pendingData.tracks.filter(t => selectedTracks.has(t.id))
+              : pendingData.tracks
+            ).length - tracksToAdd.length;
+            
+            return (
+              <div className="px-6 py-4 border-t bg-muted/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {tracksToAdd.length} tracks
                   </span>
-                )}
+                  {' '}will be added
+                  {duplicateCount > 0 && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400">
+                      ({duplicateCount} duplicate{duplicateCount !== 1 ? 's' : ''} skipped)
+                    </span>
+                  )}
+                  {currentTracks && currentTracks.length > 0 && (
+                    <span className="block mt-1 text-xs">
+                      Total: <span className="font-medium text-foreground">
+                        {currentTracks.length + tracksToAdd.length}
+                      </span> tracks after merge
+                    </span>
+                  )}
+                </div>
+
+                <AlertDialogFooter className="gap-2 p-0">
+                  <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
+                    Cancel
+                  </AlertDialogCancel>
+                  
+                  <AlertDialogAction
+                    onClick={handleReplaceExisting}
+                    className="bg-destructive/20 text-destructive hover:bg-destructive/30 border border-destructive/30 rounded-xl"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Replace All
+                  </AlertDialogAction>
+
+                  {selectedTracks.size > 0 && selectedTracks.size < pendingData.tracks.filter(t => !isTrackDuplicate(t.id)).length ? (
+                    <AlertDialogAction
+                      onClick={handleAddSelected}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Selected ({selectedTracks.size})
+                    </AlertDialogAction>
+                  ) : (
+                    <AlertDialogAction
+                      onClick={handleAppendToExisting}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add All ({pendingData.tracks.filter(t => !isTrackDuplicate(t.id)).length})
+                    </AlertDialogAction>
+                  )}
+                </AlertDialogFooter>
               </div>
-
-              <AlertDialogFooter className="gap-2 p-0">
-                <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
-                  Cancel
-                </AlertDialogCancel>
-                
-                <AlertDialogAction
-                  onClick={handleReplaceExisting}
-                  className="bg-destructive/20 text-destructive hover:bg-destructive/30 border border-destructive/30 rounded-xl"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Replace All
-                </AlertDialogAction>
-
-                {selectedTracks.size > 0 && selectedTracks.size < pendingData.tracks.length ? (
-                  <AlertDialogAction
-                    onClick={handleAddSelected}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Selected ({selectedTracks.size})
-                  </AlertDialogAction>
-                ) : (
-                  <AlertDialogAction
-                    onClick={handleAppendToExisting}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add All ({pendingData.tracks.length})
-                  </AlertDialogAction>
-                )}
-              </AlertDialogFooter>
-            </div>
-          )}
+            );
+          })()}
         </AlertDialogContent>
       </AlertDialog>
     </div>
