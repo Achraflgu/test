@@ -1742,6 +1742,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       switch (e.code) {
         case 'Space':
           e.preventDefault();
+          // Block play/pause when player is restoring/loading until ready
+          if (isRestoringPlayer || isPlayerLoading || !isPlayerReady) {
+            return;
+          }
           togglePlayPause();
           break;
         
@@ -1857,7 +1861,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPlayingTrack, volume, duration, isPipSupported, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
+  }, [currentPlayingTrack, volume, duration, isPipSupported, isRestoringPlayer, isPlayerLoading, isPlayerReady, togglePlayPause, playNext, playPrevious, changeVolume, toggleMute, toggleShuffle, toggleRepeatMode, seekTo, togglePiP]);
 
   const cyclePlayerPosition = () => {
     const positions: Array<'bottom' | 'left' | 'right'> = ['bottom', 'left', 'right'];
