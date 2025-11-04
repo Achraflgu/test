@@ -69,6 +69,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
   // NEW: Track selection for enhanced dialog
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
   const [showDuplicateOnly, setShowDuplicateOnly] = useState(false);
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
 
   // Load recent URLs from localStorage
   useEffect(() => {
@@ -551,9 +552,17 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
 
   const handleReplaceExisting = () => {
     if (pendingData) {
+      // Show confirmation dialog first
+      setShowReplaceConfirm(true);
+    }
+  };
+
+  const confirmReplaceExisting = () => {
+    if (pendingData) {
       onPlaylistLoaded(pendingData.playlist, pendingData.tracks, 'replace');
       toast.success("🎉 Music loaded successfully!");
       setShowConfirmDialog(false);
+      setShowReplaceConfirm(false);
       setPendingData(null);
       setSelectedTracks(new Set());
       setUrl("");
@@ -990,8 +999,8 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                           )}
                         </div>
 
-                        {/* Individual Track Action Buttons */}
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Individual Track Action Buttons - Always Visible */}
+                        <div className="flex items-center gap-2">
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1021,6 +1030,24 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                               <span className="hidden sm:inline">Play</span>
                             </Button>
                           )}
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Open track URL in new tab
+                              const trackUrl = track.url || (track.id.startsWith('youtube-') 
+                                ? `https://www.youtube.com/watch?v=${track.id.replace('youtube-', '')}`
+                                : track.url);
+                              if (trackUrl) {
+                                window.open(trackUrl, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-3 text-xs hover:bg-accent"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
                         </div>
                       </div>
                     );
@@ -1068,7 +1095,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                   
                   <AlertDialogAction
                     onClick={handleReplaceExisting}
-                    className="bg-destructive/20 text-destructive hover:bg-destructive/30 border border-destructive/30 rounded-xl"
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border border-destructive rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
                   >
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Replace All
@@ -1095,6 +1122,43 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
               </div>
             );
           })()}
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Replace Confirmation Dialog */}
+      <AlertDialog open={showReplaceConfirm} onOpenChange={setShowReplaceConfirm}>
+        <AlertDialogContent className="sm:max-w-[450px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-bold flex items-center gap-2 text-destructive">
+              <AlertCircle className="w-5 h-5" />
+              Replace All Music?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base pt-2">
+              This will <span className="font-semibold text-destructive">permanently replace</span> all current tracks with the new playlist.
+              <br />
+              <br />
+              <span className="font-medium">Current:</span> {existingPlaylistName || 'Empty'}
+              <br />
+              <span className="font-medium">New:</span> {pendingData?.playlist.name || 'New Playlist'}
+              <br />
+              <br />
+              <span className="text-sm text-muted-foreground">
+                You will lose all {currentTracks.length} current track{currentTracks.length !== 1 ? 's' : ''} and replace them with {pendingData?.tracks.length || 0} new track{pendingData && pendingData.tracks.length !== 1 ? 's' : ''}.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel onClick={() => setShowReplaceConfirm(false)} className="rounded-xl">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmReplaceExisting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-semibold"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Yes, Replace All
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
