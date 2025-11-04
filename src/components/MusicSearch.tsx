@@ -443,8 +443,8 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                 </div>
                 
                 {/* Search Items */}
-                <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                  {recentSearches.slice(0, 8).map((search, idx) => (
+                <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                  {recentSearches.slice(0, 12).map((search, idx) => (
                     <button
                       key={idx}
                       onClick={() => {
@@ -473,9 +473,9 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                 </div>
                 
                 {/* Footer */}
-                {recentSearches.length > 8 && (
+                {recentSearches.length > 12 && (
                   <div className="px-4 py-2 bg-muted/30 border-t border-border/30 text-xs text-muted-foreground text-center">
-                    Showing 8 of {recentSearches.length} recent searches
+                    Showing 12 of {recentSearches.length} recent searches
                   </div>
                 )}
               </div>

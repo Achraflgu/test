@@ -2394,24 +2394,53 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   // Update tracks when parent tracks change (for add/replace feature)
   useEffect(() => {
+    // Only update if tracks actually changed
+    const tracksChanged = JSON.stringify(initialTracks.map(t => t.id)) !== JSON.stringify(tracks.map(t => t.id));
+    
+    if (!tracksChanged) {
+      // Prefetch YouTube IDs even if tracks didn't change (for new tracks)
+      if (initialTracks.length > 0) {
+        setTimeout(() => {
+          prefetchYoutubeIds(initialTracks);
+        }, 1000);
+      }
+      return; // Skip if no change
+    }
+    
     setTracks(initialTracks);
     
-    // If tracks change significantly (new playlist), clean up player to avoid corruption
-    if (initialTracks.length > 0 && tracks.length > 0) {
-      const tracksAreDifferent = initialTracks[0]?.id !== tracks[0]?.id;
-      if (tracksAreDifferent && playerRef.current) {
-        console.log('🔄 New playlist detected, cleaning up player...');
-        try {
-          if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
-            playerRef.current.destroy();
+    // Only stop playback if current playing track was removed from the list
+    // Don't stop if we're just adding new tracks (append mode)
+    if (initialTracks.length > 0 && tracks.length > 0 && currentPlayingTrack) {
+      const firstTrackChanged = initialTracks[0]?.id !== tracks[0]?.id;
+      const isReplacement = initialTracks.length <= tracks.length * 0.5; // If new list is much smaller, it's a replacement
+      
+      // Only stop playback if it's a complete replacement AND current track was removed
+      if (firstTrackChanged && isReplacement && playerRef.current) {
+        // Check if current playing track still exists in new list
+        const trackStillExists = initialTracks.some(t => t.id === currentPlayingTrack.id);
+        
+        if (!trackStillExists) {
+          // Current track was removed - stop playback
+          console.log('🔄 Current track removed from playlist, stopping playback...');
+          try {
+            if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
+              playerRef.current.destroy();
+            }
+          } catch (e) {
+            console.log('⚠️ Player cleanup error (ignored):', e);
           }
-        } catch (e) {
-          console.log('⚠️ Player cleanup error (ignored):', e);
+          playerRef.current = null;
+          setCurrentPlayingTrack(null);
+          setIsPlaying(false);
+          setIsPlayingAll(false);
+        } else {
+          // Track still exists - keep playing
+          console.log('✅ Current track still in playlist, keeping playback');
         }
-        playerRef.current = null;
-        setCurrentPlayingTrack(null);
-        setIsPlaying(false);
-        setIsPlayingAll(false);
+      } else if (!firstTrackChanged || !isReplacement) {
+        // Tracks were added to the end or it's not a replacement - keep playing
+        console.log('✅ Tracks added to playlist, keeping current playback');
       }
     }
     
@@ -2422,7 +2451,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         prefetchYoutubeIds(initialTracks);
       }, 1000);
     }
-  }, [initialTracks]);
+  }, [initialTracks, tracks, currentPlayingTrack]);
 
   // Update folder name when playlist name changes
   useEffect(() => {
