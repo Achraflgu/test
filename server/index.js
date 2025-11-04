@@ -2173,13 +2173,41 @@ async function fetchYouTubePlaylist(playlistId) {
       if (code === 0 && output.trim()) {
         try {
           const lines = output.trim().split('\n');
-          const entries = lines.map(line => JSON.parse(line));
+          const entries = lines.map(line => {
+            try {
+              return JSON.parse(line);
+            } catch (e) {
+              return null;
+            }
+          }).filter(Boolean);
           
-          // First entry is the playlist info
-          const playlistInfo = entries.find(e => e._type === 'playlist') || entries[0];
+          // Find playlist info - prioritize entries with _type === 'playlist'
+          // If no playlist entry found, look for entries with playlist_id or that don't have id (first entry might be playlist metadata)
+          let playlistInfo = entries.find(e => e._type === 'playlist');
           
-          // Other entries are videos
-          const videos = entries.filter(e => e._type !== 'playlist' && e.id);
+          // If no explicit playlist entry, check if first entry has playlist metadata fields
+          if (!playlistInfo && entries.length > 0) {
+            const firstEntry = entries[0];
+            // Check if it has playlist-like fields (title but no id, or has playlist_id)
+            if ((firstEntry.title && !firstEntry.id) || firstEntry.playlist_id || firstEntry.playlist_title) {
+              playlistInfo = firstEntry;
+            }
+          }
+          
+          // If still no playlist info, try to find it by looking for entries without video id
+          if (!playlistInfo) {
+            playlistInfo = entries.find(e => !e.id && e.title);
+          }
+          
+          // Other entries are videos (filter out playlist info)
+          const videos = entries.filter(e => {
+            // Exclude playlist entries
+            if (e._type === 'playlist') return false;
+            // Exclude entries that match our playlistInfo
+            if (playlistInfo && e === playlistInfo) return false;
+            // Only include entries with video id
+            return e.id && e.id.startsWith && (e.id.startsWith('watch') || !e.id.includes('playlist'));
+          });
           
           const tracks = videos.map((video, index) => ({
             id: video.id || `yt_${index}`,
@@ -2602,12 +2630,54 @@ app.post('/api/playlist/metadata', async (req, res) => {
       if (result && result.tracks && result.tracks.length > 0) {
         const totalDuration = result.tracks.reduce((sum, track) => sum + track.duration, 0);
         
+        // Ensure we use playlist name, not first track title
+        let playlistName = 'YouTube Playlist';
+        if (result.playlistInfo) {
+          // Try multiple fields for playlist name
+          playlistName = result.playlistInfo.title || 
+                        result.playlistInfo.playlist_title || 
+                        result.playlistInfo.playlist ||
+                        result.playlistInfo.name ||
+                        result.playlistInfo.playlist_name ||
+                        'YouTube Playlist';
+          
+          // Bug detection: If playlist name matches first track name, it's likely wrong
+          if (result.tracks.length > 0 && playlistName === result.tracks[0].name) {
+            console.warn('⚠️  Playlist name matches first track title - detected bug, using fallback');
+            // Try alternative fields
+            playlistName = result.playlistInfo.playlist || 
+                          result.playlistInfo.playlist_name ||
+                          result.playlistInfo.channel ||
+                          result.playlistInfo.uploader ||
+                          `YouTube Playlist ${playlistId.substring(0, 8)}`;
+            
+            // If still matches, use a generic name with playlist ID
+            if (playlistName === result.tracks[0].name) {
+              playlistName = `YouTube Playlist ${playlistId.substring(0, 8)}`;
+            }
+          }
+          
+          // Additional validation: ensure playlist name is different from any track name
+          const matchingTrack = result.tracks.find(t => t.name === playlistName);
+          if (matchingTrack && result.tracks.length > 1) {
+            console.warn('⚠️  Playlist name matches a track name - using fallback');
+            playlistName = result.playlistInfo.playlist || 
+                          result.playlistInfo.playlist_name ||
+                          result.playlistInfo.channel ||
+                          `YouTube Playlist ${playlistId.substring(0, 8)}`;
+          }
+        } else {
+          // If no playlist info found, try to extract from URL or use generic name
+          console.warn('⚠️  No playlist info found in yt-dlp output');
+          playlistName = `YouTube Playlist ${playlistId.substring(0, 8)}`;
+        }
+        
         const playlist = {
           id: playlistId,
-          name: result.playlistInfo?.title || 'YouTube Playlist',
+          name: playlistName,
           description: result.playlistInfo?.description || '',
-          owner: result.playlistInfo?.uploader || 'YouTube',
-          imageUrl: result.playlistInfo?.thumbnails?.[0]?.url || result.tracks[0]?.imageUrl || '/placeholder.svg',
+          owner: result.playlistInfo?.uploader || result.playlistInfo?.channel || 'YouTube',
+          imageUrl: result.playlistInfo?.thumbnails?.[0]?.url || result.playlistInfo?.thumbnail || result.tracks[0]?.imageUrl || '/placeholder.svg',
           totalTracks: result.tracks.length,
           totalDuration: totalDuration,
           url: url,
@@ -3890,179 +3960,6 @@ app.post('/api/download/skip-to-ytdlp', (req, res) => {
   });
   
   res.json({ success: true, message: 'Skipping to yt-dlp' });
-});
-
-// Preview audio endpoint - Get 30 second audio stream for preview
-app.get('/api/preview/:videoId', async (req, res) => {
-  const { videoId } = req.params;
-  
-  if (!videoId) {
-    return res.status(400).json({ error: 'Video ID is required' });
-  }
-
-  console.log(`🎵 Preview request for: ${videoId}`);
-
-  try {
-    // Use yt-dlp to get audio stream URL
-    const args = [
-      '-m', 'yt_dlp',
-      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-      '--get-url',
-      '--no-warnings',
-      '--no-playlist',
-      '--no-check-certificate',
-      `https://www.youtube.com/watch?v=${videoId}`
-    ];
-
-    // Add cookies if available
-    try {
-      const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
-      if (cookiesExist) {
-        args.push('--cookies', YOUTUBE_COOKIES_PATH);
-        console.log('🍪 Using YouTube cookies for preview');
-      }
-    } catch (err) {
-      // No cookies available
-    }
-
-    const process = spawn(PYTHON_CMD, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 15000 // 15 second timeout
-    });
-    
-    let audioUrl = '';
-    let errorOutput = '';
-    let resolved = false;
-
-    process.stdout.on('data', (data) => {
-      audioUrl += data.toString().trim();
-    });
-
-    process.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-    });
-
-    // Timeout handler
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        process.kill('SIGTERM');
-        console.error(`⏱️ Preview timeout for: ${videoId}`);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Preview request timed out' });
-        }
-      }
-    }, 15000);
-
-    process.on('close', async (code) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-
-      if (code === 0 && audioUrl && audioUrl.trim()) {
-        try {
-          const streamUrl = audioUrl.trim();
-          console.log(`✅ Got audio stream URL for preview: ${videoId}`);
-          
-          // Fetch the audio stream with timeout
-          const controller = new AbortController();
-          const fetchTimeout = setTimeout(() => controller.abort(), 20000); // 20s timeout for fetch
-          
-          const audioResponse = await fetch(streamUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Referer': 'https://www.youtube.com/'
-            },
-            signal: controller.signal
-          }).finally(() => clearTimeout(fetchTimeout));
-
-          if (!audioResponse.ok) {
-            console.error(`❌ Failed to fetch audio stream: ${audioResponse.status}`);
-            return res.status(500).json({ error: 'Failed to fetch audio stream' });
-          }
-
-          // Set headers for streaming
-          const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Accept-Ranges', 'bytes');
-          res.setHeader('Cache-Control', 'no-cache');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-
-          // Stream the audio (limit to ~30 seconds worth)
-          const reader = audioResponse.body;
-          if (!reader) {
-            return res.status(500).json({ error: 'No stream body' });
-          }
-
-          let bytesRead = 0;
-          const maxBytes = 2 * 1024 * 1024; // ~2MB for 30 seconds of audio
-
-          reader.on('data', (chunk) => {
-            bytesRead += chunk.length;
-            if (bytesRead <= maxBytes) {
-              if (!res.headersSent) {
-                res.writeHead(200);
-              }
-              res.write(chunk);
-            } else {
-              reader.destroy();
-              res.end();
-            }
-          });
-
-          reader.on('end', () => {
-            res.end();
-          });
-
-          reader.on('error', (err) => {
-            console.error('Stream error:', err);
-            if (!res.headersSent) {
-              res.status(500).json({ error: 'Stream error' });
-            } else {
-              res.end();
-            }
-          });
-        } catch (err) {
-          console.error('Preview fetch error:', err);
-          if (err.name === 'AbortError') {
-            if (!res.headersSent) {
-              res.status(500).json({ error: 'Preview request timed out' });
-            }
-          } else {
-            if (!res.headersSent) {
-              res.status(500).json({ error: 'Failed to fetch preview' });
-            }
-          }
-        }
-      } else {
-        console.error(`❌ yt-dlp error for ${videoId}:`, errorOutput || 'No output', `(exit code: ${code})`);
-        if (!res.headersSent) {
-          res.status(500).json({ 
-            error: 'Failed to get audio URL',
-            details: errorOutput ? errorOutput.substring(0, 200) : 'Unknown error'
-          });
-        }
-      }
-    });
-
-    process.on('error', (err) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-      console.error(`❌ Process error for ${videoId}:`, err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          error: 'Process error',
-          details: err.message
-        });
-      }
-    });
-  } catch (error) {
-    console.error('Preview error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Preview failed', details: error.message });
-    }
-  }
 });
 
 // YouTube search endpoint (GET) - for inline player
