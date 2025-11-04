@@ -38,9 +38,10 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+  const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Update search query when initialSearchText prop changes
   useEffect(() => {
@@ -95,79 +96,132 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     return tracks.filter(t => !existingIds.has(t.id));
   }, [currentTracks]);
 
-  // Preview playback (30 seconds)
+  // Preview playback (30 seconds) - Using YouTube embed
   const handlePreviewPlay = useCallback(async (result: SearchResult) => {
     // Stop any currently playing preview
-    if (previewAudio) {
-      previewAudio.pause();
-      previewAudio.currentTime = 0;
-      setPreviewAudio(null);
+    if (previewIframe) {
+      try {
+        // Try to stop via postMessage
+        previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      } catch (e) {
+        console.log('Could not stop iframe:', e);
+      }
+      if (previewContainerRef.current) {
+        previewContainerRef.current.innerHTML = '';
+      }
+      setPreviewIframe(null);
     }
 
     if (playingPreviewId === result.id) {
       // Already playing this preview - stop it
       setPlayingPreviewId(null);
+      setPreviewIframe(null);
+      if (previewContainerRef.current) {
+        previewContainerRef.current.innerHTML = '';
+      }
       return;
     }
 
     try {
-      // Create YouTube embed URL for preview
+      // Extract YouTube ID
       const youtubeId = result.id.replace('search-', '');
-      const embedUrl = `https://www.youtube.com/embed/${youtubeId}?autoplay=1&start=0&end=30&enablejsapi=1`;
       
-      // For audio preview, we'll use the YouTube URL directly
-      // Note: This is a simplified approach - in production you might want to use YouTube API
-      const audio = new Audio();
-      audio.src = `https://www.youtube.com/watch?v=${youtubeId}`;
-      audio.currentTime = 0;
+      // Create a hidden container for the iframe
+      if (!previewContainerRef.current) {
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.top = '-9999px';
+        container.style.left = '-9999px';
+        container.style.width = '1px';
+        container.style.height = '1px';
+        container.style.opacity = '0';
+        document.body.appendChild(container);
+        previewContainerRef.current = container;
+      }
+
+      // Create YouTube embed URL for audio preview
+      // Using embed with autoplay and limited duration
+      const embedUrl = `https://www.youtube.com/embed/${youtubeId}?autoplay=1&start=0&enablejsapi=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1`;
       
-      // Set to play for 30 seconds max
-      audio.addEventListener('timeupdate', () => {
-        if (audio.currentTime >= 30) {
-          audio.pause();
-          setPlayingPreviewId(null);
-          setPreviewAudio(null);
+      // Create iframe
+      const iframe = document.createElement('iframe');
+      iframe.src = embedUrl;
+      iframe.width = '1';
+      iframe.height = '1';
+      iframe.style.border = 'none';
+      iframe.allow = 'autoplay; encrypted-media';
+      iframe.allowFullscreen = false;
+      
+      // Auto-stop after 30 seconds
+      const stopTimer = setTimeout(() => {
+        try {
+          iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        } catch (e) {
+          console.log('Could not stop iframe:', e);
         }
-      });
-
-      audio.addEventListener('ended', () => {
         setPlayingPreviewId(null);
-        setPreviewAudio(null);
-      });
+        setPreviewIframe(null);
+        if (previewContainerRef.current) {
+          previewContainerRef.current.innerHTML = '';
+        }
+        toast.info('Preview ended', { duration: 1000 });
+      }, 30000);
 
-      audio.play().catch(err => {
-        console.error('Preview playback error:', err);
-        toast.error('Could not play preview. Try opening the track directly.');
-      });
+      // Clean up on iframe load
+      iframe.onload = () => {
+        setPreviewIframe(iframe);
+        setPlayingPreviewId(result.id);
+        toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
+      };
 
-      setPreviewAudio(audio);
-      setPlayingPreviewId(result.id);
-      toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
+      // Clear container and add iframe
+      previewContainerRef.current.innerHTML = '';
+      previewContainerRef.current.appendChild(iframe);
+
+      // Store timer for cleanup
+      (iframe as any).__stopTimer = stopTimer;
+
     } catch (error) {
       console.error('Preview error:', error);
-      toast.error('Could not start preview');
+      toast.error('Could not start preview. Try opening the track directly.');
     }
-  }, [playingPreviewId, previewAudio]);
+  }, [playingPreviewId, previewIframe]);
 
   // Stop preview playback
   const stopPreview = useCallback(() => {
-    if (previewAudio) {
-      previewAudio.pause();
-      previewAudio.currentTime = 0;
-      setPreviewAudio(null);
+    if (previewIframe) {
+      try {
+        previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      } catch (e) {
+        console.log('Could not stop iframe:', e);
+      }
+      if (previewContainerRef.current) {
+        previewContainerRef.current.innerHTML = '';
+      }
+      setPreviewIframe(null);
     }
     setPlayingPreviewId(null);
-  }, [previewAudio]);
+  }, [previewIframe]);
 
   // Cleanup preview on unmount
   useEffect(() => {
     return () => {
-      if (previewAudio) {
-        previewAudio.pause();
-        previewAudio.currentTime = 0;
+      if (previewIframe) {
+        try {
+          previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        } catch (e) {
+          console.log('Could not stop iframe:', e);
+        }
+      }
+      if (previewContainerRef.current) {
+        previewContainerRef.current.innerHTML = '';
+      }
+      // Clean up timers
+      if (previewIframe && (previewIframe as any).__stopTimer) {
+        clearTimeout((previewIframe as any).__stopTimer);
       }
     };
-  }, [previewAudio]);
+  }, [previewIframe]);
 
   // Voice search functionality
   const startVoiceSearch = useCallback(async () => {
