@@ -37,11 +37,11 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
+  const [previewTrack, setPreviewTrack] = useState<SearchResult | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
+  const [previewStopTimer, setPreviewStopTimer] = useState<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const previewContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Update search query when initialSearchText prop changes
   useEffect(() => {
@@ -96,279 +96,135 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     return tracks.filter(t => !existingIds.has(t.id));
   }, [currentTracks]);
 
-  // Preview playback (30 seconds) - Using YouTube embed
+  // Preview playback (30 seconds) - Mini popup with YouTube embed
   const handlePreviewPlay = useCallback(async (result: SearchResult) => {
     // Stop any currently playing preview
-    if (previewIframe) {
-      try {
-        // Try to stop via postMessage
-        previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-      } catch (e) {
-        console.log('Could not stop iframe:', e);
-      }
-      if (previewContainerRef.current) {
-        previewContainerRef.current.innerHTML = '';
-      }
-      setPreviewIframe(null);
+    if (previewStopTimer) {
+      clearTimeout(previewStopTimer);
+      setPreviewStopTimer(null);
     }
 
     if (playingPreviewId === result.id) {
-      // Already playing this preview - stop it
+      // Already playing this preview - close it
       setPlayingPreviewId(null);
-      setPreviewIframe(null);
-      if (previewContainerRef.current) {
-        previewContainerRef.current.innerHTML = '';
-      }
+      setPreviewTrack(null);
       return;
     }
 
-    try {
-      // Extract YouTube ID
-      const youtubeId = result.id.replace('search-', '');
-      
-      // Create a hidden container for the iframe
-      if (!previewContainerRef.current) {
-        const container = document.createElement('div');
-        container.style.position = 'fixed';
-        container.style.top = '-9999px';
-        container.style.left = '-9999px';
-        container.style.width = '1px';
-        container.style.height = '1px';
-        container.style.opacity = '0';
-        document.body.appendChild(container);
-        previewContainerRef.current = container;
-      }
+    // Set preview track and ID
+    setPreviewTrack(result);
+    setPlayingPreviewId(result.id);
 
-      // Create YouTube embed URL for audio preview
-      // Using embed with autoplay and limited duration
-      const embedUrl = `https://www.youtube.com/embed/${youtubeId}?autoplay=1&start=0&enablejsapi=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1`;
-      
-      // Create iframe
-      const iframe = document.createElement('iframe');
-      iframe.src = embedUrl;
-      iframe.width = '1';
-      iframe.height = '1';
-      iframe.style.border = 'none';
-      iframe.allow = 'autoplay; encrypted-media';
-      iframe.allowFullscreen = false;
-      
-      // Auto-stop after 30 seconds
-      const stopTimer = setTimeout(() => {
-        try {
-          iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-        } catch (e) {
-          console.log('Could not stop iframe:', e);
-        }
-        setPlayingPreviewId(null);
-        setPreviewIframe(null);
-        if (previewContainerRef.current) {
-          previewContainerRef.current.innerHTML = '';
-        }
-        toast.info('Preview ended', { duration: 1000 });
-      }, 30000);
+    // Auto-close after 30 seconds
+    const timer = setTimeout(() => {
+      setPlayingPreviewId(null);
+      setPreviewTrack(null);
+      setPreviewStopTimer(null);
+      toast.info('Preview ended', { duration: 1000 });
+    }, 30000);
 
-      // Clean up on iframe load
-      iframe.onload = () => {
-        setPreviewIframe(iframe);
-        setPlayingPreviewId(result.id);
-        toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
-      };
+    setPreviewStopTimer(timer);
+    toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
+  }, [playingPreviewId, previewStopTimer]);
 
-      // Clear container and add iframe
-      previewContainerRef.current.innerHTML = '';
-      previewContainerRef.current.appendChild(iframe);
-
-      // Store timer for cleanup
-      (iframe as any).__stopTimer = stopTimer;
-
-    } catch (error) {
-      console.error('Preview error:', error);
-      toast.error('Could not start preview. Try opening the track directly.');
-    }
-  }, [playingPreviewId, previewIframe]);
-
-  // Stop preview playback
-  const stopPreview = useCallback(() => {
-    if (previewIframe) {
-      try {
-        previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-      } catch (e) {
-        console.log('Could not stop iframe:', e);
-      }
-      if (previewContainerRef.current) {
-        previewContainerRef.current.innerHTML = '';
-      }
-      setPreviewIframe(null);
+  // Close preview manually
+  const closePreview = useCallback(() => {
+    if (previewStopTimer) {
+      clearTimeout(previewStopTimer);
+      setPreviewStopTimer(null);
     }
     setPlayingPreviewId(null);
-  }, [previewIframe]);
+    setPreviewTrack(null);
+  }, [previewStopTimer]);
 
   // Cleanup preview on unmount
   useEffect(() => {
     return () => {
-      if (previewIframe) {
-        try {
-          previewIframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-        } catch (e) {
-          console.log('Could not stop iframe:', e);
-        }
-      }
-      if (previewContainerRef.current) {
-        previewContainerRef.current.innerHTML = '';
-      }
-      // Clean up timers
-      if (previewIframe && (previewIframe as any).__stopTimer) {
-        clearTimeout((previewIframe as any).__stopTimer);
+      if (previewStopTimer) {
+        clearTimeout(previewStopTimer);
       }
     };
-  }, [previewIframe]);
+  }, [previewStopTimer]);
 
   // Voice search functionality
   const startVoiceSearch = useCallback(async () => {
-    // Check browser support
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast.error('Voice search not supported in your browser. Try Chrome or Edge.', {
-        description: 'Voice search requires Web Speech API support'
-      });
+      toast.error('Voice search not supported in your browser');
       return;
     }
 
-    // Check if already listening
-    if (isListening) {
-      stopVoiceSearch();
-      return;
-    }
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
 
-    try {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
-      recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.info('Listening... Speak now', { duration: 2000 });
+    };
 
-      recognition.onstart = () => {
-        setIsListening(true);
-        toast.info('🎤 Listening... Speak now', { duration: 3000 });
-      };
-
-      recognition.onresult = async (event: any) => {
-        try {
-          const transcript = event.results[0][0].transcript;
-          const query = transcript.trim();
-          
-          if (!query) {
-            toast.warning('No speech detected. Please try again.');
-            setIsListening(false);
-            recognitionRef.current = null;
-            return;
-          }
-
-          setSearchQuery(query);
-          setIsListening(false);
-          recognitionRef.current = null;
-          
-          toast.success(`Searching: "${query}"`, { duration: 2000 });
-          
-          // Auto-search after voice input
-          setIsSearching(true);
-          try {
-            const initialLimit = 15;
-            const response = await searchMusic(query, initialLimit);
-            setSearchResults(response.results);
-            setCurrentQuery(query);
-            setCurrentLimit(initialLimit);
-            setSelectedResults(new Set(response.results.map(r => r.id)));
-            setIsResultsOpen(true);
-            saveSearchToHistory(query);
-            
-            if (response.results.length === 0) {
-              toast.info('No results found for your search');
-            } else {
-              toast.success(`Found ${response.results.length} results`);
-            }
-          } catch (error) {
-            console.error('Search error:', error);
-            toast.error('Failed to search. Please try again.');
-          } finally {
-            setIsSearching(false);
-          }
-        } catch (error) {
-          console.error('Voice result processing error:', error);
-          toast.error('Error processing voice input. Please try again.');
-          setIsListening(false);
-          recognitionRef.current = null;
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        
-        // Clear recognition reference
-        if (recognitionRef.current) {
-          recognitionRef.current = null;
-        }
-        
-        // Handle specific error types
-        let errorMessage = 'Voice search error. Please try again.';
-        switch (event.error) {
-          case 'no-speech':
-            errorMessage = 'No speech detected. Please speak clearly and try again.';
-            break;
-          case 'audio-capture':
-            errorMessage = 'Microphone not found. Please check your microphone settings.';
-            break;
-          case 'not-allowed':
-            errorMessage = 'Microphone permission denied. Please allow microphone access and try again.';
-            break;
-          case 'network':
-            errorMessage = 'Network error. Please check your connection and try again.';
-            break;
-          case 'aborted':
-            // User cancelled - don't show error
-            return;
-          case 'service-not-allowed':
-            errorMessage = 'Speech service not available. Please try again later.';
-            break;
-          default:
-            errorMessage = `Voice search error: ${event.error}. Please try again.`;
-        }
-        
-        toast.error(errorMessage, {
-          duration: 4000
-        });
-      };
-
-      recognition.onend = () => {
-        // Only reset if not manually stopped
-        if (isListening && recognitionRef.current) {
-          setIsListening(false);
-          recognitionRef.current = null;
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (error: any) {
-      console.error('Voice search initialization error:', error);
+    recognition.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
       setIsListening(false);
-      toast.error('Failed to initialize voice search. Please try again.', {
-        description: error.message || 'Unknown error'
-      });
-    }
-  }, [saveSearchToHistory, isListening, stopVoiceSearch]);
+      recognitionRef.current = null;
+      toast.success('Search query set', { duration: 1000 });
+      
+      // Auto-search after voice input
+      const query = transcript.trim();
+      if (!query) return;
+      
+      setIsSearching(true);
+      try {
+        const initialLimit = 15;
+        const response = await searchMusic(query, initialLimit);
+        setSearchResults(response.results);
+        setCurrentQuery(query);
+        setCurrentLimit(initialLimit);
+        setSelectedResults(new Set(response.results.map(r => r.id)));
+        setIsResultsOpen(true);
+        saveSearchToHistory(query);
+        
+        if (response.results.length === 0) {
+          toast.info('No results found');
+        } else {
+          toast.success(`Found ${response.results.length} results`);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        toast.error('Failed to search. Please try again.');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      recognitionRef.current = null;
+      if (event.error === 'no-speech') {
+        toast.error('No speech detected. Try again.');
+      } else {
+        toast.error('Voice search error. Please try again.');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [saveSearchToHistory]);
 
   const stopVoiceSearch = useCallback(() => {
     if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (error) {
-        console.log('Error stopping recognition:', error);
-      }
+      recognitionRef.current.stop();
       recognitionRef.current = null;
+      setIsListening(false);
     }
-    setIsListening(false);
   }, []);
 
   // Auto-focus and select the search input when entering search mode
@@ -1090,6 +946,67 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Mini Preview Popup - Beautiful floating player */}
+      {previewTrack && playingPreviewId && (
+        <div className="fixed bottom-4 right-4 z-[100] animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="bg-gradient-to-br from-card via-card to-primary/5 border-2 border-primary/30 rounded-2xl shadow-2xl shadow-primary/20 backdrop-blur-sm overflow-hidden w-[360px] sm:w-[400px]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-primary/20 via-primary/10 to-transparent px-4 py-3 border-b border-primary/20 flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Volume2 className="h-5 w-5 text-primary animate-pulse" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-sm text-foreground truncate">{previewTrack.name}</h4>
+                  <p className="text-xs text-muted-foreground truncate">{previewTrack.artist}</p>
+                </div>
+              </div>
+              <button
+                onClick={closePreview}
+                className="flex-shrink-0 ml-2 p-1.5 rounded-lg hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                title="Close preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Video Preview */}
+            <div className="relative bg-black/50 aspect-video">
+              {previewTrack.imageUrl && (
+                <img
+                  src={previewTrack.imageUrl}
+                  alt={previewTrack.name}
+                  className="absolute inset-0 w-full h-full object-cover opacity-30"
+                />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <iframe
+                  src={`https://www.youtube.com/embed/${previewTrack.id.replace('search-', '')}?autoplay=1&start=0&enablejsapi=1&controls=1&modestbranding=1&rel=0&playsinline=1&mute=0`}
+                  className="w-full h-full"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen={false}
+                  title={`Preview: ${previewTrack.name}`}
+                />
+              </div>
+            </div>
+
+            {/* Footer with timer */}
+            <div className="px-4 py-2.5 bg-muted/30 border-t border-border/30 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>30 second preview</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full animate-shrink" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
     </>
   );
 }
