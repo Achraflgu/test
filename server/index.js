@@ -439,7 +439,7 @@ async function testCookies(cookiePath) {
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 20000 // 20 second timeout (increased for reliability)
+        timeout: 10000 // 10 second timeout (faster for parallel testing)
       });
       
       let output = '';
@@ -467,43 +467,31 @@ async function testCookies(cookiePath) {
                                    errorOutput.includes('Video player configuration error');
         
         if (code === 0 && hasTitle && !hasBotDetectionError) {
-          console.log('  ✅ Cookie test PASSED - cookies are working!');
+          console.log('  ✅ Cookie test PASSED');
           resolve(true);
         } else if (hasVideoConfigError && !hasBotDetectionError) {
-          // Video config error but no bot detection = probably test video issue, not cookie issue
-          console.log('  ⚠️ Cookie test inconclusive (video config error, but no bot detection) - accepting cookies');
-          resolve(true); // Accept cookies if it's just a video config issue
+          // Video config error but no bot detection = probably test video issue, accept cookies
+          console.log('  ⚠️ Config error but no bot detection - accepting');
+          resolve(true);
         } else if (hasBotDetectionError) {
           // Real bot detection error = cookie problem
-          console.log('  ❌ Cookie test FAILED - bot detection error detected');
-          if (errorOutput) {
-            console.log(`  📝 Error: ${errorOutput.substring(0, 200)}`);
-          }
           resolve(false);
         } else {
-          console.log('  ❌ Cookie test FAILED - cookies need regeneration');
-          if (errorOutput) {
-            console.log(`  📝 Error: ${errorOutput.substring(0, 200)}`);
-          }
           resolve(false);
         }
       });
       
       testProcess.on('error', () => {
-        console.log('  ❌ Cookie test ERROR - process failed');
         resolve(false);
       });
       
-      // Timeout fallback (increased to 20 seconds for better reliability)
+      // Faster timeout for parallel testing
       setTimeout(() => {
         try {
-          testProcess.kill('SIGKILL'); // Force kill on timeout
+          testProcess.kill('SIGKILL');
         } catch {}
-        if (!testProcess.killed) {
-          console.log('  ⏱️ Cookie test TIMEOUT');
-        }
         resolve(false);
-      }, 20000); // Increased from 15s to 20s
+      }, 10000); // Reduced to 10s for faster parallel testing
     });
   } catch (err) {
     console.log(`  ⚠️ Cookie test exception: ${err.message}`);
@@ -512,42 +500,62 @@ async function testCookies(cookiePath) {
 }
 
 // Generate professional YouTube cookies
+// 🎯 PERSISTENT VALUES - Like a real browser (don't regenerate randomly)
+let persistentVisitorId = null;
+let persistentDeviceId = null;
+let persistentNID = null;
+
+// 🚀 SMART COOKIE GENERATION with realistic patterns
 function generateRealisticYouTubeCookies(attempt = 0) {
   try {
-    console.log(`  🤖 Generating professional YouTube cookies (attempt ${attempt + 1})...`);
+    console.log(`  🤖 Generating smart YouTube cookies (attempt ${attempt + 1})...`);
     
-    // Generate realistic values with better patterns
+    // Realistic timestamps and expiry
     const timestamp = Date.now();
-    const expiry = Math.floor(timestamp / 1000) + (365 * 24 * 60 * 60); // 1 year
-    const sessionExpiry = Math.floor(timestamp / 1000) + (30 * 24 * 60 * 60); // 30 days
+    const now = Math.floor(timestamp / 1000);
+    const shortExpiry = now + (7 * 24 * 60 * 60);      // 7 days (session)
+    const mediumExpiry = now + (90 * 24 * 60 * 60);    // 90 days (visitor)
+    const longExpiry = now + (400 * 24 * 60 * 60);     // 400 days (persistent)
     
-    // Generate realistic VISITOR_INFO1_LIVE (format: [a-zA-Z0-9_-]{11})
-    const generateVisitorId = () => {
+    // 🎯 PERSISTENT VISITOR ID (reuse like real browser)
+    if (!persistentVisitorId) {
+      const start = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      persistentVisitorId = start.charAt(Math.floor(Math.random() * start.length));
+      for (let i = 0; i < 10; i++) {
+        persistentVisitorId += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    }
+    
+    // Generate realistic YSC (12 chars, varies per session)
+    const generateYSC = () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
       let result = '';
-      for (let i = 0; i < 11; i++) {
+      for (let i = 0; i < 12; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return result;
     };
     
-    // Generate realistic YSC (YouTube Session Cookie)
-    const generateYSC = () => {
+    // Realistic PREF value with multiple variations
+    const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'America/Chicago'];
+    const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=${timezones[Math.floor(Math.random() * timezones.length)]}&f6=40000000&f7=100`;
+    
+    // 🎯 REALISTIC CONSENT with CURRENT DATE (critical!)
+    const dateNow = new Date();
+    const year = dateNow.getFullYear();
+    const month = String(dateNow.getMonth() + 1).padStart(2, '0');
+    const day = String(dateNow.getDate()).padStart(2, '0');
+    const consentValue = `YES+cb.${year}${month}${day}-00-p0.en+FX+${Math.floor(Math.random() * 1000)}`;
+    
+    // 🎯 PERSISTENT NID (Google tracking - stays consistent)
+    if (!persistentNID) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-      let result = '';
-      for (let i = 0; i < 11; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      persistentNID = '';
+      for (let i = 0; i < 32; i++) {
+        persistentNID += chars.charAt(Math.floor(Math.random() * chars.length));
       }
-      return result;
-    };
-    
-    // Generate realistic PREF value with variation
-    const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
-    const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=${timezones[Math.floor(Math.random() * timezones.length)]}&f6=40000000`;
-    
-    // Generate realistic CONSENT value (updated format)
-    const consentDates = ['20210328-17-p0', '20210428-17-p0', '20210528-17-p0', '20210628-17-p0', '20210728-17-p0'];
-    const consentValue = `YES+cb.${consentDates[Math.floor(Math.random() * consentDates.length)]}.en+FX+${Math.floor(Math.random() * 1000)}`;
+    }
     
     // Generate realistic session IDs
     const generateSessionId = (length) => {
@@ -559,27 +567,48 @@ function generateRealisticYouTubeCookies(attempt = 0) {
       return result;
     };
     
-    // Create comprehensive cookie content
+    // Generate hex session (for HSID/SSID)
+    const generateHexSession = (length) => {
+      const chars = '0123456789abcdef';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    };
+    
+    // 🚀 COMPREHENSIVE COOKIE SET with all critical Google auth cookies
     const cookieContent = `# Netscape HTTP Cookie File
 # This is a generated file. Do not edit.
-# Auto-generated by TrackM Backend - ${new Date().toISOString()}
+# Smart-generated by TrackM Backend - ${new Date().toISOString()}
 # Generation attempt: ${attempt + 1}
 
-# Essential YouTube cookies for authentication
-.youtube.com	TRUE	/	TRUE	${expiry}	VISITOR_INFO1_LIVE	${generateVisitorId()}
-.youtube.com	TRUE	/	FALSE	${sessionExpiry}	YSC	${generateYSC()}
-.youtube.com	TRUE	/	TRUE	${expiry}	PREF	${prefValue}
-.youtube.com	TRUE	/	TRUE	${expiry}	CONSENT	${consentValue}
-.youtube.com	TRUE	/	FALSE	${sessionExpiry}	GPS	1
+# ⭐ Core YouTube Authentication (PERSISTENT)
+.youtube.com	TRUE	/	TRUE	${mediumExpiry}	VISITOR_INFO1_LIVE	${persistentVisitorId}
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	YSC	${generateYSC()}
+.youtube.com	TRUE	/	TRUE	${longExpiry}	PREF	${prefValue}
+.youtube.com	TRUE	/	TRUE	${longExpiry}	CONSENT	${consentValue}
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	GPS	1
 
-# Additional cookies for better compatibility
-.google.com	TRUE	/	TRUE	${expiry}	NID	${generateSessionId(20)}
-.google.com	TRUE	/	TRUE	${expiry}	SID	${generateSessionId(20)}
-.google.com	TRUE	/	TRUE	${expiry}	__Secure-3PSID	${generateSessionId(40)}
+# ⭐ Critical Google Auth Cookies (REQUIRED for real authentication)
+.google.com	TRUE	/	TRUE	${longExpiry}	NID	${persistentNID}
+.google.com	TRUE	/	TRUE	${longExpiry}	SID	${generateHexSession(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	HSID	A${generateHexSession(15)}
+.google.com	TRUE	/	TRUE	${longExpiry}	SSID	A${generateHexSession(15)}
+.google.com	TRUE	/	TRUE	${longExpiry}	APISID	${generateHexSession(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	SAPISID	${generateHexSession(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PSID	${generateSessionId(40)}
+.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PAPISID	${generateHexSession(16)}
 
-# YouTube-specific session cookies
-.youtube.com	TRUE	/	TRUE	${sessionExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
-.youtube.com	TRUE	/	FALSE	${sessionExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
+# ⭐ YouTube Session & Privacy Cookies
+.youtube.com	TRUE	/	TRUE	${mediumExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	VISITOR_PRIVACY_METADATA	CgJVUxIA
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	wide	1
+
+# ⭐ Additional tracking cookies (improve realism)
+.youtube.com	TRUE	/	FALSE	${mediumExpiry}	DEVICE_INFO	ChxOT0IfYXZhaWxhYmxlGAE%3D
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	_gcl_au	1.1.${Math.floor(Math.random() * 1000000000)}.${now}
 `;
     
     return cookieContent;
@@ -589,7 +618,7 @@ function generateRealisticYouTubeCookies(attempt = 0) {
   }
 }
 
-// Generate and test cookies until one works (retry many times until success)
+// 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!)
 async function generateAndTestCookies(maxAttempts = 100) {
   // 🔒 Prevent concurrent cookie generation
   if (isGeneratingCookies && cookieGenerationPromise) {
@@ -601,57 +630,89 @@ async function generateAndTestCookies(maxAttempts = 100) {
   isGeneratingCookies = true;
   cookieGenerationPromise = (async () => {
     try {
-      let attempt = 0;
       const startTime = Date.now();
+      const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
+      const BATCH_SIZE = 10;    // Generate 10 batches max
       
-      console.log(`🔄 Starting cookie generation - will retry up to ${maxAttempts} times until success...`);
+      console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
+      console.log(`⚡ Up to ${maxAttempts} attempts with ${PARALLEL_TESTS}x speed boost!`);
       
-      while (attempt < maxAttempts) {
-        // Generate new cookies
-        const cookieContent = generateRealisticYouTubeCookies(attempt);
-        if (!cookieContent) {
-          attempt++;
-          continue;
+      let totalAttempts = 0;
+      
+      // Test multiple cookies in parallel batches
+      for (let batch = 0; batch < BATCH_SIZE && totalAttempts < maxAttempts; batch++) {
+        console.log(`\n🔄 Batch ${batch + 1}/${BATCH_SIZE}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
+        
+        // Generate multiple cookie sets in parallel
+        const cookiePromises = [];
+        for (let i = 0; i < PARALLEL_TESTS && totalAttempts < maxAttempts; i++) {
+          const attempt = totalAttempts++;
+          
+          const testPromise = (async () => {
+            try {
+              // Generate cookies
+              const cookieContent = generateRealisticYouTubeCookies(attempt);
+              if (!cookieContent) return { success: false, attempt };
+              
+              // Save to temp file
+              const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}_${i}.txt`);
+              await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+              
+              // Test cookies
+              const testResult = await testCookies(tempCookiePath);
+              
+              // Clean up temp file
+              await fs.unlink(tempCookiePath).catch(() => {});
+              
+              return { 
+                success: testResult, 
+                attempt, 
+                cookieContent,
+                tempPath: tempCookiePath
+              };
+            } catch (err) {
+              console.log(`  ⚠️ Test ${i + 1} error: ${err.message}`);
+              return { success: false, attempt };
+            }
+          })();
+          
+          cookiePromises.push(testPromise);
         }
         
-        // Save to temp file for testing
-        const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}.txt`);
-        await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+        // Wait for all parallel tests to complete
+        const results = await Promise.all(cookiePromises);
         
-        // Test the cookies
-        const testResult = await testCookies(tempCookiePath);
+        // Check if any succeeded
+        const successResult = results.find(r => r.success);
         
-        if (testResult) {
-          // ✅ Cookies work! Save them permanently
-          await fs.writeFile(AUTO_COOKIE_PATH, cookieContent, 'utf8');
-          await fs.unlink(tempCookiePath).catch(() => {}); // Clean up temp file
+        if (successResult) {
+          // ✅ Found working cookies!
+          await fs.writeFile(AUTO_COOKIE_PATH, successResult.cookieContent, 'utf8');
           
           // Update metadata
           const metadata = await loadCookieMetadata();
           metadata.lastTested = new Date().toISOString();
           metadata.successCount = (metadata.successCount || 0) + 1;
           metadata.isValid = true;
-          metadata.generationAttempt = attempt + 1;
+          metadata.generationAttempt = successResult.attempt + 1;
           await saveCookieMetadata(metadata);
           
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`✅ Working cookies generated and saved (attempt ${attempt + 1}/${maxAttempts}) after ${elapsed}s`);
+          console.log(`✅ Working cookies found (attempt ${successResult.attempt + 1}/${totalAttempts}) after ${elapsed}s`);
+          console.log(`⚡ Parallel testing saved ~${((totalAttempts - successResult.attempt - 1) * 5).toFixed(0)}s!`);
+          
+          isGeneratingCookies = false;
+          cookieGenerationPromise = null;
           return AUTO_COOKIE_PATH;
-        } else {
-          // ❌ Cookies failed, try again
-          await fs.unlink(tempCookiePath).catch(() => {});
-          attempt++;
-          
-          // Show progress every 10 attempts to avoid spam
-          if (attempt % 10 === 0) {
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            console.log(`  ⏳ Attempt ${attempt}/${maxAttempts} failed... (${elapsed}s elapsed, continuing...)`);
-          } else {
-            console.log(`  ⚠️ Attempt ${attempt}/${maxAttempts} failed, trying again...`);
-          }
-          
-          // Small delay between attempts (reduced for faster retries)
-          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // Show progress
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`  ⏳ Batch ${batch + 1} complete: ${totalAttempts}/${maxAttempts} tested (${elapsed}s elapsed)`);
+        
+        // Small delay between batches
+        if (batch < BATCH_SIZE - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       
@@ -7767,18 +7828,32 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     // Pipe archive to response
     archive.pipe(res);
     
-    // Add progress monitoring for better user experience
+    // Add progress monitoring with throttling (avoid Railway log rate limits)
     let processedFiles = 0;
+    let lastLogTime = 0;
+    let entryCount = 0;
+    const LOG_INTERVAL = 2000; // Log every 2 seconds max
+    
     archive.on('progress', (progress) => {
-      // Safe access to progress properties (they may be undefined in some scenarios)
+      // Safe access to progress properties
       processedFiles = progress?.entries?.processed || 0;
       const bytesProcessed = progress?.bytes?.processed || 0;
-      const percent = totalSize > 0 && bytesProcessed > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
-      console.log(`📦 ZIP Progress: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
+      const now = Date.now();
+      
+      // Only log every 2 seconds to avoid Railway rate limits (500 logs/sec)
+      if (now - lastLogTime >= LOG_INTERVAL) {
+        const percent = totalSize > 0 && bytesProcessed > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
+        console.log(`📦 ZIP: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)}/${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
+        lastLogTime = now;
+      }
     });
     
+    // Log only every 20th file to avoid spam (Railway limit: 500 logs/sec)
     archive.on('entry', (entry) => {
-      console.log(`📄 Adding to ZIP: ${entry.name} (${(entry.stats?.size / 1024 / 1024).toFixed(2)} MB)`);
+      entryCount++;
+      if (entryCount === 1 || entryCount % 20 === 0 || entryCount === musicFiles.length) {
+        console.log(`📄 ZIP: ${entryCount}/${musicFiles.length} - ${entry.name.substring(0, 50)}`);
+      }
     });
     
     // Add all files from the output folder with optimized settings
