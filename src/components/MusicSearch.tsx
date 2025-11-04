@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2, Mic, CheckCircle2, Volume2 } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
+
+// API URL configuration
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -121,7 +124,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
       // This is a placeholder that will need server-side implementation
       
       // Get audio stream from backend
-      const response = await fetch(`/api/preview/${youtubeId}`);
+      const response = await fetch(`${API_URL}/api/preview/${youtubeId}`);
       if (!response.ok) {
         throw new Error('Preview not available');
       }

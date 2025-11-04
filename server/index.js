@@ -3905,10 +3905,24 @@ app.get('/api/preview/:videoId', async (req, res) => {
   try {
     // Use yt-dlp to get audio stream URL
     const args = [
-      '-f', 'bestaudio[ext=m4a]/bestaudio',
+      '-m', 'yt_dlp',
+      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
       '--get-url',
+      '--no-warnings',
+      '--no-playlist',
       `https://www.youtube.com/watch?v=${videoId}`
     ];
+
+    // Add cookies if available
+    try {
+      const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+      if (cookiesExist) {
+        args.push('--cookies', YOUTUBE_COOKIES_PATH);
+        console.log('🍪 Using YouTube cookies for preview');
+      }
+    } catch (err) {
+      // No cookies available
+    }
 
     const process = spawn(PYTHON_CMD, args);
     let audioUrl = '';
