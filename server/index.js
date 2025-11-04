@@ -235,6 +235,7 @@ app.delete('/api/youtube-cookies', async (_req, res) => {
 const activeDownloads = new Map();
 
 // Store active processes for cancellation
+// Each downloadId maps to an array of processes (can have multiple processes per download)
 const activeProcesses = new Map();
 
 // ====================================
@@ -3741,21 +3742,31 @@ app.post('/api/download/cancel', (req, res) => {
     console.log(`⚠️  No socket ID found, will broadcast cancellation`);
   }
   
-  // Kill active process
-  const processInfo = activeProcesses.get(downloadId);
-  if (processInfo && processInfo.process) {
-    console.log(`🔪 Killing process for download ${downloadId}`);
-    try {
-      processInfo.process.kill('SIGTERM');
-      // Force kill after 2 seconds if not terminated
-      setTimeout(() => {
-        if (processInfo.process && !processInfo.process.killed) {
-          processInfo.process.kill('SIGKILL');
+  // Kill ALL active processes for this download (can have multiple processes per download)
+  const processList = activeProcesses.get(downloadId);
+  if (processList) {
+    // Handle both old format (single process) and new format (array of processes)
+    const processes = Array.isArray(processList) ? processList : [processList];
+    
+    console.log(`🔪 Killing ${processes.length} process(es) for download ${downloadId}`);
+    
+    processes.forEach((processInfo, index) => {
+      const process = processInfo.process || processInfo; // Handle both formats
+      if (process && !process.killed) {
+        try {
+          console.log(`  🔪 Killing process ${index + 1}/${processes.length}`);
+          process.kill('SIGTERM');
+          // Force kill after 2 seconds if not terminated
+          setTimeout(() => {
+            if (process && !process.killed && process.kill) {
+              process.kill('SIGKILL');
+            }
+          }, 2000);
+        } catch (err) {
+          console.error(`Error killing process ${index + 1}:`, err.message);
         }
-      }, 2000);
-    } catch (err) {
-      console.error('Error killing process:', err.message);
-    }
+      }
+    });
   }
   
   // Update status
@@ -3786,20 +3797,26 @@ app.post('/api/download/skip-to-ytdlp', (req, res) => {
     return res.status(404).json({ error: 'Download not found' });
   }
   
-  // Kill current spotdl process
-  const processInfo = activeProcesses.get(downloadId);
-  if (processInfo && processInfo.process) {
-    console.log(`🔪 Killing spotdl process to skip to yt-dlp`);
-    try {
-      processInfo.process.kill('SIGTERM');
-      // Force kill after 2 seconds if not terminated
-      setTimeout(() => {
-        if (processInfo.process && !processInfo.process.killed) {
-          processInfo.process.kill('SIGKILL');
-        }
-      }, 2000);
-    } catch (err) {
-      console.error('Error killing process:', err.message);
+  // Kill current spotdl process (should be first in array)
+  const processList = activeProcesses.get(downloadId);
+  if (processList) {
+    const processes = Array.isArray(processList) ? processList : [processList];
+    const spotdlProcess = processes.find(p => (p.process || p).type === 'spotdl') || processes[0];
+    const process = spotdlProcess.process || spotdlProcess;
+    
+    if (process) {
+      console.log(`🔪 Killing spotdl process to skip to yt-dlp`);
+      try {
+        process.kill('SIGTERM');
+        // Force kill after 2 seconds if not terminated
+        setTimeout(() => {
+          if (process && !process.killed && process.kill) {
+            process.kill('SIGKILL');
+          }
+        }, 2000);
+      } catch (err) {
+        console.error('Error killing process:', err.message);
+      }
     }
   }
   
@@ -5446,6 +5463,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     try {
+      // Check for cancellation before starting
+      const downloadInfo = activeDownloads.get(downloadId);
+      if (!downloadInfo || downloadInfo.cancelled) {
+        return 'cancelled';
+      }
+      
       const result = await new Promise((resolve, reject) => {
         const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs, {
           cwd: outputFolder,
@@ -5453,6 +5476,37 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           detached: true,  // Keep process alive even if parent gets SIGTERM
           stdio: ['ignore', 'pipe', 'pipe']
         });
+        
+        // 🔥 Track this process for cancellation
+        let processList = activeProcesses.get(downloadId);
+        if (!processList) {
+          processList = [];
+          activeProcesses.set(downloadId, processList);
+        } else if (!Array.isArray(processList)) {
+          // Convert old format to array
+          processList = [processList];
+          activeProcesses.set(downloadId, processList);
+        }
+        processList.push({
+          process: ytdlpProcess,
+          type: 'yt-dlp',
+          trackId: track.id,
+          startTime: Date.now()
+        });
+        
+        // Cleanup function to remove process from tracking
+        const removeProcess = () => {
+          const currentList = activeProcesses.get(downloadId);
+          if (Array.isArray(currentList)) {
+            const index = currentList.findIndex(p => p.process === ytdlpProcess);
+            if (index !== -1) {
+              currentList.splice(index, 1);
+              if (currentList.length === 0) {
+                activeProcesses.delete(downloadId);
+              }
+            }
+          }
+        };
         
         let output = '';
         let errorOutput = '';
@@ -5580,6 +5634,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               }
             }
             
+            // Cleanup: Remove process from tracking
+            removeProcess();
+            
             if (fileExists) {
               console.log(`✅ yt-dlp${useSearchMethod ? ' search' : ''} SUCCESS: ${searchQuery}`);
               successCount++;
@@ -5619,6 +5676,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               resolve('failed');
             }
           } else {
+            // Cleanup: Remove process from tracking
+            removeProcess();
+            
             console.log(`❌ yt-dlp${useSearchMethod ? ' search' : ''} FAILED: ${searchQuery} (exit code ${code})`);
             if (errorOutput) {
               console.log('  Error output:', errorOutput.substring(0, 500));
@@ -5661,8 +5721,28 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         });
         
         ytdlpProcess.on('error', (err) => {
+          // Cleanup: Remove process from tracking
+          removeProcess();
           console.log(`❌ yt-dlp PROCESS ERROR: ${searchQuery}`, err.message);
           resolve('error');
+        });
+        
+        // Check for cancellation periodically during download
+        const cancellationChecker = setInterval(() => {
+          const downloadInfo = activeDownloads.get(downloadId);
+          if (!downloadInfo || downloadInfo.cancelled) {
+            clearInterval(cancellationChecker);
+            removeProcess();
+            try {
+              ytdlpProcess.kill('SIGTERM');
+            } catch (e) {}
+            resolve('cancelled');
+          }
+        }, 1000); // Check every second
+        
+        // Clear cancellation checker when process completes
+        ytdlpProcess.on('close', () => {
+          clearInterval(cancellationChecker);
         });
       });
       
@@ -5871,6 +5951,13 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   console.log(`📦 Split into ${batches.length} batches of up to ${batchSize} tracks`);
   
   for (let i = 0; i < batches.length; i++) {
+    // Check for cancellation before starting each batch
+    const downloadInfo = activeDownloads.get(downloadId);
+    if (!downloadInfo || downloadInfo.cancelled) {
+      console.log(`🛑 Download cancelled - stopping batch processing`);
+      break;
+    }
+    
     const batch = batches[i];
     console.log(`\n⚡ Batch ${i + 1}/${batches.length}: Downloading ${batch.length} tracks in parallel...`);
     
@@ -5882,6 +5969,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     
     // Download all tracks in this batch simultaneously
     const results = await Promise.allSettled(batch.map(downloadSingleTrack));
+    
+    // Check for cancellation again after batch
+    if (!downloadInfo || downloadInfo.cancelled) {
+      console.log(`🛑 Download cancelled - stopping batch processing`);
+      break;
+    }
     
     // Count successes
     const batchSuccesses = results.filter(r => r.status === 'fulfilled').length;
@@ -6412,12 +6505,12 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       shell: false  // Don't use shell to avoid URL parsing issues
     });
 
-    // Store process for cancellation
-    activeProcesses.set(downloadId, {
+    // Store process for cancellation (use array format)
+    activeProcesses.set(downloadId, [{
       process: spotdlProcess,
       type: 'spotdl',
       startTime: Date.now()
-    });
+    }]);
 
     let currentTrack = null;
     let trackIndex = 0;
@@ -7560,20 +7653,30 @@ io.on('connection', (socket) => {
         const downloadInfo = activeDownloads.get(downloadId);
         if (!downloadInfo) return;
         
-        // Kill active process
-        const processInfo = activeProcesses.get(downloadId);
-        if (processInfo && processInfo.process) {
-          console.log(`🔪 Killing process for download ${downloadId} (client disconnected)`);
-          try {
-            processInfo.process.kill('SIGTERM');
-            setTimeout(() => {
-              if (processInfo.process && !processInfo.process.killed) {
-                processInfo.process.kill('SIGKILL');
+        // Kill ALL active processes for this download
+        const processList = activeProcesses.get(downloadId);
+        if (processList) {
+          // Handle both old format (single process) and new format (array of processes)
+          const processes = Array.isArray(processList) ? processList : [processList];
+          
+          console.log(`🔪 Killing ${processes.length} process(es) for download ${downloadId} (client disconnected)`);
+          
+          processes.forEach((processInfo, index) => {
+            const process = processInfo.process || processInfo; // Handle both formats
+            if (process && !process.killed) {
+              try {
+                console.log(`  🔪 Killing process ${index + 1}/${processes.length}`);
+                process.kill('SIGTERM');
+                setTimeout(() => {
+                  if (process && !process.killed && process.kill) {
+                    process.kill('SIGKILL');
+                  }
+                }, 2000);
+              } catch (err) {
+                console.error(`Error killing process ${index + 1}:`, err.message);
               }
-            }, 2000);
-          } catch (err) {
-            console.error('Error killing process:', err.message);
-          }
+            }
+          });
         }
         
         // Update status
