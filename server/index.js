@@ -7708,30 +7708,85 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('Accept-Ranges', 'bytes'); // IDM-compatible: enable resume support
     
+    // Note: Content-Length cannot be set for chunked encoding with ZIP64
+    // ZIP64 format handles large files (>4GB) automatically
+    
+    // Calculate total size for better progress tracking
+    let totalSize = 0;
+    try {
+      for (const file of musicFiles) {
+        const filePath = path.join(outputFolder, file);
+        try {
+          const stats = await fs.stat(filePath);
+          totalSize += stats.size;
+        } catch (e) {
+          console.warn(`Could not stat file ${file}:`, e.message);
+        }
+      }
+      console.log(`📊 Total archive size estimate: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+    } catch (e) {
+      console.warn('Could not calculate total size:', e.message);
+    }
+    
     // Create archive with optimized compression for music files
+    // Enable ZIP64 for large files (>4GB support)
     const archive = archiver('zip', {
       zlib: { level: 1 }, // Fast compression (MP3s are already compressed)
       forceLocalTime: true, // Better compatibility
-      forceZip64: false // Use standard ZIP format
+      forceZip64: true, // Enable ZIP64 for large files (>4GB support)
+      store: false // Use compression (can be disabled for faster creation)
+    });
+    
+    // Set high water mark to prevent memory issues with large files
+    archive.setMaxListeners(0); // Remove listener limit
+    
+    // Handle archive errors
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      if (!res.headersSent) {
+        try { 
+          res.status(500).json({ error: 'Archive creation failed', details: err.message }); 
+        } catch (e) {
+          console.error('Failed to send error response:', e);
+        }
+      }
+    });
+    
+    // Handle response errors
+    res.on('error', (err) => {
+      console.error('Response stream error:', err);
+      archive.abort();
+    });
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log('⚠️  Client disconnected during archive download');
+      archive.abort();
     });
     
     // Pipe archive to response
-    archive.on('error', (err) => {
-      console.error('Archive error:', err);
-      try { res.status(500).end('Archive error'); } catch {}
-    });
     archive.pipe(res);
+    
+    // Add progress monitoring for better user experience
+    let processedFiles = 0;
+    archive.on('progress', (progress) => {
+      processedFiles = progress.entries.processed;
+      const bytesProcessed = progress.bytes.processed;
+      const percent = totalSize > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
+      console.log(`📦 ZIP Progress: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
+    });
+    
+    archive.on('entry', (entry) => {
+      console.log(`📄 Adding to ZIP: ${entry.name} (${(entry.stats?.size / 1024 / 1024).toFixed(2)} MB)`);
+    });
     
     // Add all files from the output folder with optimized settings
     archive.directory(outputFolder, false);
     
-    // Add progress monitoring for better user experience
-    archive.on('progress', (progress) => {
-      console.log(`📦 ZIP Progress: ${progress.entries.processed} files processed`);
-    });
-    
     // Finalize the archive
     await archive.finalize();
+    
+    console.log(`✅ ZIP archive finalized: ${processedFiles} files processed`);
     
     console.log(`📦 ZIP archive created and sent: ${zipFileName}`);
   } catch (error) {
