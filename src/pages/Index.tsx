@@ -564,46 +564,34 @@ const Index = () => {
                     ];
                     
                     // Smart naming: 
-                    // - If adding ALL tracks from a playlist (2+ tracks), use the new playlist name
+                    // - If adding ALL tracks from a playlist (2+ tracks), combine playlist names
                     // - If adding partial tracks, combine playlist names
+                    // - Single track additions keep existing name
                     const isNewItemPlaylist = playlistData.totalTracks > 1;
                     let updatedPlaylistNames = [...playlistNames];
                     let updatedPlaylistImages = [...playlistImages];
                     let updatedPlaylistUrls = [...playlistUrls];
                     
                     if (isNewItemPlaylist) {
-                      if (isAddingAllTracks) {
-                        // Adding all tracks: replace with new playlist name
-                        setPlaylist({
-                          ...playlist,
-                          name: playlistData.name,
-                          totalTracks: mergedTracks.length,
-                          totalDuration: playlist.totalDuration + playlistData.totalDuration,
-                        });
-                        // Update playlist info arrays
-                        setPlaylistNames([playlistData.name]);
-                        setPlaylistImages([playlistData.imageUrl]);
-                        setPlaylistUrls([playlistData.url]);
-                      } else {
-                        // Adding partial tracks: combine names
-                        updatedPlaylistNames.push(playlistData.name);
-                        updatedPlaylistImages.push(playlistData.imageUrl);
-                        updatedPlaylistUrls.push(playlistData.url);
-                        
-                        const combinedName = updatedPlaylistNames.length > 0 
-                          ? updatedPlaylistNames.join(' + ')
-                          : playlist.name;
-                        
-                        setPlaylistNames(updatedPlaylistNames);
-                        setPlaylistImages(updatedPlaylistImages);
-                        setPlaylistUrls(updatedPlaylistUrls);
-                        setPlaylist({
-                          ...playlist,
-                          name: combinedName,
-                          totalTracks: mergedTracks.length,
-                          totalDuration: playlist.totalDuration + playlistData.totalDuration,
-                        });
-                      }
+                      // Always combine names when adding a playlist (all or partial)
+                      updatedPlaylistNames.push(playlistData.name);
+                      updatedPlaylistImages.push(playlistData.imageUrl);
+                      updatedPlaylistUrls.push(playlistData.url);
+                      
+                      const combinedName = updatedPlaylistNames.length > 0 
+                        ? updatedPlaylistNames.join(' + ')
+                        : playlist.name;
+                      
+                      setPlaylistNames(updatedPlaylistNames);
+                      setPlaylistImages(updatedPlaylistImages);
+                      setPlaylistUrls(updatedPlaylistUrls);
+                      setPlaylist({
+                        ...playlist,
+                        name: combinedName,
+                        imageUrl: playlistData.imageUrl, // Use new playlist thumbnail
+                        totalTracks: mergedTracks.length,
+                        totalDuration: playlist.totalDuration + playlistData.totalDuration,
+                      });
                     } else {
                       // Single track: keep existing name, just add tracks
                       setPlaylist({
