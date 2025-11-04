@@ -365,16 +365,62 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
       
       setLoadingProgress({ tracksLoaded: tracks.length, totalTracks: tracks.length, status: 'complete' });
       
-      // If there's already data loaded, show confirmation dialog
-      if (hasExistingData) {
+      const isSingleTrack = tracks.length === 1 || playlist.totalTracks === 1;
+      
+      // Single tracks: Auto-add without dialog (seamless experience)
+      if (isSingleTrack) {
+        const track = tracks[0];
+        onPlaylistLoaded(playlist, tracks, hasExistingData ? 'append' : 'replace');
+        
+        // Creative toast for single tracks with play option
+        toast.success(
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                {track.imageUrl ? (
+                  <img src={track.imageUrl} alt={track.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                    <Music2 className="w-5 h-5 text-primary" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold line-clamp-1">🎵 {track.name}</div>
+                <div className="text-sm text-muted-foreground line-clamp-1">by {track.artist}</div>
+              </div>
+            </div>
+            {onAddTracksAndPlay && (
+              <button 
+                onClick={() => {
+                  setTimeout(() => {
+                    if (onAddTracksAndPlay) {
+                      onAddTracksAndPlay(track);
+                    }
+                  }, 100);
+                }}
+                className="w-full text-xs px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+              >
+                <Zap className="h-3 w-3" />
+                Play Now
+              </button>
+            )}
+          </div>,
+          { duration: 4000 }
+        );
+        setLoading(false);
+        setUrl("");
+      }
+      // Playlists: Show confirmation dialog when there's existing data
+      else if (hasExistingData) {
         setPendingData({ playlist, tracks });
         setShowConfirmDialog(true);
         setLoading(false);
       } else {
-        // No existing data, load directly
+        // No existing data, load playlist directly
         onPlaylistLoaded(playlist, tracks, 'replace');
         
-        // NEW: Enhanced success toast with post-load UX
+        // Enhanced success toast for playlists
         toast.success(
           <div className="flex flex-col gap-2">
             <div className="font-semibold">🎉 Music loaded successfully!</div>
@@ -394,6 +440,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
           { duration: 5000 }
         );
         setLoading(false);
+        setUrl("");
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
