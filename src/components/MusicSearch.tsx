@@ -803,7 +803,6 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
               <div className="space-y-3">
                 {searchResults.map((result, index) => {
                   const isSelected = selectedResults.has(result.id);
-                  const isPreviewing = previewTrackId === result.id;
                   const isInPlaylist = isTrackInPlaylist(result.id);
                   const isPlayingPreview = playingPreviewId === result.id;
                   return (
