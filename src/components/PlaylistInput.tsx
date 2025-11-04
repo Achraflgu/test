@@ -152,34 +152,8 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
     toast.success('Recent URLs cleared');
   }, []);
 
-  // NEW: Paste from clipboard
-  const handlePasteFromClipboard = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      const normalized = normalizeUrl(text);
-      setUrl(normalized);
-      // Trigger validation manually
-      const isValid = validateUrl(normalized);
-      const isInvalid = isUnsupportedUrl(normalized);
-      const isSearch = isSearchTextInput(normalized);
-      
-      setIsInvalidUrl(isInvalid);
-      setIsSearchText(isSearch);
-      setIsValidUrl(isValid && !isInvalid);
-      
-      if (isValid && !isInvalid && normalized.length > 10) {
-        fetchPreviewMetadata(normalized);
-      } else {
-        setPreviewMetadata(null);
-      }
-      
-      toast.success('Pasted from clipboard');
-    } catch (err) {
-      toast.error('Could not read from clipboard');
-    }
-  }, [normalizeUrl, fetchPreviewMetadata]);
-
   // NEW: Fetch preview metadata (lightweight - using existing endpoint)
+  // Must be declared before handlePasteFromClipboard to avoid circular dependency
   const fetchPreviewMetadata = useCallback(async (urlToPreview: string) => {
     const normalized = normalizeUrl(urlToPreview);
     if (!validateUrl(normalized)) {
@@ -222,6 +196,33 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
       console.log('Preview fetch failed:', err);
     }
   }, [normalizeUrl]);
+
+  // NEW: Paste from clipboard
+  const handlePasteFromClipboard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const normalized = normalizeUrl(text);
+      setUrl(normalized);
+      // Trigger validation manually
+      const isValid = validateUrl(normalized);
+      const isInvalid = isUnsupportedUrl(normalized);
+      const isSearch = isSearchTextInput(normalized);
+      
+      setIsInvalidUrl(isInvalid);
+      setIsSearchText(isSearch);
+      setIsValidUrl(isValid && !isInvalid);
+      
+      if (isValid && !isInvalid && normalized.length > 10) {
+        fetchPreviewMetadata(normalized);
+      } else {
+        setPreviewMetadata(null);
+      }
+      
+      toast.success('Pasted from clipboard');
+    } catch (err) {
+      toast.error('Could not read from clipboard');
+    }
+  }, [normalizeUrl, fetchPreviewMetadata]);
 
   const validateUrl = (url: string): boolean => {
     const patterns = [
