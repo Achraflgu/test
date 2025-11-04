@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2, Mic, CheckCircle2, Volume2 } from 'lucide-react';
+import { Search, Loader2, Plus, Music, CheckSquare, Square, Play, Clock, History, Sparkles, Zap, X, Trash2, Mic, CheckCircle2, ExternalLink } from 'lucide-react';
 import { searchMusic, SearchResult } from '@/services/api';
 import { Track } from '@/types';
-
-// API URL configuration
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -37,9 +34,8 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentLimit, setCurrentLimit] = useState(15);
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
+  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
-  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
   const [isListening, setIsListening] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -97,95 +93,23 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     return tracks.filter(t => !existingIds.has(t.id));
   }, [currentTracks]);
 
-  // Simple audio preview (30 seconds) - Using YouTube audio stream
-  const handlePreviewPlay = useCallback(async (result: SearchResult) => {
-    // Stop any currently playing preview
-    if (previewAudio) {
-      previewAudio.pause();
-      previewAudio.currentTime = 0;
-      previewAudio.src = '';
-      setPreviewAudio(null);
-      setPlayingPreviewId(null);
-    }
-
-    if (playingPreviewId === result.id) {
-      // Already playing this preview - stop it
-      setPlayingPreviewId(null);
-      return;
-    }
-
-    try {
-      // Extract YouTube ID
+  // Open track in new tab (Spotify or YouTube)
+  const handleOpenTrack = useCallback((result: SearchResult) => {
+    if (result.url) {
+      window.open(result.url, '_blank', 'noopener,noreferrer');
+      toast.info(`Opening "${result.name}" in new tab`, { duration: 1500 });
+    } else {
+      // Fallback: try to construct YouTube URL from ID
       const youtubeId = result.id.replace('search-', '');
-      
-      // Use yt-dlp or similar service to get audio stream
-      // For now, we'll use a simple approach with YouTube embed audio
-      // Note: Direct audio streaming from YouTube requires a backend service
-      // This is a placeholder that will need server-side implementation
-      
-      // Get audio stream from backend
-      const response = await fetch(`${API_URL}/api/preview/${youtubeId}`);
-      if (!response.ok) {
-        throw new Error('Preview not available');
+      if (youtubeId) {
+        const youtubeUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+        window.open(youtubeUrl, '_blank', 'noopener,noreferrer');
+        toast.info(`Opening "${result.name}" on YouTube`, { duration: 1500 });
+      } else {
+        toast.error('No URL available for this track');
       }
-      
-      const blob = await response.blob();
-      const audioUrl = URL.createObjectURL(blob);
-      
-      const audio = new Audio(audioUrl);
-      
-      // Set to play for 30 seconds max
-      const stopTimer = setTimeout(() => {
-        audio.pause();
-        audio.currentTime = 0;
-        URL.revokeObjectURL(audioUrl);
-        setPlayingPreviewId(null);
-        setPreviewAudio(null);
-        toast.info('Preview ended', { duration: 1000 });
-      }, 30000);
-
-      audio.addEventListener('ended', () => {
-        clearTimeout(stopTimer);
-        URL.revokeObjectURL(audioUrl);
-        setPlayingPreviewId(null);
-        setPreviewAudio(null);
-      });
-
-      audio.addEventListener('error', () => {
-        clearTimeout(stopTimer);
-        URL.revokeObjectURL(audioUrl);
-        setPlayingPreviewId(null);
-        setPreviewAudio(null);
-        toast.error('Preview not available');
-      });
-
-      audio.play().catch(err => {
-        console.error('Preview playback error:', err);
-        URL.revokeObjectURL(audioUrl);
-        toast.error('Preview not available');
-        setPlayingPreviewId(null);
-        setPreviewAudio(null);
-      });
-
-      setPreviewAudio(audio);
-      setPlayingPreviewId(result.id);
-      toast.info(`Previewing "${result.name}" (30s)`, { duration: 2000 });
-    } catch (error) {
-      console.error('Preview error:', error);
-      toast.error('Could not start preview');
     }
-  }, [playingPreviewId, previewAudio]);
-
-  // Cleanup preview on unmount
-  useEffect(() => {
-    return () => {
-      if (previewAudio) {
-        previewAudio.pause();
-        previewAudio.currentTime = 0;
-        previewAudio.src = '';
-      }
-    };
-  }, [previewAudio]);
+  }, []);
 
   // Voice search functionality
   const startVoiceSearch = useCallback(async () => {
@@ -806,6 +730,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
               <div className="space-y-3">
                 {searchResults.map((result, index) => {
                   const isSelected = selectedResults.has(result.id);
+                  const isPreviewing = previewTrackId === result.id;
                   const isInPlaylist = isTrackInPlaylist(result.id);
                   const isPlayingPreview = playingPreviewId === result.id;
                   return (
@@ -838,44 +763,32 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                         />
                       </div>
 
-                      {/* Thumbnail with Audio Preview */}
+                      {/* Thumbnail with Play Preview */}
                       <div 
-                        className="relative flex-shrink-0 group/thumb"
+                        className="relative flex-shrink-0 cursor-pointer group/thumb"
+                        onClick={() => handleToggleSelect(result.id)}
+                        onMouseEnter={() => setPreviewTrackId(result.id)}
+                        onMouseLeave={() => setPreviewTrackId(null)}
                       >
                         {result.imageUrl ? (
                           <img
                             src={result.imageUrl}
                             alt={result.name}
-                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md transition-all duration-300"
+                            className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg object-cover shadow-md group-hover/thumb:shadow-xl transition-all duration-300"
                           />
                         ) : (
                           <div className="w-20 h-20 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                             <Music className="h-10 w-10 sm:h-8 sm:w-8 text-primary" />
                           </div>
                         )}
-                        {/* Preview Button Overlay */}
-                        <button
-                          onClick={() => handlePreviewPlay(result)}
-                          className={`absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                            isPlayingPreview ? 'opacity-100 bg-black/60' : 'opacity-0 group-hover/thumb:opacity-100'
-                          }`}
-                          title={isPlayingPreview ? 'Stop preview' : 'Preview audio (30s)'}
-                        >
-                          {isPlayingPreview ? (
-                            <Volume2 className="h-6 w-6 text-white fill-white animate-pulse" />
-                          ) : (
+                        {isPreviewing && (
+                          <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center transition-opacity duration-300">
                             <Play className="h-6 w-6 text-white fill-white" />
-                          )}
-                        </button>
+                          </div>
+                        )}
                         <div className="absolute -top-1 -left-1 w-6 h-6 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-md">
                           {index + 1}
                         </div>
-                        {/* Playing Indicator */}
-                        {isPlayingPreview && (
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-primary rounded-full border-2 border-card animate-pulse flex items-center justify-center">
-                            <div className="w-2 h-2 bg-primary-foreground rounded-full" />
-                          </div>
-                        )}
                       </div>
 
                       {/* Track Info */}
@@ -912,22 +825,16 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                           {formatDuration(result.duration)}
                         </span>
                         <div className="flex gap-2">
-                          {/* Preview Button */}
+                          {/* Open in New Tab Button */}
                           <Button 
                             size="sm" 
-                            onClick={() => handlePreviewPlay(result)}
+                            onClick={() => handleOpenTrack(result)}
                             variant="outline"
-                            className={`border-primary/30 hover:bg-primary/10 hover:border-primary/50 ${
-                              isPlayingPreview ? 'bg-primary/20 border-primary/50' : ''
-                            }`}
-                            title={isPlayingPreview ? 'Stop preview' : 'Preview (30s)'}
+                            className="border-primary/30 hover:bg-primary/10 hover:border-primary/50"
+                            title="Open in new tab (Spotify/YouTube)"
                           >
-                            {isPlayingPreview ? (
-                              <Volume2 className="mr-1 h-4 w-4 animate-pulse" />
-                            ) : (
-                              <Play className="mr-1 h-4 w-4" />
-                            )}
-                            <span className="hidden sm:inline text-xs">Preview</span>
+                            <ExternalLink className="mr-1 h-4 w-4" />
+                            <span className="hidden sm:inline text-xs">Open</span>
                           </Button>
                           <Button 
                             size="sm" 
@@ -998,7 +905,6 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
           )}
         </DialogContent>
       </Dialog>
-
     </>
   );
 }
