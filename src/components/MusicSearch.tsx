@@ -441,7 +441,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
 
         {/* Recent Searches - Always Visible as Pill Tags */}
         {recentSearches.length > 0 && (
-          <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 py-2">
+          <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
