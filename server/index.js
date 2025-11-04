@@ -4532,7 +4532,8 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
   let audioFormat;
   
   try {
-    console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
+    // Reduced logging: Only log track name (full method name already logged above)
+    console.log(`🔧 ${track.name}`);
     
     let youtubeUrl = track.url;
     
@@ -4568,9 +4569,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const absoluteOutputPath = path.resolve(outputFolder, safeFilename);
     expectedFilePath = `${absoluteOutputPath}.${audioFormat}`;
     
-    console.log(`  📁 Output folder: ${outputFolder}`);
+    // Reduced logging for batch downloads to prevent rate limit issues
+    // Only log file name, not full paths or options
     console.log(`  📁 Expected file: ${path.basename(expectedFilePath)}`);
-    console.log(`  📁 Absolute path: ${absoluteOutputPath}`);
     
     // Parse quality setting (e.g., "320k" -> "320K")
     const quality = settings.quality ? settings.quality.toUpperCase().replace('K', 'K') : '320K';
@@ -4593,7 +4594,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
     };
     
-    console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
+    // Reduced logging: Don't log full download options JSON (too verbose for batch downloads)
     
     // Download with youtube-dl-exec
     const result = await youtubedl(youtubeUrl, downloadOptions);
@@ -5085,13 +5086,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ? cleanSearchQuery(track.name)
       : cleanSearchQuery(`${track.artist} ${track.name}`);
     
-    console.log(`\n🔄 Trying download for: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
-    console.log(`  🔍 Track URL: ${track.url || 'NOT SET'}`);
-    console.log(`  🔍 Track ID: ${track.id || 'NOT SET'}`);
+    // Reduced logging for batch downloads - only log track name to prevent rate limit
+    console.log(`🔄 ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} ${track.name}`}`);
     
     // 🎵 FOR SPOTIFY TRACKS: Find YouTube URL first so all methods can use it
     if (track.url && track.url.includes('spotify.com')) {
-      console.log(`  🎵 Spotify track detected - searching YouTube...`);
+      console.log(`  🎵 Searching YouTube...`);
       
       // Check if we already have a YouTube link from spotdl errors
       let youtubeLink = youtubeLinks[track.url] || youtubeLinks[track.id];
@@ -5121,7 +5121,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     // ====================================
     // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
     if (attemptNumber < 6) { // Increased attempts for better success
-      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
+      // Reduced logging: Only log method name for first attempt to prevent log spam
+      if (attemptNumber === 0) {
+        console.log(`\n🎯 METHOD 1: youtube-dl-exec...`);
+      }
       
       // For Spotify tracks without YouTube URL, use search format
       if (!track.url || track.url.includes('spotify.com')) {
@@ -7836,6 +7839,9 @@ checkAndUpdateVersions().then(async () => {
 ║  Status: Ready to download playlists                       ║
 ╚════════════════════════════════════════════════════════════╝
     `);
+    
+    console.log('⚠️  Note: Downloads in progress are stored in memory and will be lost on server restart.');
+    console.log('   If the server restarts during a download, you will need to restart the download.\n');
     
     // Keep-alive mechanism for Koyeb
     setInterval(() => {
