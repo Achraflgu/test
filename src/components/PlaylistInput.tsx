@@ -569,6 +569,7 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
               </>
             )}
           </Button>
+          </div>
         </div>
 
         {/* Search Text Detected */}
