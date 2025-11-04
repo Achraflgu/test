@@ -4461,13 +4461,16 @@ async function findAlternativeVideo(track, outputFolder) {
     console.log(`  🔍 Age-restricted video detected - searching for alternative...`);
     
     // Clean search query: remove special characters, parentheses, etc.
+    // Similar to cleanSearchQuery but optimized for alternative search
     const cleanQuery = (str) => {
       return str
-        .replace(/[()\[\]{}]/g, '') // Remove parentheses and brackets
-        .replace(/[^\w\s-]/g, ' ') // Remove special chars except spaces and hyphens
+        .replace(/\([^)]*\)/g, '') // Remove parentheses and their content
+        .replace(/\[[^\]]*\]/g, '') // Remove square brackets and their content
+        .replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters (Arabic, etc.)
+        .replace(/[^\w\s-]/g, ' ') // Remove special characters except word chars, spaces, and hyphens
         .replace(/\s+/g, ' ') // Collapse multiple spaces
         .trim()
-        .substring(0, 100); // Limit length
+        .substring(0, 60); // Limit length (shorter = better search results)
     };
     
     // Build multiple search query variations
@@ -4708,9 +4711,10 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const hasAgeRestricted = !hasBotDetectionError && (
                             fullError.includes('age-restricted') || 
                             (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
+                            (fullError.includes('sign in to confirm your age') && fullError.includes('video may be inappropriate')) ||
                             (fullError.includes('confirm your age') && fullError.includes('inappropriate')) ||
                             (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
-                            (fullError.includes('login_required') && fullError.includes('age-restricted'))
+                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted'))
                            );
     
     // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
@@ -5797,13 +5801,95 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               const hasAgeRestricted = !hasBotDetectionError && (
                                       errorLower.includes('age-restricted') || 
                                       (errorLower.includes('sign in to confirm your age') && errorLower.includes('inappropriate')) ||
+                                      (errorLower.includes('sign in to confirm your age') && errorLower.includes('video may be inappropriate')) ||
                                       (errorLower.includes('confirm your age') && errorLower.includes('inappropriate')) ||
-                                      (errorLower.includes('video may be inappropriate') && errorLower.includes('age'))
+                                      (errorLower.includes('video may be inappropriate') && errorLower.includes('age')) ||
+                                      (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted'))
                                      );
               
               if (hasAgeRestricted) {
-                console.log('  🔒 Age-restricted video detected in yt-dlp - will try alternative in next method');
-                // Signal to try alternative (handled by outer retry logic or next download method)
+                console.log('  🔒 Age-restricted video detected - automatically searching for alternative...');
+                
+                // 🔥 SMART: Immediately search for and download alternative video
+                const alternativeUrl = await findAlternativeVideo(track, outputFolder);
+                if (alternativeUrl) {
+                  console.log(`  🔄 Found alternative video: ${alternativeUrl} - downloading now...`);
+                  
+                  // Update track URL to alternative
+                  track.url = alternativeUrl;
+                  
+                  // Retry download with alternative video using yt-dlp directly
+                  const alternativeArgs = [
+                    '-m', 'yt_dlp',
+                    alternativeUrl,
+                    '-x',
+                    '--audio-format', settings.format || 'mp3',
+                    '--audio-quality', settings.quality || '320K',
+                    '--embed-thumbnail',
+                    '--embed-metadata',
+                    '--add-metadata',
+                    '--output', outputPath,
+                    '--no-playlist',
+                    '--no-part',
+                    '--force-overwrites',
+                    '--no-warnings',
+                    '--ignore-errors'
+                  ];
+                  
+                  // Add cookies if available
+                  try {
+                    const cookieSetup = await setupYouTubeCookies();
+                    if (cookieSetup && cookieSetup.type === 'file') {
+                      alternativeArgs.push('--cookies', cookieSetup.path);
+                    }
+                  } catch {}
+                  
+                  const altProcess = spawn(PYTHON_CMD, alternativeArgs, {
+                    cwd: outputFolder,
+                    shell: false,
+                    stdio: ['ignore', 'pipe', 'pipe']
+                  });
+                  
+                  const altSuccess = await new Promise((altResolve) => {
+                    altProcess.on('close', async (altCode) => {
+                      if (altCode === 0) {
+                        // Check if file was created
+                        const expectedFileName = getExpectedFileName(track, 'mp3');
+                        const mp3Path = path.join(outputFolder, expectedFileName);
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for file system sync
+                        const fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
+                        
+                        if (fileExists) {
+                          console.log(`  ✅ Alternative video downloaded successfully: ${track.name}`);
+                          socket.emit('download:progress', {
+                            downloadId,
+                            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+                            status: 'completed',
+                            progress: 100,
+                            message: `✅ Downloaded alternative (age-restricted bypass): ${track.name}`
+                          });
+                          altResolve(true);
+                          return;
+                        }
+                      }
+                      console.log(`  ⚠️ Alternative video download failed (exit code ${altCode})`);
+                      altResolve(false);
+                    });
+                    altProcess.on('error', () => altResolve(false));
+                  });
+                  
+                  if (altSuccess) {
+                    // ✅ Alternative download succeeded - resolve with success and exit
+                    successCount++;
+                    removeProcess(); // Clean up process tracking
+                    resolve('success'); // ✅ Success - exit early!
+                    return;
+                  } else {
+                    console.log('  ⚠️ Alternative download failed - will continue with other methods');
+                  }
+                } else {
+                  console.log('  ⚠️ No alternative video found - will continue with other methods');
+                }
               }
               
               if (hasBotDetectionError) {
