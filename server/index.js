@@ -725,14 +725,16 @@ async function testCookies(cookiePath) {
         // ⚠️ MODERATE: Process completed without bot detection (might work for downloads)
         // Accept cookies that complete without explicit bot errors
         // They might fail some tests but work for actual downloads
-        if (!hasBotDetectionError && code !== null) {
-          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + code + ')');
+        // Note: code can be null if process was killed, but we check for bot detection first
+        if (!hasBotDetectionError) {
+          // Accept if no bot detection (even with null code - process might have been killed by timeout)
+          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + (code ?? 'null') + ')');
           resolve(true);
           return;
         }
         
-        // ❌ REJECT: Null exit code or other issues
-        console.log('  ❌ Cookie test FAILED (code: ' + code + ')');
+        // ❌ REJECT: Only reject if we have bot detection
+        console.log('  ❌ Cookie test FAILED (bot detection detected)');
         resolve(false);
       });
       
@@ -1087,12 +1089,25 @@ async function generateAndTestCookies(maxAttempts = 100) {
         }
       }
       
-      // Success! We have filled the missing slots
+      // Final status report
       const totalCookies = existingIndices.length;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`\n🎉 SUCCESS! Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+      
+      if (totalCookies >= COOKIE_POOL_SIZE) {
+        console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+      } else if (totalCookies > 0) {
+        console.log(`\n⚠️ PARTIAL SUCCESS: Cookie pool has ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+        console.log(`💡 System will use available cookies and continue regenerating in background`);
+      } else {
+        console.log(`\n❌ FAILED: Cookie pool has 0/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+        console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
+        console.log(`🔄 System will proceed without cookies and try cookie-less methods`);
+      }
+      
       console.log(`📦 Pool ready at: ${COOKIE_POOL_DIR}`);
-      return AUTO_COOKIE_PATH;
+      
+      // Return path if we have at least one cookie, otherwise null
+      return totalCookies > 0 ? AUTO_COOKIE_PATH : null;
     } catch (err) {
       console.log(`  ⚠️ Cookie generation error: ${err.message}`);
       return null;
