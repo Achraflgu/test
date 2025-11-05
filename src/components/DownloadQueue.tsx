@@ -134,8 +134,20 @@ export const DownloadQueue = () => {
       // Track download progress
       socket.on('download:progress', (data: any) => {
         console.log('📊 Download progress:', data);
-        setDownloads(prev => prev.map(d => {
-          if (d.downloadId === data.downloadId) {
+        if (!data.downloadId) {
+          console.warn('⚠️ Progress event missing downloadId:', data);
+          return;
+        }
+        
+        setDownloads(prev => {
+          const found = prev.find(d => d.downloadId === data.downloadId);
+          if (!found) {
+            console.warn('⚠️ Progress event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
+            return prev;
+          }
+          
+          return prev.map(d => {
+            if (d.downloadId === data.downloadId) {
             // Handle both playlist progress (completed/totalTracks) and single track progress (progress: 100)
             let progress = 0;
             let completedTracks = d.completedTracks;
@@ -164,6 +176,8 @@ export const DownloadQueue = () => {
             // Update status - if completed, mark as completed (check both status and progress)
             const newStatus = (data.status === 'completed' || progress === 100) ? 'completed' : 'downloading';
             
+            console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${progress}%`);
+            
             return {
               ...d,
               status: newStatus,
@@ -175,7 +189,8 @@ export const DownloadQueue = () => {
             };
           }
           return d;
-        }));
+          });
+        });
         
         // If progress event indicates completion, also remove from active downloads
         if (data.status === 'completed' || data.progress === 100) {
@@ -191,32 +206,47 @@ export const DownloadQueue = () => {
       // Track download completion
       socket.on('download:complete', (data: any) => {
         console.log('✅ Download completed:', data);
-        setDownloads(prev => prev.map(d => {
-          if (d.downloadId === data.downloadId) {
-            const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-            // Handle both full URL and relative path
-            let downloadUrl = data.downloadUrl;
-            if (downloadUrl && !downloadUrl.startsWith('http')) {
-              // Relative path - prepend API URL
-              downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
-            }
-            
-            // For single track downloads, ensure we have at least 1 completed track
-            const completedTracks = data.totalSuccess || d.completedTracks || 1;
-            const totalTracks = data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : (d.totalTracks || 1);
-            
-            return {
-              ...d,
-              status: 'completed',
-              progress: 100,
-              completedTracks,
-              totalTracks,
-              downloadUrl: downloadUrl || d.downloadUrl, // Keep existing URL if new one is not provided
-              completedAt: new Date().toISOString()
-            };
+        if (!data.downloadId) {
+          console.warn('⚠️ Complete event missing downloadId:', data);
+          return;
+        }
+        
+        setDownloads(prev => {
+          const found = prev.find(d => d.downloadId === data.downloadId);
+          if (!found) {
+            console.warn('⚠️ Complete event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
+            return prev;
           }
-          return d;
-        }));
+          
+          return prev.map(d => {
+            if (d.downloadId === data.downloadId) {
+              const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+              // Handle both full URL and relative path
+              let downloadUrl = data.downloadUrl;
+              if (downloadUrl && !downloadUrl.startsWith('http')) {
+                // Relative path - prepend API URL
+                downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+              }
+              
+              // For single track downloads, ensure we have at least 1 completed track
+              const completedTracks = data.totalSuccess || d.completedTracks || 1;
+              const totalTracks = data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : (d.totalTracks || 1);
+              
+              console.log(`✅ Marking download ${data.downloadId} as completed: ${completedTracks}/${totalTracks} tracks, URL: ${downloadUrl || 'none'}`);
+              
+              return {
+                ...d,
+                status: 'completed',
+                progress: 100,
+                completedTracks,
+                totalTracks,
+                downloadUrl: downloadUrl || d.downloadUrl, // Keep existing URL if new one is not provided
+                completedAt: new Date().toISOString()
+              };
+            }
+            return d;
+          });
+        });
         setActiveDownloads(prev => {
           const next = new Set(prev);
           next.delete(data.downloadId);
