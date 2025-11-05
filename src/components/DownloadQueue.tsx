@@ -165,6 +165,7 @@ export const DownloadQueue = () => {
               if (data.progress === 100 || data.status === 'completed') {
                 completedTracks = 1;
                 totalTracks = 1;
+                progress = 100; // Force to 100 if completed
               }
             } else if (data.status === 'completed') {
               // If status is completed but no progress, assume 100%
@@ -174,7 +175,8 @@ export const DownloadQueue = () => {
             }
             
             // Update status - if completed, mark as completed (check both status and progress)
-            const newStatus = (data.status === 'completed' || progress === 100) ? 'completed' : 'downloading';
+            // ALWAYS mark as completed if progress is 100 OR status is completed
+            const newStatus = (data.status === 'completed' || progress === 100 || data.status === 'completed') ? 'completed' : 'downloading';
             
             console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${progress}%`);
             
