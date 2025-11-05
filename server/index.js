@@ -1271,9 +1271,9 @@ async function generateAndTestCookies(maxAttempts = 100) {
       const TARGET_STRONG_COOKIES = 3; // Ideal: 3 strong cookies
       const TARGET_TOTAL_COOKIES = 5; // Final goal: 5 total
       
-      // Add initial cooldown if we've been failing recently
-      if (global['cookie_regeneration_failures'] > 5) {
-        const cooldown = 10000 + Math.random() * 5000; // 10-15s cooldown
+      // Add minimal initial cooldown if we've been failing recently (reduced significantly)
+      if (global['cookie_regeneration_failures'] > 10) {
+        const cooldown = 2000 + Math.random() * 1000; // 2-3s cooldown (reduced from 10-15s)
         console.log(`  ⏳ Recent failures detected - cooling down for ${(cooldown/1000).toFixed(1)}s before starting...`);
         await new Promise(resolve => setTimeout(resolve, cooldown));
       }
@@ -1325,8 +1325,17 @@ async function generateAndTestCookies(maxAttempts = 100) {
         if (consecutiveFailures >= 6 && PARALLEL_TESTS > 1) {
           PARALLEL_TESTS = 1;
           console.log(`  🔧 Adaptive: Reduced to single cookie testing (heavy rate limiting detected)`);
-          // Add longer delay between single tests
-          await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 3000));
+          // Minimal delay between single tests (reduced from 5-8s to 1-2s)
+          await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+        }
+        
+        // Safety check: Stop earlier if completely failing (after 15 batches instead of 50)
+        if (batch > 15 && strongCookiesFound === 0 && consecutiveFailures >= 10) {
+          console.log(`\n⚠️ Early stop: ${batch} batches tested with 0 successful cookies`);
+          console.log(`❌ YouTube bot detection is too aggressive - all generated cookies are being rejected`);
+          console.log(`💡 System will proceed without cookies using cookie-less methods`);
+          console.log(`💡 Tip: Consider using real browser cookies if downloads fail`);
+          break;
         }
         
         // Safety check: Stop if we've exceeded batch limit
@@ -1355,6 +1364,12 @@ async function generateAndTestCookies(maxAttempts = 100) {
             // Don't break - continue to Phase 2
           } else {
             console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION})`);
+            // If we've tried many batches with no success, give up faster
+            if (batch >= 10 && strongCookiesFound === 0) {
+              console.log(`❌ No cookies found after ${batch} batches - YouTube bot detection is too aggressive`);
+              console.log(`💡 System will proceed without cookies using cookie-less methods`);
+              break; // Stop trying earlier if completely failing
+            }
             console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookies...`);
             // Continue trying (don't break)
           }
@@ -1384,14 +1399,11 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
         console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
-        // 🔥 RATE LIMITING: Add exponential backoff with jitter if many failures
-        if (consecutiveFailures >= 2 && batch > 1) {
-          // Exponential backoff: 2s, 4s, 8s, 15s, 20s max
-          const baseDelay = Math.min(20000, 2000 * Math.pow(2, Math.min(consecutiveFailures - 2, 4)));
-          // Add random jitter (0-3s) to make it less predictable
-          const jitter = Math.random() * 3000;
-          const delay = Math.floor(baseDelay + jitter);
-          console.log(`  ⏳ Rate limiting detected (${consecutiveFailures} consecutive failures) - waiting ${(delay/1000).toFixed(1)}s before next batch...`);
+        // 🔥 RATE LIMITING: Add minimal delay only if many failures (reduced from exponential)
+        if (consecutiveFailures >= 4 && batch > 1) {
+          // Minimal delay: 1-2s max (much faster than before)
+          const delay = 1000 + Math.random() * 1000; // 1-2s
+          console.log(`  ⏳ Rate limiting detected (${consecutiveFailures} failures) - waiting ${(delay/1000).toFixed(1)}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
@@ -1550,13 +1562,14 @@ async function generateAndTestCookies(maxAttempts = 100) {
           console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
-        // Adaptive delay: Exponential backoff based on failures (rate limiting)
-        let batchDelay = 1000; // Base 1s delay
-        if (consecutiveFailures >= 1) {
-          // Exponential: 2s, 4s, 8s, 15s max
-          batchDelay = Math.min(15000, 1000 * Math.pow(2, Math.min(consecutiveFailures, 4)));
-          // Add jitter to avoid synchronized patterns
-          batchDelay += Math.random() * 2000;
+        // Adaptive delay: Minimal delay between batches (reduced significantly)
+        let batchDelay = 500; // Base 0.5s delay (reduced from 1s)
+        if (consecutiveFailures >= 3) {
+          // Only slightly longer if many failures: 1-1.5s max
+          batchDelay = 1000 + Math.random() * 500; // 1-1.5s
+        } else if (consecutiveFailures >= 1) {
+          // Small delay for occasional failures: 0.5-1s
+          batchDelay = 500 + Math.random() * 500; // 0.5-1s
         }
         if (cookiesFound < cookiesNeeded) {
           await new Promise(resolve => setTimeout(resolve, Math.floor(batchDelay)));
