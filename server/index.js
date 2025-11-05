@@ -1300,6 +1300,14 @@ async function generateAndTestCookies(maxAttempts = 100) {
           consecutiveFailures = 0; // Reset counter
         }
         
+        // 🔥 AGGRESSIVE: If all cookies in batch failed, reduce parallelism further
+        if (consecutiveFailures >= 5 && PARALLEL_TESTS > 1) {
+          PARALLEL_TESTS = 1;
+          console.log(`  🔧 Adaptive: Reduced to single cookie testing (heavy rate limiting detected)`);
+          // Add delay between single tests
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
         // Safety check: Stop if we've exceeded batch limit
         if (batch > MAX_BATCHES) {
           console.log(`\n⚠️ Safety limit reached: ${MAX_BATCHES} batches tested`);
@@ -1354,6 +1362,13 @@ async function generateAndTestCookies(maxAttempts = 100) {
         
         const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
         console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
+        
+        // 🔥 RATE LIMITING: Add delay between batches if many failures
+        if (consecutiveFailures >= 5 && batch > 1) {
+          const delay = Math.min(5000, consecutiveFailures * 500); // Up to 5s delay
+          console.log(`  ⏳ Rate limiting detected - waiting ${delay/1000}s before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
         
         // Generate multiple cookie sets in parallel
         const cookiePromises = [];
@@ -1579,11 +1594,14 @@ async function regenerateSingleCookie(slotIndex) {
       }
     }
     
-    // 🎯 STEP 2: Generate new STRONG cookies (parallel generation for efficiency)
+    // 🎯 STEP 2: Generate new STRONG cookies (with rate limiting to avoid bot detection)
     const startTime = Date.now();
-    const PARALLEL_GENERATION = 3; // Generate 3 cookies in parallel
+    // 🔥 REDUCE PARALLELISM: If all cookies are failing, reduce to 1-2 to avoid rate limits
+    const recentFailures = global['cookie_regeneration_failures'] || 0;
+    const PARALLEL_GENERATION = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : 3); // Adaptive: 3→2→1
     let attempts = 0;
-    const maxAttempts = 50;
+    const maxAttempts = 30; // Reduced from 50 to avoid long loops
+    const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
     
     while (attempts < maxAttempts) {
       attempts += PARALLEL_GENERATION;
@@ -1617,6 +1635,16 @@ async function regenerateSingleCookie(slotIndex) {
       
       const results = await Promise.all(generationPromises);
       const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
+      
+      // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
+      if (strongCookies.length === 0 && attempts < maxAttempts) {
+        console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${DELAY_BETWEEN_BATCHES/1000}s before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+        global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + PARALLEL_GENERATION;
+      } else if (strongCookies.length > 0) {
+        // Reset failure counter on success
+        global['cookie_regeneration_failures'] = 0;
+      }
       
       if (strongCookies.length > 0) {
         // ✅ STEP 3: Replace failed cookie slot with FIRST strong cookie
@@ -1662,7 +1690,10 @@ async function regenerateSingleCookie(slotIndex) {
       }
     }
     
+    // 🔥 TRACK FAILURES: If regeneration failed, increment counter
+    global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + 1;
     console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${attempts} attempts (no STRONG cookies found)`);
+    console.log(`  💡 Tip: Consider using real browser cookies if all generated cookies fail`);
     return false;
   } catch (err) {
     console.log(`❌ Error regenerating cookie slot ${slotIndex + 1}: ${err.message}`);
@@ -1903,6 +1934,11 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
     global[cookieFailureKey] = failureCount + 1;
     console.log(`🔄 Regenerating ENTIRE cookie pool (${botDetectionCount}/${cookies.length} had bot detection, cycle ${failureCount + 1}/${MAX_REGENERATION_CYCLES})...`);
     
+    // 🔥 COOLDOWN: Wait before regenerating to avoid rate limits
+    const cooldownDelay = failureCount === 0 ? 5000 : 10000; // 5s first time, 10s second time
+    console.log(`  ⏳ Waiting ${cooldownDelay/1000}s before regeneration (cooldown to avoid rate limits)...`);
+    await new Promise(resolve => setTimeout(resolve, cooldownDelay));
+    
     // Clear existing pool
     try {
       const poolDir = path.join(__dirname, '.cookie_pool');
@@ -1917,8 +1953,21 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
       console.log(`  ⚠️ Error clearing pool: ${err.message}`);
     }
     
+    // Also clear Redis cookies
+    if (isRedisAvailable()) {
+      try {
+        const redisCookies = await getAllCookiesFromRedis();
+        for (const cookie of redisCookies) {
+          await deleteCookieFromRedis(cookie.index);
+        }
+        console.log(`  🗑️ Cleared ${redisCookies.length} cookies from Redis`);
+      } catch (err) {
+        console.log(`  ⚠️ Error clearing Redis cookies: ${err.message}`);
+      }
+    }
+    
     // Regenerate entire pool (will generate 5 new cookies)
-    console.log(`  🔄 Generating ${COOKIE_POOL_SIZE} fresh cookies...`);
+    console.log(`  🔄 Generating ${COOKIE_POOL_SIZE} fresh cookies (with reduced parallelism to avoid rate limits)...`);
     const newCookies = await generateAndTestCookies(100);
     
     if (newCookies) {
