@@ -2380,16 +2380,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
-      // Emit download start event for queue tracking (single track)
+      // Emit download start event for queue tracking (single track) - both Socket.IO and custom event
       const socketForSingle = getSocket();
+      const queueDataSingle = {
+        downloadId: response.downloadId,
+        folderName: trackToDownload.name || 'Track',
+        totalTracks: 1,
+        playlistName: playlistName || 'Single Track',
+        outputFolder: response.outputFolder
+      };
+      
+      // Emit Socket.IO event
       if (socketForSingle && response.downloadId) {
-        socketForSingle.emit('download:queue:start', {
-          downloadId: response.downloadId,
-          folderName: trackToDownload.name || 'Track',
-          totalTracks: 1,
-          playlistName: playlistName || 'Single Track',
-          outputFolder: response.outputFolder
-        });
+        socketForSingle.emit('download:queue:start', queueDataSingle);
+      }
+      
+      // Also dispatch custom event for immediate UI update
+      if (response.downloadId) {
+        window.dispatchEvent(new CustomEvent('download:queue:start', { detail: queueDataSingle }));
       }
       
       toast.info(`📁 Saving to: ${response.outputFolder}`);
@@ -2842,16 +2850,24 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
-      // Emit download start event for queue tracking
+      // Emit download start event for queue tracking (both Socket.IO and custom event for immediate UI)
       const socket = getSocket();
+      const queueData = {
+        downloadId: response.downloadId,
+        folderName: folderName || playlistName || 'Download',
+        totalTracks: selectedTracks.length,
+        playlistName: playlistName || 'Unknown Playlist',
+        outputFolder: response.outputFolder
+      };
+      
+      // Emit Socket.IO event (for other clients if needed)
       if (socket && response.downloadId) {
-        socket.emit('download:queue:start', {
-          downloadId: response.downloadId,
-          folderName: folderName || playlistName || 'Download',
-          totalTracks: selectedTracks.length,
-          playlistName: playlistName || 'Unknown Playlist',
-          outputFolder: response.outputFolder
-        });
+        socket.emit('download:queue:start', queueData);
+      }
+      
+      // Also dispatch custom event for immediate UI update (works even if socket not ready)
+      if (response.downloadId) {
+        window.dispatchEvent(new CustomEvent('download:queue:start', { detail: queueData }));
       }
       
       // Dismiss init toast and show success

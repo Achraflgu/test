@@ -54,10 +54,9 @@ export const DownloadQueue = () => {
     }
   }, [downloads]);
 
-  // Listen to Socket.IO events
+  // Listen to Socket.IO events and custom DOM events
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
 
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
@@ -81,29 +80,49 @@ export const DownloadQueue = () => {
       setActiveDownloads(prev => new Set(prev).add(downloadId));
     };
 
-    // Listen for custom queue start event (emitted from TrackList)
-    socket.on('download:queue:start', (data: any) => {
-      handleDownloadStart(
-        data.downloadId,
-        data.folderName || 'Unknown',
-        data.totalTracks || 0
-      );
-    });
-
-    // Also listen for download status updates (which includes start)
-    socket.on('download:status', (data: any) => {
-      if (data.status === 'started' || data.status === 'processing') {
+    // Listen for client-side custom DOM events (for immediate UI update, works even if socket not ready)
+    const handleQueueStart = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const data = customEvent.detail;
+      console.log('📥 Queue: Received custom DOM download:queue:start event:', data);
+      if (data && data.downloadId) {
         handleDownloadStart(
           data.downloadId,
-          data.folderName || data.outputFolder || 'Unknown',
+          data.folderName || 'Unknown',
           data.totalTracks || 0
         );
       }
-    });
+    };
+    
+    // Add event listener for custom DOM events FIRST (fires immediately, before Socket.IO)
+    window.addEventListener('download:queue:start', handleQueueStart);
 
-    // Track download progress
-    socket.on('download:progress', (data: any) => {
-      console.log('📊 Download progress:', data);
+    // Socket.IO listeners (only if socket is available)
+    if (socket) {
+      // Listen for custom queue start event (emitted from TrackList via Socket.IO)
+      socket.on('download:queue:start', (data: any) => {
+        console.log('📥 Queue: Received download:queue:start Socket.IO event:', data);
+        handleDownloadStart(
+          data.downloadId,
+          data.folderName || 'Unknown',
+          data.totalTracks || 0
+        );
+      });
+
+      // Also listen for download status updates (which includes start)
+      socket.on('download:status', (data: any) => {
+        if (data.status === 'started' || data.status === 'processing') {
+          handleDownloadStart(
+            data.downloadId,
+            data.folderName || data.outputFolder || 'Unknown',
+            data.totalTracks || 0
+          );
+        }
+      });
+
+      // Track download progress
+      socket.on('download:progress', (data: any) => {
+        console.log('📊 Download progress:', data);
       setDownloads(prev => prev.map(d => {
         if (d.downloadId === data.downloadId) {
           const progress = data.totalTracks > 0 
@@ -121,85 +140,89 @@ export const DownloadQueue = () => {
       }));
     });
 
-    // Track download completion
-    socket.on('download:complete', (data: any) => {
-      console.log('✅ Download completed:', data);
-      setDownloads(prev => prev.map(d => {
-        if (d.downloadId === data.downloadId) {
-          const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-          // Handle both full URL and relative path
-          let downloadUrl = data.downloadUrl;
-          if (downloadUrl && !downloadUrl.startsWith('http')) {
-            // Relative path - prepend API URL
-            downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+      // Track download completion
+      socket.on('download:complete', (data: any) => {
+        console.log('✅ Download completed:', data);
+        setDownloads(prev => prev.map(d => {
+          if (d.downloadId === data.downloadId) {
+            const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+            // Handle both full URL and relative path
+            let downloadUrl = data.downloadUrl;
+            if (downloadUrl && !downloadUrl.startsWith('http')) {
+              // Relative path - prepend API URL
+              downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+            }
+            
+            return {
+              ...d,
+              status: 'completed',
+              progress: 100,
+              completedTracks: data.totalSuccess || d.completedTracks,
+              totalTracks: data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : d.totalTracks,
+              downloadUrl,
+              completedAt: new Date().toISOString()
+            };
           }
-          
-          return {
-            ...d,
-            status: 'completed',
-            progress: 100,
-            completedTracks: data.totalSuccess || d.completedTracks,
-            totalTracks: data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : d.totalTracks,
-            downloadUrl,
-            completedAt: new Date().toISOString()
-          };
-        }
-        return d;
-      }));
-      setActiveDownloads(prev => {
-        const next = new Set(prev);
-        next.delete(data.downloadId);
-        return next;
-      });
+          return d;
+        }));
+        setActiveDownloads(prev => {
+          const next = new Set(prev);
+          next.delete(data.downloadId);
+          return next;
+        });
 
-      // Only show toast if download URL is available
-      if (data.downloadUrl) {
-        toast.success('Download Complete!', {
-          description: `Your files are ready to download`,
-          duration: 5000,
-          action: {
-            label: 'Download Now',
-            onClick: () => {
-              const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-              let url = data.downloadUrl;
-              if (url && !url.startsWith('http')) {
-                url = `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-              }
-              if (url) {
-                window.open(url, '_blank');
+        // Only show toast if download URL is available
+        if (data.downloadUrl) {
+          toast.success('Download Complete!', {
+            description: `Your files are ready to download`,
+            duration: 5000,
+            action: {
+              label: 'Download Now',
+              onClick: () => {
+                const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+                let url = data.downloadUrl;
+                if (url && !url.startsWith('http')) {
+                  url = `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+                }
+                if (url) {
+                  window.open(url, '_blank');
+                }
               }
             }
-          }
-        });
-      }
-    });
-
-    // Track download failure
-    socket.on('download:error', (data: any) => {
-      console.log('❌ Download error:', data);
-      setDownloads(prev => prev.map(d => {
-        if (d.downloadId === data.downloadId) {
-          return {
-            ...d,
-            status: 'failed',
-            progress: 0
-          };
+          });
         }
-        return d;
-      }));
-      setActiveDownloads(prev => {
-        const next = new Set(prev);
-        next.delete(data.downloadId);
-        return next;
       });
-    });
+
+      // Track download failure
+      socket.on('download:error', (data: any) => {
+        console.log('❌ Download error:', data);
+        setDownloads(prev => prev.map(d => {
+          if (d.downloadId === data.downloadId) {
+            return {
+              ...d,
+              status: 'failed',
+              progress: 0
+            };
+          }
+          return d;
+        }));
+        setActiveDownloads(prev => {
+          const next = new Set(prev);
+          next.delete(data.downloadId);
+          return next;
+        });
+      });
+    }
 
     return () => {
-      socket.off('download:queue:start');
-      socket.off('download:status');
-      socket.off('download:progress');
-      socket.off('download:complete');
-      socket.off('download:error');
+      if (socket) {
+        socket.off('download:queue:start');
+        socket.off('download:status');
+        socket.off('download:progress');
+        socket.off('download:complete');
+        socket.off('download:error');
+      }
+      window.removeEventListener('download:queue:start', handleQueueStart);
     };
   }, []);
 
@@ -235,7 +258,11 @@ export const DownloadQueue = () => {
   const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
   const completedCount = downloads.filter(d => d.status === 'completed').length;
 
-  if (downloads.length === 0) return null;
+  // Always show component if there are any downloads (active or completed)
+  // Hide only if completely empty and no downloads in localStorage
+  if (downloads.length === 0) {
+    return null;
+  }
 
   return (
     <Card className="fixed bottom-4 right-4 w-96 z-50 shadow-2xl border-2">
