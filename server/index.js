@@ -1371,8 +1371,14 @@ async function generateAndTestCookies(maxAttempts = 100) {
             // Don't break - continue to Phase 2
           } else {
             console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION})`);
+            // 🔥 FAST FAIL: If Phase 1 failed with 0 cookies, stop immediately
+            if (strongCookiesFound === 0 && cookiesFound === 0) {
+              console.log(`❌ Fast fail: No cookies found in Phase 1 - stopping cookie generation`);
+              console.log(`💡 Proceeding immediately with cookie-less methods (faster)`);
+              break;
+            }
             console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookies...`);
-            // Continue trying (don't break)
+            // Continue trying only if we have at least 1 cookie
           }
         }
         
@@ -1408,8 +1414,16 @@ async function generateAndTestCookies(maxAttempts = 100) {
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
-        // 🔥 FAST FAIL: If 5 consecutive failures, skip cookie generation and use cookie-less
-        if (consecutiveFailures >= 5) {
+        // 🔥 FAST FAIL: If 3 consecutive failures in Phase 1, stop immediately
+        if (consecutiveFailures >= 3 && inPhase1 && strongCookiesFound === 0) {
+          console.log(`\n⚠️ Fast fail: ${consecutiveFailures} consecutive failures in Phase 1 with 0 cookies - stopping immediately`);
+          console.log(`💡 Proceeding with cookie-less methods (faster)`);
+          console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
+          break;
+        }
+        
+        // 🔥 FAST FAIL: If 5 consecutive failures in Phase 2, stop
+        if (consecutiveFailures >= 5 && !inPhase1) {
           console.log(`\n⚠️ Fast fail: ${consecutiveFailures} consecutive failures - skipping cookie generation`);
           console.log(`💡 Proceeding with cookie-less methods (faster)`);
           console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
