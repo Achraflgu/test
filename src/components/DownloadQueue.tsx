@@ -149,20 +149,20 @@ export const DownloadQueue = () => {
             } else if (data.progress !== undefined) {
               // Single track progress format (progress: 100)
               progress = data.progress;
-              // If progress is 100, mark as completed
-              if (data.progress === 100 && data.status === 'completed') {
-                completedTracks = Math.max(completedTracks, 1);
-                totalTracks = Math.max(totalTracks, 1);
+              // If progress is 100 OR status is completed, mark as completed
+              if (data.progress === 100 || data.status === 'completed') {
+                completedTracks = 1;
+                totalTracks = 1;
               }
             } else if (data.status === 'completed') {
               // If status is completed but no progress, assume 100%
               progress = 100;
-              completedTracks = Math.max(completedTracks, 1);
-              totalTracks = Math.max(totalTracks, 1);
+              completedTracks = 1;
+              totalTracks = totalTracks || 1;
             }
             
-            // Update status - if completed, mark as completed
-            const newStatus = data.status === 'completed' ? 'completed' : (progress === 100 ? 'completed' : 'downloading');
+            // Update status - if completed, mark as completed (check both status and progress)
+            const newStatus = (data.status === 'completed' || progress === 100) ? 'completed' : 'downloading';
             
             return {
               ...d,
