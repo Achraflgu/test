@@ -1350,9 +1350,15 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   console.log(`\n🚨 CRITICAL: All ${cookies.length} cookies in pool failed with bot detection!`);
   console.log(`📊 Bot detection failures: ${botDetectionCount}/${cookies.length}`);
   
-  // If most/all cookies failed with bot detection, regenerate entire pool
-  if (botDetectionCount >= Math.floor(cookies.length * 0.8)) { // 80%+ failed with bot detection
-    console.log(`🔄 Regenerating ENTIRE cookie pool (${botDetectionCount}/${cookies.length} had bot detection)...`);
+  // Track cookie pool regeneration attempts to avoid infinite loops
+  const MAX_REGENERATION_CYCLES = 2; // Only regenerate pool twice
+  const cookieFailureKey = 'cookie_pool_regeneration_cycles';
+  const failureCount = global[cookieFailureKey] || 0;
+  
+  // If most/all cookies failed with bot detection, regenerate entire pool (but limit cycles)
+  if (botDetectionCount >= Math.floor(cookies.length * 0.8) && failureCount < MAX_REGENERATION_CYCLES) {
+    global[cookieFailureKey] = failureCount + 1;
+    console.log(`🔄 Regenerating ENTIRE cookie pool (${botDetectionCount}/${cookies.length} had bot detection, cycle ${failureCount + 1}/${MAX_REGENERATION_CYCLES})...`);
     
     // Clear existing pool
     try {
@@ -1383,6 +1389,7 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
           const result = await operation(freshCookies[0].path);
           if (result !== false && result !== null) {
             recordCookieSuccess(freshCookies[0].index);
+            global[cookieFailureKey] = 0; // Reset on success
             console.log(`  ✅ Fresh cookie worked!`);
             return result;
           }
@@ -1392,12 +1399,28 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
       }
     } else {
       console.log(`  ❌ Failed to generate new cookie pool!`);
-      console.log(`  💡 Consider using real browser cookies from your YouTube account`);
     }
+  } else if (failureCount >= MAX_REGENERATION_CYCLES) {
+    console.log(`  ⚠️ Cookie pool regeneration limit reached (${MAX_REGENERATION_CYCLES} cycles)`);
+    console.log(`  🔄 Switching to COOKIE-LESS mode - using client types that don't require cookies`);
+    console.log(`  💡 Consider using real browser cookies from your YouTube account for better reliability`);
   }
   
-  // All cookies failed (and regeneration didn't help or wasn't triggered)
-  console.log(`  ❌ Cookie rotation exhausted - all attempts failed`);
+  // All cookies failed (and regeneration didn't help or limit reached)
+  console.log(`  ❌ Cookie rotation exhausted - falling back to cookie-less methods`);
+  
+  // Try operation WITHOUT cookies (cookie-less mode)
+  console.log(`  🔄 Attempting operation without cookies (cookie-less client types)...`);
+  try {
+    const result = await operation(null); // null = no cookies
+    if (result !== false && result !== null) {
+      console.log(`  ✅ Cookie-less operation succeeded!`);
+      return result;
+    }
+  } catch (noCookieErr) {
+    console.log(`  ⚠️ Cookie-less attempt also failed: ${noCookieErr.message}`);
+  }
+  
   return null;
 }
 
@@ -5426,11 +5449,18 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     }
     
     // Get cookie path if not provided
-    if (!cookiePath) {
+    // Note: cookiePath can be explicitly null (cookie-less mode)
+    if (cookiePath === null) {
+      // Cookie-less mode - skip cookie setup entirely
+      console.log(`  🚫 Cookie-less mode - using client types that don't require cookies`);
+    } else if (!cookiePath) {
+      // Try to get cookies (but don't fail if unavailable)
       const cookieSetup = await setupYouTubeCookies();
       if (cookieSetup && cookieSetup.type === 'file') {
         cookiePath = cookieSetup.path;
         console.log(`  🍪 Using cookies: ${path.basename(cookiePath)}`);
+      } else {
+        console.log(`  ⚠️ No cookies available - will try cookie-less methods`);
       }
     } else {
       console.log(`  🍪 Using provided cookie: ${path.basename(cookiePath)}`);
