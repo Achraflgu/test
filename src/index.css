@@ -165,6 +165,9 @@ All colors MUST be HSL.
 }
 
 @layer utilities {
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
   .hover-scale {
     @apply transition-transform duration-300 ease-out hover:scale-[1.02];
   }

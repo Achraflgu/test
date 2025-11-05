@@ -1219,16 +1219,25 @@ async function generateAndTestCookies(maxAttempts = 100) {
   if (isGeneratingCookies && cookieGenerationPromise) {
     console.log('  ⏳ Cookie generation already in progress, waiting for completion...');
     
-    // Wait for generation with a timeout (don't block downloads forever)
+    // Wait for generation with a shorter timeout (don't block downloads forever)
+    // Reduced from 120s to 30s to allow downloads to proceed faster
     try {
       const result = await Promise.race([
         cookieGenerationPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Cookie generation timeout')), 120000)) // 2 min timeout
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Cookie generation timeout')), 30000)) // 30s timeout
       ]);
       return result;
     } catch (err) {
-      console.log(`  ⚠️ Cookie generation timeout - proceeding without cookies`);
-      return null;
+      console.log(`  ⚠️ Cookie generation timeout - proceeding without waiting (generation continues in background)`);
+      // Don't return null - allow the generation to continue in background
+      // Return existing cookies instead
+      const existingCookies = await getWorkingCookiesFromPool();
+      return {
+        strongCookies: existingCookies.filter(c => c.quality === 'strong').length,
+        mediumCookies: existingCookies.filter(c => c.quality === 'medium').length,
+        totalCookies: existingCookies.length,
+        cookies: existingCookies
+      };
     }
   }
   
