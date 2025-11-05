@@ -859,9 +859,12 @@ async function getWorkingCookiesFromPool() {
         console.log(`  🍪 Loaded ${redisCookies.length} cookies from Redis`);
         // Also sync to filesystem for compatibility
         await initCookiePool();
+        // 🔥 FIX: Update path to filesystem path (not Redis key) - yt-dlp needs file path
         for (const cookie of redisCookies) {
           const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
           await fs.writeFile(cookiePath, cookie.content, 'utf8').catch(() => {});
+          // Update path to filesystem path (yt-dlp needs file path, not Redis key like "cookie_pool:0")
+          cookie.path = cookiePath;
         }
         return redisCookies;
       }
