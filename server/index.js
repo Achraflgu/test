@@ -1288,11 +1288,11 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       const startTime = Date.now();
-      // 🔥 CONSERVATIVE START: Begin with lower parallelism to avoid immediate rate limiting
-      let PARALLEL_TESTS = 2; // Start with 2 parallel tests (more conservative to avoid bot detection)
-      const MAX_BATCHES = 50; // Safety limit: max 50 batches
-      const MAX_TIME = 300000; // Safety limit: 5 minutes max (increased for slower generation)
-      const PHASE1_TIME = 120000; // Phase 1: Get 2-3 STRONG cookies (120s max, more time)
+      // 🔥 FAST FAIL: Start conservative but fail fast if cookies don't work
+      let PARALLEL_TESTS = 2; // Start with 2 parallel tests
+      const MAX_BATCHES = 10; // Reduced: Only 10 batches (fail fast if not working)
+      const MAX_TIME = 60000; // Reduced: 1 minute max (fail fast)
+      const PHASE1_TIME = 30000; // Reduced: 30s for Phase 1 (fail fast if no cookies work)
       
       // 🎯 HYBRID ADAPTIVE STRATEGY
       const MIN_STRONG_FOR_OPERATION = 2; // System can work with 2 strong cookies
@@ -1337,10 +1337,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
           consecutiveFailures = 0; // Reset counter after reducing
         }
         
-        // 🔥 ULTRA CONSERVATIVE: If still failing, add longer delays
+        // 🔥 FAST FAIL: Shorter delays if failing
         if (consecutiveFailures >= 3) {
-          // Already at 1, but add longer delay
-          const delay = Math.min(10000, consecutiveFailures * 2000); // Up to 10s delay
+          // Reduced delay: max 3s instead of 10s
+          const delay = Math.min(3000, consecutiveFailures * 1000);
           console.log(`  ⏳ Heavy rate limiting - waiting ${delay/1000}s before next attempt...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -1400,12 +1400,20 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
         console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
-        // 🔥 RATE LIMITING: Add exponential backoff between batches if failures
+        // 🔥 FAST FAIL: Shorter delays, fail fast if all cookies fail
         if (consecutiveFailures >= 1 && batch > 1) {
-          // Exponential backoff: 3s, 6s, 9s, 12s, 15s (max 15s)
-          const delay = Math.min(15000, 3000 + (consecutiveFailures - 1) * 3000);
+          // Reduced delays: 1s, 2s, 3s, 4s (max 4s) - fail fast
+          const delay = Math.min(4000, 1000 + (consecutiveFailures - 1) * 1000);
           console.log(`  ⏳ Rate limiting detected (${consecutiveFailures} consecutive failures) - waiting ${delay/1000}s before next batch...`);
           await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        // 🔥 FAST FAIL: If 5 consecutive failures, skip cookie generation and use cookie-less
+        if (consecutiveFailures >= 5) {
+          console.log(`\n⚠️ Fast fail: ${consecutiveFailures} consecutive failures - skipping cookie generation`);
+          console.log(`💡 Proceeding with cookie-less methods (faster)`);
+          console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
+          break;
         }
         
         // Generate multiple cookie sets in parallel
@@ -1563,10 +1571,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
           console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
-        // Adaptive delay: Exponential backoff based on failures (rate limiting)
-        let batchDelay = 1000; // Base 1s delay
+        // Adaptive delay: Reduced delays for faster failure
+        let batchDelay = 500; // Reduced base delay: 0.5s
         if (consecutiveFailures >= 1) {
-          batchDelay = Math.min(8000, 2000 + (consecutiveFailures * 1500)); // 2s, 3.5s, 5s, 6.5s, 8s max
+          batchDelay = Math.min(2000, 500 + (consecutiveFailures * 300)); // 0.5s, 0.8s, 1.1s, 1.4s, 1.7s, 2s max
         }
         if (cookiesFound < cookiesNeeded) {
           await new Promise(resolve => setTimeout(resolve, batchDelay));
@@ -1643,8 +1651,8 @@ async function regenerateSingleCookie(slotIndex) {
     const PARALLEL_GENERATION = recentFailures > 5 ? 1 : (recentFailures > 2 ? 1 : 2); // Start with 2, reduce to 1 quickly
     let attempts = 0;
     const maxAttempts = 30;
-    // Exponential backoff: 5s → 10s → 15s → 20s (max 20s)
-    const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 20000 : (recentFailures > 5 ? 15000 : (recentFailures > 2 ? 10000 : 5000));
+    // Reduced delays: 1s → 2s → 3s (max 3s) - fail fast
+    const DELAY_BETWEEN_BATCHES = recentFailures > 5 ? 3000 : (recentFailures > 2 ? 2000 : 1000);
     
     while (attempts < maxAttempts) {
       attempts += PARALLEL_GENERATION;
@@ -1679,13 +1687,20 @@ async function regenerateSingleCookie(slotIndex) {
       const results = await Promise.all(generationPromises);
       const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
       
-      // 🔥 RATE LIMITING: If all cookies failed, wait with exponential backoff
+      // 🔥 FAST FAIL: Reduced delays, fail fast if cookies don't work
       if (strongCookies.length === 0 && attempts < maxAttempts) {
         const failureCount = global['cookie_regeneration_failures'] || 0;
-        const exponentialDelay = Math.min(20000, 5000 + (failureCount * 2000)); // 5s → 7s → 9s → 11s → 13s → 15s → 17s → 19s → 20s max
-        console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${exponentialDelay/1000}s (exponential backoff) before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, exponentialDelay));
+        // Reduced delays: 1s → 1.5s → 2s → 2.5s → 3s max
+        const fastDelay = Math.min(3000, 1000 + (failureCount * 500));
+        console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${fastDelay/1000}s before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, fastDelay));
         global['cookie_regeneration_failures'] = failureCount + PARALLEL_GENERATION;
+        
+        // 🔥 FAST FAIL: If 5 consecutive failures, stop trying
+        if (failureCount >= 5) {
+          console.log(`  ⚠️ Fast fail: Too many failures - stopping cookie regeneration`);
+          break;
+        }
       } else if (strongCookies.length > 0) {
         // Reset failure counter on success
         global['cookie_regeneration_failures'] = 0;
