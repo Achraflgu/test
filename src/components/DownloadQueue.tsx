@@ -57,7 +57,7 @@ export const DownloadQueue = () => {
         folderName,
         status: 'queued',
         progress: 0,
-        totalTracks,
+        totalTracks: totalTracks || 1, // Ensure at least 1 for single tracks
         completedTracks: 0,
         startedAt: new Date().toISOString()
       };
@@ -99,7 +99,7 @@ export const DownloadQueue = () => {
         );
       });
 
-      // Also listen for download status updates (which includes start)
+      // Also listen for download status updates (which includes start and completion)
       socket.on('download:status', (data: any) => {
         if (data.status === 'started' || data.status === 'processing') {
           handleDownloadStart(
@@ -107,6 +107,27 @@ export const DownloadQueue = () => {
             data.folderName || data.outputFolder || 'Unknown',
             data.totalTracks || 0
           );
+        } else if (data.status === 'completed') {
+          // Handle completion via download:status event (for single track downloads)
+          console.log('✅ Download completed via download:status:', data);
+          setDownloads(prev => prev.map(d => {
+            if (d.downloadId === data.downloadId) {
+              return {
+                ...d,
+                status: 'completed',
+                progress: 100,
+                completedTracks: d.completedTracks || 1,
+                totalTracks: d.totalTracks || 1,
+                completedAt: new Date().toISOString()
+              };
+            }
+            return d;
+          }));
+          setActiveDownloads(prev => {
+            const next = new Set(prev);
+            next.delete(data.downloadId);
+            return next;
+          });
         }
       });
 
@@ -133,18 +154,37 @@ export const DownloadQueue = () => {
                 completedTracks = Math.max(completedTracks, 1);
                 totalTracks = Math.max(totalTracks, 1);
               }
+            } else if (data.status === 'completed') {
+              // If status is completed but no progress, assume 100%
+              progress = 100;
+              completedTracks = Math.max(completedTracks, 1);
+              totalTracks = Math.max(totalTracks, 1);
             }
+            
+            // Update status - if completed, mark as completed
+            const newStatus = data.status === 'completed' ? 'completed' : (progress === 100 ? 'completed' : 'downloading');
             
             return {
               ...d,
-              status: data.status === 'completed' ? 'completed' : 'downloading',
+              status: newStatus,
               progress: Math.max(d.progress, progress), // Don't go backwards
               completedTracks,
-              totalTracks
+              totalTracks,
+              // Set completedAt if status is completed
+              completedAt: newStatus === 'completed' && !d.completedAt ? new Date().toISOString() : d.completedAt
             };
           }
           return d;
         }));
+        
+        // If progress event indicates completion, also remove from active downloads
+        if (data.status === 'completed' || (data.progress === 100 && data.status === 'completed')) {
+          setActiveDownloads(prev => {
+            const next = new Set(prev);
+            next.delete(data.downloadId);
+            return next;
+          });
+        }
       });
 
       // Track download completion
