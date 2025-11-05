@@ -510,11 +510,29 @@ export const DownloadQueue = () => {
                           </Button>
                         </div>
                       </div>
-                      <div className="space-y-1">
-                        <Progress value={download.progress} className="h-1.5" />
+                      <div className="space-y-1.5">
+                        <div className="relative overflow-hidden rounded-full">
+                          <Progress value={download.progress} className="h-2 bg-muted/50" />
+                          {/* Animated gradient overlay for active downloads */}
+                          {download.status === 'downloading' && download.progress > 0 && (
+                            <div 
+                              className="absolute inset-0 bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 rounded-full"
+                              style={{ width: `${download.progress}%`, transition: 'width 0.3s ease-out' }}
+                            />
+                          )}
+                          {/* Shimmer effect during download */}
+                          {download.status === 'downloading' && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer rounded-full" />
+                          )}
+                        </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{download.completedTracks}/{download.totalTracks} tracks</span>
-                          <span className="font-medium">{download.progress}%</span>
+                          <span className="flex items-center gap-1.5">
+                            {download.status === 'downloading' && (
+                              <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
+                            )}
+                            {download.completedTracks}/{download.totalTracks} tracks
+                          </span>
+                          <span className="font-semibold text-primary">{download.progress}%</span>
                         </div>
                       </div>
                     </div>
