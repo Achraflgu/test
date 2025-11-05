@@ -216,13 +216,17 @@ export const DownloadQueue = () => {
                                progress === 100;
             const newStatus = isCompleted ? 'completed' : 'downloading';
             
-            console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${progress}%`);
+            // Ensure progress doesn't go backwards and is clamped to valid range
+            const finalProgress = Math.min(Math.max(d.progress, progress), 100);
+            const finalCompletedTracks = Math.min(completedTracks, totalTracks);
+            
+            console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${finalProgress}%, ${d.completedTracks}/${d.totalTracks} → ${finalCompletedTracks}/${totalTracks}`);
             
             return {
               ...d,
               status: newStatus,
-              progress: Math.max(d.progress, progress), // Don't go backwards
-              completedTracks,
+              progress: finalProgress,
+              completedTracks: finalCompletedTracks,
               totalTracks,
               // Set completedAt if status is completed
               completedAt: newStatus === 'completed' && !d.completedAt ? new Date().toISOString() : d.completedAt
