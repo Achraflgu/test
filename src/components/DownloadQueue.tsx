@@ -222,13 +222,16 @@ export const DownloadQueue = () => {
       return;
     }
 
-    // Create a temporary link and click it
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = `${folderName}.zip`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+    // Handle both full URL and relative path
+    let url = downloadUrl;
+    if (url && !url.startsWith('http')) {
+      // Relative path - prepend API URL
+      url = `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+
+    // Open in new window/tab for download
+    window.open(url, '_blank');
 
     toast.success('Download started!', {
       description: `Downloading ${folderName}.zip`
@@ -382,15 +385,21 @@ export const DownloadQueue = () => {
                           <span>{new Date(download.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         )}
                       </div>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full h-7 text-xs font-medium"
-                        onClick={() => handleDownload(download.downloadUrl!, download.folderName)}
-                      >
-                        <Download className="h-3 w-3 mr-1.5" />
-                        Download
-                      </Button>
+                      {download.downloadUrl ? (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="w-full h-7 text-xs font-medium bg-green-600 hover:bg-green-700"
+                          onClick={() => handleDownload(download.downloadUrl!, download.folderName)}
+                        >
+                          <Download className="h-3 w-3 mr-1.5" />
+                          Download Now
+                        </Button>
+                      ) : (
+                        <div className="text-xs text-muted-foreground text-center py-1">
+                          Processing...
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
