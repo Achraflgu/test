@@ -178,10 +178,11 @@ export const DownloadQueue = () => {
         }));
         
         // If progress event indicates completion, also remove from active downloads
-        if (data.status === 'completed' || (data.progress === 100 && data.status === 'completed')) {
+        if (data.status === 'completed' || data.progress === 100) {
           setActiveDownloads(prev => {
             const next = new Set(prev);
             next.delete(data.downloadId);
+            console.log(`✅ Removed ${data.downloadId} from active downloads (progress: ${data.progress}, status: ${data.status})`);
             return next;
           });
         }
