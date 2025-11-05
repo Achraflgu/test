@@ -255,7 +255,7 @@ export const DownloadQueue = () => {
   }
 
   return (
-    <Card className="fixed left-0 top-1/2 -translate-y-1/2 w-80 z-40 shadow-2xl border-l-4 border-l-primary/80 flex flex-col bg-gradient-to-br from-background via-background/95 to-background/90 backdrop-blur-xl rounded-r-2xl hover:shadow-primary/20 hover:border-l-primary transition-all duration-500 max-h-[600px] transform hover:translate-x-2 hover:scale-[1.02]">
+    <Card className="fixed left-4 bottom-24 w-80 z-40 shadow-2xl border-l-4 border-l-primary/80 flex flex-col bg-gradient-to-br from-background via-background/95 to-background/90 backdrop-blur-xl rounded-r-2xl hover:shadow-primary/20 hover:border-l-primary transition-all duration-500 max-h-[500px] transform hover:translate-x-2 hover:scale-[1.02]">
       <CardHeader className="pb-3 pt-4 px-4 border-b border-border/40 flex-shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-accent/5 backdrop-blur-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
