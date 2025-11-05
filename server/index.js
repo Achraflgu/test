@@ -252,14 +252,15 @@ async function setupYouTubeCookies() {
     const cookiesFilePath = path.join(__dirname, 'youtube_cookies.txt');
     const autoCookiesPath = path.join(__dirname, '.auto_generated_cookies.txt');
     
-    // ===== PRIORITY 1: Environment Variable (Best for deployment) =====
-    if (process.env.YOUTUBE_COOKIES) {
-      console.log('  🍪 Using cookies from YOUTUBE_COOKIES environment variable');
-      
-      // Write env cookies to temp file for yt-dlp
-      const tempCookiesPath = path.join(__dirname, '.temp_cookies.txt');
-      await fs.writeFile(tempCookiesPath, process.env.YOUTUBE_COOKIES, 'utf8');
-      return { type: 'file', path: tempCookiesPath };
+    // ===== PRIORITY 1: Cookie Pool (5 working cookies with rotation) =====
+    try {
+      const cookiePoolPath = await getNextCookieFromPool();
+      if (cookiePoolPath) {
+        console.log('  🍪 Using cookie from pool (smart rotation)');
+        return { type: 'file', path: cookiePoolPath };
+      }
+    } catch (err) {
+      console.log(`  ⚠️ Cookie pool unavailable: ${err.message}`);
     }
     
     // ===== PRIORITY 2: Cookie File (Works in all environments) =====
@@ -301,7 +302,6 @@ async function setupYouTubeCookies() {
     
     // ===== LAST RESORT: No cookies - will use ytdl-core without cookies =====
     console.log('  ⚠️ No cookies available - will try cookie-less methods');
-    console.log('  💡 TIP: Set YOUTUBE_COOKIES environment variable for better success rate');
     return null;
     
   } catch (error) {
@@ -1273,15 +1273,16 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
       // Operation failed but didn't throw - record failure
       recordCookieFailure(cookie.index);
     } catch (err) {
-      // Check if it's a bot detection error
+      // Check if it's a bot detection error (special error or error message)
       const errorMsg = err.message || err.toString() || '';
-      const isBotDetection = errorMsg.includes('Sign in to confirm') ||
+      const isBotDetection = errorMsg === 'COOKIE_BOT_DETECTION' ||
+                            errorMsg.includes('Sign in to confirm') ||
                             errorMsg.includes('LOGIN_REQUIRED') ||
                             errorMsg.includes("you're not a bot");
       
       if (isBotDetection) {
         recordCookieFailure(cookie.index);
-        console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - trying next...`);
+        console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - rotating to next cookie...`);
         
         // If 3 consecutive failures, mark for regeneration
         const stats = cookieStats.get(cookie.index);
@@ -1290,10 +1291,13 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
           // Regenerate in background (don't await)
           regenerateSingleCookie(cookie.index).catch(() => {});
         }
+        
+        // Continue to next cookie (don't throw - let it try next cookie)
+        continue;
       }
       
-      // Continue to next cookie
-      continue;
+      // For other errors, re-throw to let caller handle
+      throw err;
     }
   }
   
@@ -5291,7 +5295,7 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
@@ -5323,6 +5327,17 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       
       console.log(`  📺 Video ID: ${videoId}`);
       console.log(`  🔄 Starting download...`);
+    }
+    
+    // Get cookie path if not provided
+    if (!cookiePath) {
+      const cookieSetup = await setupYouTubeCookies();
+      if (cookieSetup && cookieSetup.type === 'file') {
+        cookiePath = cookieSetup.path;
+        console.log(`  🍪 Using cookies: ${path.basename(cookiePath)}`);
+      }
+    } else {
+      console.log(`  🍪 Using provided cookie: ${path.basename(cookiePath)}`);
     }
     
     // Create safe filename (removes "Unknown Artist" prefix)
@@ -5359,6 +5374,11 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       verbose: true,  // ✅ OPTION B: Enable verbose logging
       print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
     };
+    
+    // Add cookies if available
+    if (cookiePath) {
+      downloadOptions.cookies = cookiePath;
+    }
     
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
@@ -5489,9 +5509,10 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     }
     
     if (hasBotDetectionError) {
-      console.log('  🚨 Bot detection error detected in youtube-dl-exec - regenerating cookies...');
-      await markCookiesAsFailed();
-      await regenerateCookiesOnFailure();
+      console.log('  🚨 Bot detection error detected - cookie may be dead');
+      // Don't regenerate here - let smartRetryWithCookies handle rotation
+      // Return special value to indicate cookie failure (caller should try next cookie)
+      throw new Error('COOKIE_BOT_DETECTION'); // Special error for cookie rotation
     }
     
     return false;
@@ -5905,9 +5926,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     // ====================================
     // 🆕 TRY METHOD 1: youtube-dl-exec (Cookie-less, GitHub) ⭐ ALWAYS FIRST!
     // ====================================
-    // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct)
+    // Try youtube-dl-exec for ALL tracks (Spotify search + YouTube direct) with smart cookie rotation
     if (attemptNumber < 6) { // Increased attempts for better success
-      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper)...`);
+      console.log(`\n🎯 METHOD 1: Trying youtube-dl-exec (GitHub wrapper) with cookie rotation...`);
       
       // For Spotify tracks without YouTube URL, use search format
       if (!track.url || track.url.includes('spotify.com')) {
@@ -5923,54 +5944,49 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         track.isSpotifySearch = true;
         track.searchTerm = searchTerm;
         
-        try {
-          const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
-          if (ytdlExecSuccess) {
-            console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
-            successCount++;
-            
-            // Mark cookies as working (if auto-generated cookies were used)
-            await markCookiesAsWorking();
-            
-            socket.emit('download:progress', {
-              downloadId,
-              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: 'completed',
-              progress: 100,
-              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
-            });
-            
-            return; // Success! No need to try other methods
-          }
-        } catch (err) {
-          console.log(`  ⚠️ youtube-dl-exec search failed: ${err.message}`);
+        // Use smart cookie rotation
+        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath) => {
+          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath);
+        }, 5);
+        
+        if (ytdlExecSuccess) {
+          console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+          });
+          
+          // Restore original URL before returning
+          track.url = originalUrl;
+          return; // Success! No need to try other methods
         }
         
         // Restore original URL
         track.url = originalUrl;
       } else if (track.url && track.url.includes('youtube.com')) {
-        // YouTube direct link
-        try {
-          const ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings);
-          if (ytdlExecSuccess) {
-            console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
-            successCount++;
-            
-            // Mark cookies as working (if auto-generated cookies were used)
-            await markCookiesAsWorking();
-            
-            socket.emit('download:progress', {
-              downloadId,
-              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: 'completed',
-              progress: 100,
-              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
-            });
-            
-            return; // Success! No need to try other methods
-          }
-        } catch (err) {
-          console.log(`  ⚠️ youtube-dl-exec failed: ${err.message}`);
+        // YouTube direct link - use smart cookie rotation
+        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath) => {
+          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath);
+        }, 5);
+        
+        if (ytdlExecSuccess) {
+          console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
+          successCount++;
+          
+          socket.emit('download:progress', {
+            downloadId,
+            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+          });
+          
+          return; // Success! No need to try other methods
         }
       }
     }
@@ -6145,10 +6161,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         youtubeLink
       ];
       
-      // 🔥 CRITICAL FIX: Try cookies first (env var > file > browser)
+      // 🔥 CRITICAL FIX: Use smart cookie rotation
       console.log(`\n🔧 Direct Link Download (Attempt ${attemptNumber + 1})`);
       
-      // Setup YouTube cookies (supports deployment environments)
+      // Setup YouTube cookies (will use cookie pool with smart rotation)
       try {
         const cookieSetup = await setupYouTubeCookies();
         if (cookieSetup) {
@@ -6211,10 +6227,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--ignore-errors'
       ];
       
-      // 🔥 CRITICAL FIX: Try cookies first (env var > file > browser)
+      // 🔥 CRITICAL FIX: Use smart cookie rotation
       console.log(`\n🔧 Search-based Download (Attempt ${attemptNumber + 1})`);
       
-      // Setup YouTube cookies (supports deployment environments)
+      // Setup YouTube cookies (will use cookie pool with smart rotation)
       try {
         const cookieSetup = await setupYouTubeCookies();
         if (cookieSetup) {
@@ -6617,12 +6633,25 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               }
               
               if (hasBotDetectionError) {
-                console.log('  🚨 Bot detection error confirmed - marking cookies as failed');
-                await markCookiesAsFailed();
-                
-                // Regenerate cookies if not already done
-                if (!cookieRegenerated) {
-                  await regenerateCookiesOnFailure();
+                console.log('  🚨 Bot detection error confirmed - cookie may be dead');
+                // Don't regenerate immediately - cookie pool will rotate to next cookie
+                // Mark cookie as failed (will be handled by cookie pool rotation)
+                const cookieIndex = ytdlpArgs.findIndex(arg => arg === '--cookies');
+                if (cookieIndex !== -1 && cookieIndex + 1 < ytdlpArgs.length) {
+                  const cookiePath = ytdlpArgs[cookieIndex + 1];
+                  const match = cookiePath.match(/cookie_(\d+)\.txt/);
+                  if (match) {
+                    const index = parseInt(match[1]);
+                    recordCookieFailure(index);
+                    console.log(`  ⚠️ Marked cookie ${index + 1} as failed - will rotate to next on retry`);
+                    
+                    // If 3 consecutive failures, mark for regeneration
+                    const stats = cookieStats.get(index);
+                    if (stats && stats.consecutiveFailures >= 3) {
+                      console.log(`  🔄 Cookie ${index + 1} has 3 consecutive failures - marking for regeneration`);
+                      regenerateSingleCookie(index).catch(() => {});
+                    }
+                  }
                 }
               }
               
