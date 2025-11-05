@@ -1136,62 +1136,36 @@ function generateRealisticYouTubeCookies(attempt = 0) {
     const timezones = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'America/Chicago'];
     const prefValue = `f4=${Math.floor(Math.random() * 100000000)}&tz=${timezones[Math.floor(Math.random() * timezones.length)]}&f6=40000000&f7=100`;
     
-    // 🎯 REALISTIC CONSENT with CURRENT DATE (critical!) - Format: YES+cb.YYYYMMDD-00-p0.en+FX+NNN
+    // 🎯 REALISTIC CONSENT with CURRENT DATE (critical!)
     const dateNow = new Date();
     const year = dateNow.getFullYear();
     const month = String(dateNow.getMonth() + 1).padStart(2, '0');
     const day = String(dateNow.getDate()).padStart(2, '0');
-    // More realistic consent format with proper region codes
-    const consentValue = `YES+cb.${year}${month}${day}-00-p0.en+FX+${Math.floor(Math.random() * 900) + 100}`;
+    const consentValue = `YES+cb.${year}${month}${day}-00-p0.en+FX+${Math.floor(Math.random() * 1000)}`;
     
-    // 🎯 PERSISTENT NID (Google tracking - stays consistent) - Base64-like format
+    // 🎯 PERSISTENT NID (Google tracking - stays consistent)
     if (!persistentNID) {
-      // NID format: More realistic, looks like base64 but specific pattern
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
       persistentNID = '';
-      // First 8 chars more structured, rest random
-      for (let i = 0; i < 8; i++) {
-        persistentNID += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      persistentNID += '=';
-      for (let i = 0; i < 23; i++) {
+      for (let i = 0; i < 32; i++) {
         persistentNID += chars.charAt(Math.floor(Math.random() * chars.length));
       }
     }
     
-    // Generate realistic session IDs with better structure
-    const generateSessionId = (length, prefix = '') => {
+    // Generate realistic session IDs
+    const generateSessionId = (length) => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-      let result = prefix;
-      // First few chars are more structured (like real sessions)
-      const structuredChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-      for (let i = 0; i < Math.min(4, length - prefix.length); i++) {
-        result += structuredChars.charAt(Math.floor(Math.random() * structuredChars.length));
-      }
-      // Rest random
-      for (let i = result.length; i < length; i++) {
+      let result = '';
+      for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return result;
     };
     
-    // Generate hex session (for HSID/SSID) - must start with specific pattern
-    const generateHexSession = (length, prefix = '') => {
-      const chars = '0123456789abcdef';
-      let result = prefix;
-      // Real HSID/SSID start with specific patterns
-      for (let i = result.length; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    };
-    
-    // Generate realistic APISID/SAPISID (base64-like but hex)
-    const generateApiSid = (length) => {
-      // These are typically longer and more structured
+    // Generate hex session (for HSID/SSID)
+    const generateHexSession = (length) => {
       const chars = '0123456789abcdef';
       let result = '';
-      // Group in 4s for readability (real cookies have patterns)
       for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
@@ -1212,19 +1186,18 @@ function generateRealisticYouTubeCookies(attempt = 0) {
 .youtube.com	TRUE	/	FALSE	${shortExpiry}	GPS	1
 
 # ⭐ Critical Google Auth Cookies (REQUIRED for real authentication)
-# These cookies must have related values (SID, HSID, SSID share patterns)
 .google.com	TRUE	/	TRUE	${longExpiry}	NID	${persistentNID}
 .google.com	TRUE	/	TRUE	${longExpiry}	SID	${generateHexSession(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	HSID	${generateHexSession(16, 'A')}
-.google.com	TRUE	/	TRUE	${longExpiry}	SSID	${generateHexSession(16, 'A')}
-.google.com	TRUE	/	TRUE	${longExpiry}	APISID	${generateApiSid(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	SAPISID	${generateApiSid(16)}
-.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PSID	${generateSessionId(40, 'g.')}
-.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PAPISID	${generateApiSid(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	HSID	A${generateHexSession(15)}
+.google.com	TRUE	/	TRUE	${longExpiry}	SSID	A${generateHexSession(15)}
+.google.com	TRUE	/	TRUE	${longExpiry}	APISID	${generateHexSession(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	SAPISID	${generateHexSession(16)}
+.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PSID	${generateSessionId(40)}
+.google.com	TRUE	/	TRUE	${longExpiry}	__Secure-3PAPISID	${generateHexSession(16)}
 
 # ⭐ YouTube Session & Privacy Cookies
 .youtube.com	TRUE	/	TRUE	${mediumExpiry}	LOGIN_INFO	AFmmF2swRgIhA${generateSessionId(15)}:${timestamp}
-.youtube.com	TRUE	/	FALSE	${shortExpiry}	__Secure-3PSIDCC	${generateSessionId(20, '1')}
+.youtube.com	TRUE	/	FALSE	${shortExpiry}	__Secure-3PSIDCC	${generateSessionId(20)}
 .youtube.com	TRUE	/	FALSE	${shortExpiry}	VISITOR_PRIVACY_METADATA	CgJVUxIA
 .youtube.com	TRUE	/	FALSE	${shortExpiry}	wide	1
 
@@ -1288,16 +1261,22 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       const startTime = Date.now();
-      // 🔥 FAST FAIL: Start conservative but fail fast if cookies don't work
-      let PARALLEL_TESTS = 2; // Start with 2 parallel tests
-      const MAX_BATCHES = 10; // Reduced: Only 10 batches (fail fast if not working)
-      const MAX_TIME = 60000; // Reduced: 1 minute max (fail fast)
-      const PHASE1_TIME = 30000; // Reduced: 30s for Phase 1 (fail fast if no cookies work)
+      let PARALLEL_TESTS = 3; // Start with 3 parallel tests (reduced from 5 to avoid rate limiting)
+      const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts)
+      const MAX_TIME = 180000; // Safety limit: 3 minutes max
+      const PHASE1_TIME = 90000; // Phase 1: Get 2-3 STRONG cookies quickly (90s max)
       
       // 🎯 HYBRID ADAPTIVE STRATEGY
       const MIN_STRONG_FOR_OPERATION = 2; // System can work with 2 strong cookies
       const TARGET_STRONG_COOKIES = 3; // Ideal: 3 strong cookies
       const TARGET_TOTAL_COOKIES = 5; // Final goal: 5 total
+      
+      // Add initial cooldown if we've been failing recently
+      if (global['cookie_regeneration_failures'] > 5) {
+        const cooldown = 10000 + Math.random() * 5000; // 10-15s cooldown
+        console.log(`  ⏳ Recent failures detected - cooling down for ${(cooldown/1000).toFixed(1)}s before starting...`);
+        await new Promise(resolve => setTimeout(resolve, cooldown));
+      }
       
       console.log(`🔄 Starting HYBRID ADAPTIVE cookie generation with ${PARALLEL_TESTS} parallel tests...`);
       console.log(`🎯 Strategy: Phase 1 (${PHASE1_TIME/1000}s): Get ${MIN_STRONG_FOR_OPERATION}-${TARGET_STRONG_COOKIES} STRONG cookies`);
@@ -1330,19 +1309,24 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const elapsed = Date.now() - startTime;
         const inPhase1 = elapsed < PHASE1_TIME && strongCookiesFound < MIN_STRONG_FOR_OPERATION;
         
-        // 🎯 ADAPTIVE: Reduce parallelism aggressively if failures detected
-        if (consecutiveFailures >= 2 && PARALLEL_TESTS > 1) {
-          PARALLEL_TESTS = 1;
-          console.log(`  🔧 Adaptive: Reduced to single cookie testing (rate limiting detected)`);
-          consecutiveFailures = 0; // Reset counter after reducing
+        // 🎯 ADAPTIVE: Reduce parallelism more aggressively if too many failures
+        if (consecutiveFailures >= 2 && PARALLEL_TESTS > 2) {
+          PARALLEL_TESTS = Math.max(2, PARALLEL_TESTS - 1);
+          console.log(`  🔧 Adaptive: Reduced parallelism to ${PARALLEL_TESTS} (rate limiting detected)`);
+          consecutiveFailures = 0; // Reset counter after reducing parallelism
         }
         
-        // 🔥 FAST FAIL: Shorter delays if failing
-        if (consecutiveFailures >= 3) {
-          // Reduced delay: max 3s instead of 10s
-          const delay = Math.min(3000, consecutiveFailures * 1000);
-          console.log(`  ⏳ Heavy rate limiting - waiting ${delay/1000}s before next attempt...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+        // 🔥 AGGRESSIVE: If all cookies in batch failed, reduce parallelism further
+        if (consecutiveFailures >= 3 && PARALLEL_TESTS > 2) {
+          PARALLEL_TESTS = 2;
+          console.log(`  🔧 Adaptive: Reduced parallelism to ${PARALLEL_TESTS} (rate limiting detected)`);
+          consecutiveFailures = 0; // Reset counter
+        }
+        if (consecutiveFailures >= 6 && PARALLEL_TESTS > 1) {
+          PARALLEL_TESTS = 1;
+          console.log(`  🔧 Adaptive: Reduced to single cookie testing (heavy rate limiting detected)`);
+          // Add longer delay between single tests
+          await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 3000));
         }
         
         // Safety check: Stop if we've exceeded batch limit
@@ -1371,14 +1355,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
             // Don't break - continue to Phase 2
           } else {
             console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION})`);
-            // 🔥 FAST FAIL: If Phase 1 failed with 0 cookies, stop immediately
-            if (strongCookiesFound === 0 && cookiesFound === 0) {
-              console.log(`❌ Fast fail: No cookies found in Phase 1 - stopping cookie generation`);
-              console.log(`💡 Proceeding immediately with cookie-less methods (faster)`);
-              break;
-            }
             console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookies...`);
-            // Continue trying only if we have at least 1 cookie
+            // Continue trying (don't break)
           }
         }
         
@@ -1406,28 +1384,15 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
         console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
-        // 🔥 FAST FAIL: Shorter delays, fail fast if all cookies fail
-        if (consecutiveFailures >= 1 && batch > 1) {
-          // Reduced delays: 1s, 2s, 3s, 4s (max 4s) - fail fast
-          const delay = Math.min(4000, 1000 + (consecutiveFailures - 1) * 1000);
-          console.log(`  ⏳ Rate limiting detected (${consecutiveFailures} consecutive failures) - waiting ${delay/1000}s before next batch...`);
+        // 🔥 RATE LIMITING: Add exponential backoff with jitter if many failures
+        if (consecutiveFailures >= 2 && batch > 1) {
+          // Exponential backoff: 2s, 4s, 8s, 15s, 20s max
+          const baseDelay = Math.min(20000, 2000 * Math.pow(2, Math.min(consecutiveFailures - 2, 4)));
+          // Add random jitter (0-3s) to make it less predictable
+          const jitter = Math.random() * 3000;
+          const delay = Math.floor(baseDelay + jitter);
+          console.log(`  ⏳ Rate limiting detected (${consecutiveFailures} consecutive failures) - waiting ${(delay/1000).toFixed(1)}s before next batch...`);
           await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        
-        // 🔥 FAST FAIL: If 3 consecutive failures in Phase 1, stop immediately
-        if (consecutiveFailures >= 3 && inPhase1 && strongCookiesFound === 0) {
-          console.log(`\n⚠️ Fast fail: ${consecutiveFailures} consecutive failures in Phase 1 with 0 cookies - stopping immediately`);
-          console.log(`💡 Proceeding with cookie-less methods (faster)`);
-          console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
-          break;
-        }
-        
-        // 🔥 FAST FAIL: If 5 consecutive failures in Phase 2, stop
-        if (consecutiveFailures >= 5 && !inPhase1) {
-          console.log(`\n⚠️ Fast fail: ${consecutiveFailures} consecutive failures - skipping cookie generation`);
-          console.log(`💡 Proceeding with cookie-less methods (faster)`);
-          console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
-          break;
         }
         
         // Generate multiple cookie sets in parallel
@@ -1585,13 +1550,16 @@ async function generateAndTestCookies(maxAttempts = 100) {
           console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
-        // Adaptive delay: Reduced delays for faster failure
-        let batchDelay = 500; // Reduced base delay: 0.5s
+        // Adaptive delay: Exponential backoff based on failures (rate limiting)
+        let batchDelay = 1000; // Base 1s delay
         if (consecutiveFailures >= 1) {
-          batchDelay = Math.min(2000, 500 + (consecutiveFailures * 300)); // 0.5s, 0.8s, 1.1s, 1.4s, 1.7s, 2s max
+          // Exponential: 2s, 4s, 8s, 15s max
+          batchDelay = Math.min(15000, 1000 * Math.pow(2, Math.min(consecutiveFailures, 4)));
+          // Add jitter to avoid synchronized patterns
+          batchDelay += Math.random() * 2000;
         }
         if (cookiesFound < cookiesNeeded) {
-          await new Promise(resolve => setTimeout(resolve, batchDelay));
+          await new Promise(resolve => setTimeout(resolve, Math.floor(batchDelay)));
         }
       }
       
@@ -1661,12 +1629,10 @@ async function regenerateSingleCookie(slotIndex) {
     const startTime = Date.now();
     // 🔥 REDUCE PARALLELISM: If all cookies are failing, reduce to 1-2 to avoid rate limits
     const recentFailures = global['cookie_regeneration_failures'] || 0;
-    // 🔥 ULTRA CONSERVATIVE: Start with 1, only increase if we have success
-    const PARALLEL_GENERATION = recentFailures > 5 ? 1 : (recentFailures > 2 ? 1 : 2); // Start with 2, reduce to 1 quickly
+    const PARALLEL_GENERATION = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : 3); // Adaptive: 3→2→1
     let attempts = 0;
-    const maxAttempts = 30;
-    // Reduced delays: 1s → 2s → 3s (max 3s) - fail fast
-    const DELAY_BETWEEN_BATCHES = recentFailures > 5 ? 3000 : (recentFailures > 2 ? 2000 : 1000);
+    const maxAttempts = 30; // Reduced from 50 to avoid long loops
+    const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
     
     while (attempts < maxAttempts) {
       attempts += PARALLEL_GENERATION;
@@ -1701,24 +1667,14 @@ async function regenerateSingleCookie(slotIndex) {
       const results = await Promise.all(generationPromises);
       const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
       
-      // 🔥 FAST FAIL: Reduced delays, fail fast if cookies don't work
+      // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
       if (strongCookies.length === 0 && attempts < maxAttempts) {
-        const failureCount = global['cookie_regeneration_failures'] || 0;
-        // Reduced delays: 1s → 1.5s → 2s → 2.5s → 3s max
-        const fastDelay = Math.min(3000, 1000 + (failureCount * 500));
-        console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${fastDelay/1000}s before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, fastDelay));
-        global['cookie_regeneration_failures'] = failureCount + PARALLEL_GENERATION;
-        
-        // 🔥 FAST FAIL: If 5 consecutive failures, stop trying
-        if (failureCount >= 5) {
-          console.log(`  ⚠️ Fast fail: Too many failures - stopping cookie regeneration`);
-          break;
-        }
+        console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${DELAY_BETWEEN_BATCHES/1000}s before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+        global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + PARALLEL_GENERATION;
       } else if (strongCookies.length > 0) {
         // Reset failure counter on success
         global['cookie_regeneration_failures'] = 0;
-        console.log(`  ✅ Success! Reset failure counter (found ${strongCookies.length} STRONG cookie(s))`);
       }
       
       if (strongCookies.length > 0) {
