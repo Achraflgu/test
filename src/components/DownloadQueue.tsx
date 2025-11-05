@@ -354,6 +354,18 @@ export const DownloadQueue = () => {
           });
         }
       });
+    };
+    
+    // Set up listeners immediately if socket is connected, otherwise wait for connection
+    if (socket.connected) {
+      console.log('🔌 DownloadQueue: Socket already connected, setting up listeners');
+      setupSocketListeners();
+    } else {
+      console.log('🔌 DownloadQueue: Socket not connected yet, waiting for connection...');
+      socket.on('connect', () => {
+        console.log('🔌 DownloadQueue: Socket connected, setting up listeners');
+        setupSocketListeners();
+      });
     }
 
     return () => {
@@ -363,6 +375,8 @@ export const DownloadQueue = () => {
         socket.off('download:progress');
         socket.off('download:complete');
         socket.off('download:error');
+        socket.off('download:track');
+        socket.off('connect');
       }
       window.removeEventListener('download:queue:start', handleQueueStart);
     };
