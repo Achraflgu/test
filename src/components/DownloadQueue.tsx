@@ -176,7 +176,8 @@ export const DownloadQueue = () => {
             
             // Update status - if completed, mark as completed (check both status and progress)
             // ALWAYS mark as completed if progress is 100 OR status is completed
-            const newStatus = (data.status === 'completed' || progress === 100 || data.status === 'completed') ? 'completed' : 'downloading';
+            const isCompleted = data.status === 'completed' || progress === 100;
+            const newStatus = isCompleted ? 'completed' : 'downloading';
             
             console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${progress}%`);
             
