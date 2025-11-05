@@ -705,7 +705,8 @@ async function testCookies(cookiePath) {
         const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
                                      errorOutput.includes('LOGIN_REQUIRED') ||
                                      errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot");
+                                     errorOutput.includes("you're not a bot") ||
+                                     errorOutput.includes('confirm you are not a bot');
         
         // If we have bot detection, definitely reject
         if (hasBotDetectionError) {
@@ -713,62 +714,41 @@ async function testCookies(cookiePath) {
           return;
         }
         
-        // If we got valid JSON with title/ID, definitely accept (best case)
+        // ✅ STRICT TEST: Only accept if we got valid JSON (exit code 0 + has title/ID)
+        // This ensures the cookie actually works, not just "doesn't show bot detection"
         if (code === 0 && (hasTitle || hasVideoId)) {
           console.log('  ✅ Cookie test PASSED (valid JSON)');
           resolve(true);
           return;
         }
         
-        // If process completed normally (we're here, so no bot detection was found)
-        // Accept cookies that complete without bot detection - they might work for downloads
-        // Even if test video fails, cookie might work for other videos
-        console.log('  ⚠️ Process completed, no bot detection - accepting (may work for downloads)');
-        resolve(true);
+        // ❌ REJECT: No valid JSON means cookie doesn't work
+        console.log('  ❌ Cookie test FAILED (no valid JSON, code: ' + code + ')');
+        resolve(false);
       });
       
       testProcess.on('error', (err) => {
         if (resolved) return;
         resolved = true;
         
-        // Check if error output shows bot detection
-        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
-                                     errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot");
-        
-        // Accept if no bot detection seen (process error != cookie error)
-        if (!hasBotDetectionError) {
-          console.log('  ⚠️ Process error but no bot detection - accepting');
-          resolve(true);
-        } else {
-          resolve(false);
-        }
+        // Any process error is a failure - cookie must work reliably
+        console.log('  ❌ Process error - rejecting cookie');
+        resolve(false);
       });
       
-      // Fast timeout for parallel testing (5s instead of 10s)
+      // Timeout: 10s for thorough testing
       setTimeout(() => {
         if (resolved) return;
         resolved = true;
-        
-        // Check if we saw bot detection errors before timeout
-        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
-                                     errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot");
         
         try {
           testProcess.kill('SIGKILL');
         } catch {}
         
-        // If timeout but NO bot detection seen, accept cookie (slow network != bad cookie)
-        if (!hasBotDetectionError) {
-          console.log('  ⚠️ Timeout but no bot detection - accepting (may work for downloads)');
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      }, 8000); // Increased to 8s - gives more time for response
+        // Timeout means cookie is too slow or doesn't work
+        console.log('  ❌ Timeout - rejecting cookie');
+        resolve(false);
+      }, 10000); // 10s timeout - gives time for valid cookies, rejects slow/broken ones
     });
   } catch (err) {
     return false;
@@ -1254,40 +1234,48 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   
   if (cookies.length === 0) {
     // No cookies available, just try operation once
+    console.log('  ⚠️ No cookies in pool - attempting without cookies');
     return await operation(null);
   }
+  
+  let botDetectionCount = 0; // Track how many cookies failed with bot detection
   
   // Try each cookie in priority order
   for (let attempt = 0; attempt < Math.min(cookies.length, maxRetries); attempt++) {
     const cookie = cookies[attempt];
     
     try {
+      console.log(`  🍪 Trying cookie ${cookie.index + 1}/${cookies.length} (${path.basename(cookie.path)})...`);
       const result = await operation(cookie.path);
       
       // Success! Record it
       if (result !== false && result !== null) {
         recordCookieSuccess(cookie.index);
+        console.log(`  ✅ Cookie ${cookie.index + 1} worked! Operation successful.`);
         return result;
       }
       
       // Operation failed but didn't throw - record failure
       recordCookieFailure(cookie.index);
+      console.log(`  ❌ Cookie ${cookie.index + 1} failed (returned false/null)`);
     } catch (err) {
       // Check if it's a bot detection error (special error or error message)
       const errorMsg = err.message || err.toString() || '';
       const isBotDetection = errorMsg === 'COOKIE_BOT_DETECTION' ||
                             errorMsg.includes('Sign in to confirm') ||
                             errorMsg.includes('LOGIN_REQUIRED') ||
-                            errorMsg.includes("you're not a bot");
+                            errorMsg.includes("you're not a bot") ||
+                            errorMsg.includes('confirm you are not a bot');
       
       if (isBotDetection) {
+        botDetectionCount++;
         recordCookieFailure(cookie.index);
         console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - rotating to next cookie...`);
         
         // If 3 consecutive failures, mark for regeneration
         const stats = cookieStats.get(cookie.index);
         if (stats && stats.consecutiveFailures >= 3) {
-          console.log(`  🔄 Cookie ${cookie.index + 1} has 3 consecutive failures - marking for regeneration`);
+          console.log(`  🔄 Cookie ${cookie.index + 1} has 3 consecutive failures - marking for background regeneration`);
           // Regenerate in background (don't await)
           regenerateSingleCookie(cookie.index).catch(() => {});
         }
@@ -1301,7 +1289,58 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
     }
   }
   
-  // All cookies failed
+  // 🚨 ALL COOKIES FAILED - This is critical!
+  console.log(`\n🚨 CRITICAL: All ${cookies.length} cookies in pool failed with bot detection!`);
+  console.log(`📊 Bot detection failures: ${botDetectionCount}/${cookies.length}`);
+  
+  // If most/all cookies failed with bot detection, regenerate entire pool
+  if (botDetectionCount >= Math.floor(cookies.length * 0.8)) { // 80%+ failed with bot detection
+    console.log(`🔄 Regenerating ENTIRE cookie pool (${botDetectionCount}/${cookies.length} had bot detection)...`);
+    
+    // Clear existing pool
+    try {
+      const poolDir = path.join(__dirname, '.cookie_pool');
+      const files = await fs.readdir(poolDir);
+      for (const file of files) {
+        if (file.startsWith('cookie_') && file.endsWith('.txt')) {
+          await fs.unlink(path.join(poolDir, file)).catch(() => {});
+        }
+      }
+      console.log(`  🗑️ Cleared ${files.length} old cookies from pool`);
+    } catch (err) {
+      console.log(`  ⚠️ Error clearing pool: ${err.message}`);
+    }
+    
+    // Regenerate entire pool (will generate 5 new cookies)
+    console.log(`  🔄 Generating ${COOKIE_POOL_SIZE} fresh cookies...`);
+    const newCookies = await generateAndTestCookies(100);
+    
+    if (newCookies) {
+      console.log(`  ✅ New cookie pool generated! Retrying operation with fresh cookies...`);
+      
+      // Retry operation with new cookies (recursive call, but only once)
+      const freshCookies = await getAllCookiesFromPool();
+      if (freshCookies.length > 0) {
+        console.log(`  🔄 Retrying with fresh cookie ${freshCookies[0].index + 1}...`);
+        try {
+          const result = await operation(freshCookies[0].path);
+          if (result !== false && result !== null) {
+            recordCookieSuccess(freshCookies[0].index);
+            console.log(`  ✅ Fresh cookie worked!`);
+            return result;
+          }
+        } catch (retryErr) {
+          console.log(`  ⚠️ Fresh cookie also failed: ${retryErr.message}`);
+        }
+      }
+    } else {
+      console.log(`  ❌ Failed to generate new cookie pool!`);
+      console.log(`  💡 Consider using real browser cookies from your YouTube account`);
+    }
+  }
+  
+  // All cookies failed (and regeneration didn't help or wasn't triggered)
+  console.log(`  ❌ Cookie rotation exhausted - all attempts failed`);
   return null;
 }
 
@@ -6835,6 +6874,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                                            (errorLower.includes('please sign in to continue') && !errorLower.includes('age') && !errorLower.includes('inappropriate'))
                                           );
               
+              // 🔥 PRIORITY: Handle age-restriction first (try alternatives)
               if (hasAgeRestricted) {
                 console.log('  🔒 Age-restricted detected in direct URL fallback - searching for alternative...');
                 const alternativeUrl = await findAlternativeVideo(track, outputFolder);
@@ -6882,6 +6922,34 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                   }
                 }
               }
+              
+              // 🚨 Handle bot detection (mark cookie as failed, trigger regeneration)
+              if (hasBotDetectionError) {
+                console.log('  🚨 Bot detection in direct URL fallback - marking cookie as failed');
+                
+                // Find which cookie was used
+                const cookieArgIndex = ytdlpArgs.findIndex(arg => arg === '--cookies');
+                if (cookieArgIndex !== -1 && cookieArgIndex + 1 < ytdlpArgs.length) {
+                  const usedCookiePath = ytdlpArgs[cookieArgIndex + 1];
+                  const cookieFileName = path.basename(usedCookiePath);
+                  
+                  // Extract cookie index (e.g., "cookie_2.txt" -> 2)
+                  const match = cookieFileName.match(/cookie_(\d+)\.txt/);
+                  if (match) {
+                    const cookieIndex = parseInt(match[1]);
+                    console.log(`  🔄 Marking cookie ${cookieIndex + 1} as failed (bot detection)`);
+                    recordCookieFailure(cookieIndex);
+                    
+                    // Check if needs regeneration (3+ failures)
+                    const stats = cookieStats.get(cookieIndex);
+                    if (stats && stats.consecutiveFailures >= 3) {
+                      console.log(`  🔄 Cookie ${cookieIndex + 1} has ${stats.consecutiveFailures} failures - triggering regeneration`);
+                      regenerateSingleCookie(cookieIndex).catch(() => {});
+                    }
+                  }
+                }
+              }
+              
               resolve('failed');
             }
           });
