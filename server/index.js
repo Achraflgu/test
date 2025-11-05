@@ -6670,6 +6670,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
   };
   
+  // Track completed count for incremental progress
+  let completedCount = tracks.length - failedTracks.length; // Start with already downloaded tracks
+  const totalTracks = tracks.length;
+  
   // Helper function to download a single track
   const downloadSingleTrack = async (track) => {
     // Log output folder for this track to ensure consistency
@@ -6760,12 +6764,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
             successCount++;
             
+            completedCount++;
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: 'completed',
-              progress: 100,
-              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+              status: completedCount >= totalTracks ? 'completed' : 'downloading',
+              progress: Math.round((completedCount / totalTracks) * 100),
+              completed: completedCount,
+              totalTracks: totalTracks,
+              message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
             });
             
           // Restore original URL before returning
@@ -6785,12 +6792,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
             successCount++;
             
+            completedCount++;
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: 'completed',
-              progress: 100,
-              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+              status: completedCount >= totalTracks ? 'completed' : 'downloading',
+              progress: Math.round((completedCount / totalTracks) * 100),
+              completed: completedCount,
+              totalTracks: totalTracks,
+              message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
             });
             
             return; // Success! No need to try other methods
@@ -6809,12 +6819,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           console.log(`✅ YouTubei.js SUCCESS: ${track.name}`);
           successCount++;
           
+          completedCount++;
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via YouTubei.js: ${track.name}`
+            status: completedCount >= totalTracks ? 'completed' : 'downloading',
+            progress: Math.round((completedCount / totalTracks) * 100),
+            completed: completedCount,
+            totalTracks: totalTracks,
+            message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
           });
           
           return; // Success! No need to try other methods
@@ -6835,12 +6848,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           console.log(`✅ Piped API SUCCESS: ${track.name}`);
           successCount++;
           
+          completedCount++;
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via Piped API: ${track.name}`
+            status: completedCount >= totalTracks ? 'completed' : 'downloading',
+            progress: Math.round((completedCount / totalTracks) * 100),
+            completed: completedCount,
+            totalTracks: totalTracks,
+            message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
           });
           
           return; // Success! No need to try other methods
@@ -6861,12 +6877,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           console.log(`✅ Invidious API SUCCESS: ${track.name}`);
           successCount++;
           
+          completedCount++;
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via Invidious: ${track.name}`
+            status: completedCount >= totalTracks ? 'completed' : 'downloading',
+            progress: Math.round((completedCount / totalTracks) * 100),
+            completed: completedCount,
+            totalTracks: totalTracks,
+            message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
           });
           
           return; // Success! No need to try other methods
@@ -7605,12 +7624,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               if (fileExists) {
                 console.log(`✅ yt-dlp direct URL SUCCESS: ${track.name}`);
                 successCount++;
+                completedCount++;
                 socket.emit('download:progress', {
                   downloadId,
                   trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-                  status: 'completed',
-                  progress: 100,
-                  message: `✅ Downloaded via direct URL: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
+                  status: completedCount >= totalTracks ? 'completed' : 'downloading',
+                  progress: Math.round((completedCount / totalTracks) * 100),
+                  completed: completedCount,
+                  totalTracks: totalTracks,
+                  message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
                 });
                 resolve('success');
               } else {
@@ -7777,12 +7799,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               console.log(`✅ yt-dlp SEARCH SUCCESS: ${searchQuery}`);
               successCount++;
               
+              completedCount++;
               socket.emit('download:progress', {
                 downloadId,
                 trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-                status: 'completed',
-                progress: 100,
-                message: `✅ Downloaded via yt-dlp search: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
+                status: completedCount >= totalTracks ? 'completed' : 'downloading',
+                progress: Math.round((completedCount / totalTracks) * 100),
+                completed: completedCount,
+                totalTracks: totalTracks,
+                message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`}`
               });
             } else {
               console.log(`❌ yt-dlp SEARCH FAILED: ${searchQuery}`);

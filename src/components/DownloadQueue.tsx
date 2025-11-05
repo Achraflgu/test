@@ -171,33 +171,49 @@ export const DownloadQueue = () => {
             if (d.downloadId === data.downloadId) {
             // Handle both playlist progress (completed/totalTracks) and single track progress (progress: 100)
             let progress = d.progress; // Start with current progress
-            let completedTracks = d.completedTracks;
+            let completedTracks = d.completedTracks || 0;
             let totalTracks = d.totalTracks || 1;
             
-            // Check if status is completed FIRST - this takes priority
-            if (data.status === 'completed') {
-              progress = 100;
-              completedTracks = 1;
-              totalTracks = 1;
-            } else if (data.totalTracks > 0 && data.completed !== undefined) {
-              // Playlist progress format
+            // Priority 1: Check for playlist progress format (completed/totalTracks) - MOST ACCURATE
+            if (data.totalTracks > 0 && data.completed !== undefined) {
+              // Playlist progress format - use exact values from backend
+              completedTracks = data.completed;
+              totalTracks = data.totalTracks;
               progress = Math.round((data.completed / data.totalTracks) * 100);
-              completedTracks = data.completed || 0;
-              totalTracks = data.totalTracks || d.totalTracks || 1;
-            } else if (data.progress !== undefined) {
-              // Single track progress format (progress: 100)
-              progress = Math.max(d.progress, data.progress); // Update progress, don't go backwards
-              // If progress is 100, mark as completed
+            }
+            // Priority 2: Check if this is a single track completion event (increment counter)
+            else if (data.status === 'completed' && data.progress === 100 && totalTracks > 1) {
+              // Individual track completed in playlist - increment counter
+              completedTracks = Math.min((d.completedTracks || 0) + 1, totalTracks);
+              progress = Math.round((completedTracks / totalTracks) * 100);
+            }
+            // Priority 3: Single track download (progress: 100)
+            else if (data.progress !== undefined && totalTracks === 1) {
+              // Single track progress format
+              progress = Math.max(d.progress, data.progress);
               if (data.progress === 100) {
                 completedTracks = 1;
-                totalTracks = 1;
-                progress = 100; // Force to 100 if completed
+                progress = 100;
+              }
+            }
+            // Priority 4: Status is completed but no progress info
+            else if (data.status === 'completed') {
+              // Assume completion if status says so
+              if (totalTracks === 1) {
+                completedTracks = 1;
+                progress = 100;
+              } else {
+                // For playlists, only mark complete if we have all tracks
+                if (completedTracks >= totalTracks) {
+                  progress = 100;
+                }
               }
             }
             
-            // Update status - if completed, mark as completed (check both status and progress)
-            // ALWAYS mark as completed if progress is 100 OR status is completed
-            const isCompleted = data.status === 'completed' || progress === 100;
+            // Update status - mark as completed only when ALL tracks are done
+            const isCompleted = (completedTracks >= totalTracks && totalTracks > 1) || 
+                               (data.status === 'completed' && totalTracks === 1) ||
+                               progress === 100;
             const newStatus = isCompleted ? 'completed' : 'downloading';
             
             console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${progress}%`);
@@ -512,27 +528,34 @@ export const DownloadQueue = () => {
                       </div>
                       <div className="space-y-1.5">
                         <div className="relative overflow-hidden rounded-full">
-                          <Progress value={download.progress} className="h-2 bg-muted/50" />
+                          <Progress 
+                            value={download.progress} 
+                            className="h-2.5 bg-muted/50 transition-all duration-500 ease-out" 
+                          />
                           {/* Animated gradient overlay for active downloads */}
                           {download.status === 'downloading' && download.progress > 0 && (
                             <div 
-                              className="absolute inset-0 bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 rounded-full"
-                              style={{ width: `${download.progress}%`, transition: 'width 0.3s ease-out' }}
+                              className="absolute inset-0 bg-gradient-to-r from-primary/30 via-primary/50 to-primary/30 rounded-full transition-all duration-500 ease-out"
+                              style={{ width: `${download.progress}%` }}
                             />
                           )}
                           {/* Shimmer effect during download */}
-                          {download.status === 'downloading' && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer rounded-full" />
+                          {download.status === 'downloading' && download.progress > 0 && download.progress < 100 && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent animate-shimmer rounded-full" />
                           )}
                         </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
                             {download.status === 'downloading' && (
                               <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
                             )}
-                            {download.completedTracks}/{download.totalTracks} tracks
+                            <span className="font-medium">
+                              {download.completedTracks}/{download.totalTracks} tracks
+                            </span>
                           </span>
-                          <span className="font-semibold text-primary">{download.progress}%</span>
+                          <span className="font-bold text-primary transition-all duration-300">
+                            {download.progress}%
+                          </span>
                         </div>
                       </div>
                     </div>
