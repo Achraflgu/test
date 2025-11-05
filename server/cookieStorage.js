@@ -136,7 +136,19 @@ export async function loadCookieMetadataFromRedis() {
   
   try {
     const data = await redis.get(METADATA_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    
+    // Handle both string and already-parsed objects (Upstash may return either)
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch (parseErr) {
+        // If parsing fails, it might be stored incorrectly - return null
+        console.log(`  ⚠️ Invalid JSON in Redis metadata: ${parseErr.message}`);
+        return null;
+      }
+    }
+    return data; // Already parsed
   } catch (err) {
     console.log(`  ⚠️ Failed to load cookie metadata from Redis: ${err.message}`);
     return null;
@@ -162,7 +174,19 @@ export async function loadCookiePoolMetadataFromRedis() {
   
   try {
     const data = await redis.get(POOL_METADATA_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    
+    // Handle both string and already-parsed objects (Upstash may return either)
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch (parseErr) {
+        // If parsing fails, it might be stored incorrectly - return null
+        console.log(`  ⚠️ Invalid JSON in Redis pool metadata: ${parseErr.message}`);
+        return null;
+      }
+    }
+    return data; // Already parsed
   } catch (err) {
     console.log(`  ⚠️ Failed to load pool metadata from Redis: ${err.message}`);
     return null;

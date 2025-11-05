@@ -23,7 +23,8 @@ import {
   saveCookieMetadataToRedis,
   loadCookieMetadataFromRedis,
   saveCookiePoolMetadataToRedis,
-  loadCookiePoolMetadataFromRedis
+  loadCookiePoolMetadataFromRedis,
+  deleteCookieFromRedis
 } from './cookieStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1676,9 +1677,30 @@ async function validateCookiePool() {
     
     // Validate all cookies in parallel (fast 2s test each)
     const validationPromises = cookies.map(async (cookie) => {
-      const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-      const isValid = await quickValidateCookie(cookie.path, index);
-      return { index, path: cookie.path, isValid };
+      // Handle Redis cookies (have index property) or filesystem cookies (parse from path)
+      const index = cookie.index !== undefined ? cookie.index : parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      
+      // For Redis cookies, create temp file for validation
+      let cookiePath = cookie.path;
+      let isRedisCookie = false;
+      const tempFilesToCleanup = [];
+      
+      if (cookie.index !== undefined && cookie.content) {
+        // This is a Redis cookie - create temp file for validation
+        isRedisCookie = true;
+        cookiePath = path.join(__dirname, `.temp_validate_cookie_${index}_${Date.now()}.txt`);
+        await fs.writeFile(cookiePath, cookie.content, 'utf8');
+        tempFilesToCleanup.push(cookiePath);
+      }
+      
+      const isValid = await quickValidateCookie(cookiePath, index);
+      
+      // Clean up temp files
+      for (const tempFile of tempFilesToCleanup) {
+        await fs.unlink(tempFile).catch(() => {});
+      }
+      
+      return { index, path: cookie.path, content: cookie.content, isValid, isRedisCookie };
     });
     
     const results = await Promise.all(validationPromises);
@@ -1688,8 +1710,15 @@ async function validateCookiePool() {
     // Remove invalid cookies
     for (const invalid of invalidCookies) {
       try {
-        await fs.unlink(invalid.path);
-        console.log(`  ❌ Removed dead cookie (slot ${invalid.index + 1})`);
+        if (invalid.isRedisCookie && isRedisAvailable()) {
+          // Delete from Redis
+          await deleteCookieFromRedis(invalid.index);
+          console.log(`  ❌ Removed dead cookie from Redis (slot ${invalid.index + 1})`);
+        } else {
+          // Delete from filesystem
+          await fs.unlink(invalid.path);
+          console.log(`  ❌ Removed dead cookie (slot ${invalid.index + 1})`);
+        }
         cookieStats.delete(invalid.index);
       } catch {}
     }
@@ -1701,8 +1730,15 @@ async function validateCookiePool() {
     // Update primary cookie if needed
     if (validCookies.length > 0) {
       const primaryCookie = validCookies[0];
-      const content = await fs.readFile(primaryCookie.path, 'utf8');
+      // Use content if available (Redis cookie), otherwise read from path
+      const content = primaryCookie.content || await fs.readFile(primaryCookie.path, 'utf8');
       await fs.writeFile(AUTO_COOKIE_PATH, content, 'utf8');
+      
+      // Also save to Redis if available
+      if (isRedisAvailable()) {
+        await savePrimaryCookieToRedis(content);
+      }
+      
       console.log(`  💾 Updated primary cookie from pool`);
     }
     
