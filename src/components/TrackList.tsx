@@ -2380,6 +2380,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
+      // Emit download start event for queue tracking (single track)
+      const socketForSingle = getSocket();
+      if (socketForSingle && response.downloadId) {
+        socketForSingle.emit('download:queue:start', {
+          downloadId: response.downloadId,
+          folderName: trackToDownload.name || 'Track',
+          totalTracks: 1,
+          playlistName: playlistName || 'Single Track',
+          outputFolder: response.outputFolder
+        });
+      }
+      
       toast.info(`📁 Saving to: ${response.outputFolder}`);
     } catch (error: any) {
       // Don't touch global downloading state - it's for multi-track downloads only
@@ -2829,6 +2841,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
+      
+      // Emit download start event for queue tracking
+      const socket = getSocket();
+      if (socket && response.downloadId) {
+        socket.emit('download:queue:start', {
+          downloadId: response.downloadId,
+          folderName: folderName || playlistName || 'Download',
+          totalTracks: selectedTracks.length,
+          playlistName: playlistName || 'Unknown Playlist',
+          outputFolder: response.outputFolder
+        });
+      }
       
       // Dismiss init toast and show success
       toast.dismiss('download-init');

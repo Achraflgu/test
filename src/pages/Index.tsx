@@ -7,6 +7,7 @@ import { TrackList } from "@/components/TrackList";
 import { DownloadSettings } from "@/components/DownloadSettings";
 import { MusicSearch } from "@/components/MusicSearch";
 import SavedPlaylists, { savePlaylistToHistory } from "@/components/SavedPlaylists";
+import { DownloadQueue } from "@/components/DownloadQueue";
 import { Playlist, Track, DownloadSettings as DownloadSettingsType } from "@/types";
 import { checkHealth, getSocket } from "@/services/api";
 import {
@@ -960,6 +961,9 @@ const Index = () => {
           }
         }}
       />
+
+      {/* Download Queue Component */}
+      <DownloadQueue />
     </div>
   );
 };

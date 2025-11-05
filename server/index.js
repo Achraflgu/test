@@ -2124,7 +2124,7 @@ async function initializeAutoCookies() {
       return cookiePath;
     } else {
       console.log('⚠️ Failed to generate working cookies, will use cookie-less methods');
-      return null;
+    return null;
     }
   } catch (err) {
     console.log(`⚠️ Failed to initialize auto-cookies: ${err.message}`);
@@ -5260,14 +5260,14 @@ app.post('/api/download/cancel', (req, res) => {
           console.log(`  🔪 Killing process ${index + 1}/${processes.length} (${processType}, track: ${trackId})`);
           process.kill('SIGTERM');
           console.log(`  ✅ SIGTERM sent to process ${index + 1}`);
-          // Force kill after 2 seconds if not terminated
-          setTimeout(() => {
+      // Force kill after 2 seconds if not terminated
+      setTimeout(() => {
             if (process && !process.killed && process.kill) {
               console.log(`  🔪 Force killing process ${index + 1} with SIGKILL`);
               process.kill('SIGKILL');
-            }
-          }, 2000);
-        } catch (err) {
+        }
+      }, 2000);
+    } catch (err) {
           console.error(`Error killing process ${index + 1}:`, err.message);
         }
       } else if (process && process.killed) {
@@ -5295,8 +5295,8 @@ app.post('/api/download/cancel', (req, res) => {
     const stillActive = activeDownloads.get(downloadId);
     if (stillActive && stillActive.cancelled) {
       console.log(`🧹 Cleaning up cancelled download ${downloadId} after timeout`);
-      activeDownloads.delete(downloadId);
-      activeProcesses.delete(downloadId);
+  activeDownloads.delete(downloadId);
+  activeProcesses.delete(downloadId);
     }
   }, 30000); // Clean up after 30 seconds if processes haven't stopped
   
@@ -5322,17 +5322,17 @@ app.post('/api/download/skip-to-ytdlp', (req, res) => {
     const process = spotdlProcess.process || spotdlProcess;
     
     if (process) {
-      console.log(`🔪 Killing spotdl process to skip to yt-dlp`);
-      try {
+    console.log(`🔪 Killing spotdl process to skip to yt-dlp`);
+    try {
         process.kill('SIGTERM');
-        // Force kill after 2 seconds if not terminated
-        setTimeout(() => {
+      // Force kill after 2 seconds if not terminated
+      setTimeout(() => {
           if (process && !process.killed && process.kill) {
             process.kill('SIGKILL');
-          }
-        }, 2000);
-      } catch (err) {
-        console.error('Error killing process:', err.message);
+        }
+      }, 2000);
+    } catch (err) {
+      console.error('Error killing process:', err.message);
       }
     }
   }
@@ -6526,9 +6526,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
     }
     
     // Multi-track: use fuzzy matching (handles YouTube title variations)
-    const expectedFilename = track.artist === 'Unknown Artist' 
-      ? `${track.name}.mp3`
-      : `${track.artist} - ${track.name}.mp3`;
+        const expectedFilename = track.artist === 'Unknown Artist' 
+          ? `${track.name}.mp3`
+          : `${track.artist} - ${track.name}.mp3`;
     const exists = musicFiles.some(file => {
       const fileNormalized = normalizeString(file.toLowerCase());
       const artistNormalized = normalizeString(track.artist.toLowerCase().trim());
@@ -6709,21 +6709,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
         }, 5);
         
-        if (ytdlExecSuccess) {
-          console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
-          successCount++;
-          
-          socket.emit('download:progress', {
-            downloadId,
-            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
-          });
-          
+          if (ytdlExecSuccess) {
+            console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
+            successCount++;
+            
+            socket.emit('download:progress', {
+              downloadId,
+              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+            });
+            
           // Restore original URL before returning
           track.url = originalUrl;
-          return; // Success! No need to try other methods
+            return; // Success! No need to try other methods
         }
         
         // Restore original URL
@@ -6734,19 +6734,19 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
         }, 5);
         
-        if (ytdlExecSuccess) {
-          console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
-          successCount++;
-          
-          socket.emit('download:progress', {
-            downloadId,
-            trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: 'completed',
-            progress: 100,
-            message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
-          });
-          
-          return; // Success! No need to try other methods
+          if (ytdlExecSuccess) {
+            console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
+            successCount++;
+            
+            socket.emit('download:progress', {
+              downloadId,
+              trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ Downloaded via youtube-dl-exec: ${track.name}`
+            });
+            
+            return; // Success! No need to try other methods
         }
       }
     }
@@ -7229,10 +7229,10 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               }
             } else if (!fileExists) {
               // For non-search methods, try multiple times
-              for (let i = 0; i < 5; i++) {
-                fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
-                if (fileExists) break;
-                await new Promise(resolve => setTimeout(resolve, 200));
+            for (let i = 0; i < 5; i++) {
+              fileExists = await fs.access(mp3Path).then(() => true).catch(() => false);
+              if (fileExists) break;
+              await new Promise(resolve => setTimeout(resolve, 200));
               }
             }
             
