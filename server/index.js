@@ -777,7 +777,7 @@ async function replaceCookieInPool(index, newCookieContent) {
   return await saveCookieToPool(newCookieContent, index);
 }
 
-// ⚡ FAST cookie test (5s timeout for quick iteration)
+// ⚡ STRICT cookie test (requires actual JSON output to pass)
 async function testCookies(cookiePath) {
   try {
     const testArgs = [
@@ -806,7 +806,7 @@ async function testCookies(cookiePath) {
 
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 7000
+        timeout: 10000 // Increased timeout for better success
       });
 
       testProcess.stdout.on('data', (data) => {
@@ -836,33 +836,50 @@ async function testCookies(cookiePath) {
           return;
         }
 
-        const hasTitle = output.includes('"title"') || output.includes('"id"');
-        const hasVideoId = output.includes('"video_id"') || output.includes('"id":');
+        // STRICT: Must have valid JSON with title/id
+        try {
+          const jsonOutput = output.trim();
+          if (jsonOutput) {
+            const parsed = JSON.parse(jsonOutput);
+            const hasTitle = parsed.title && parsed.title.length > 0;
+            const hasId = parsed.id && parsed.id.length > 0;
+            
+            if (code === 0 && hasTitle && hasId) {
+              console.log('  ✅ Cookie test STRONG PASS (valid JSON with title/id)');
+              resolveOnce({ status: 'strong' });
+              return;
+            }
+          }
+        } catch (parseErr) {
+          // Not valid JSON
+        }
 
-        if (code === 0 && (hasTitle || hasVideoId)) {
-          console.log('  ✅ Cookie test PASSED (valid JSON)');
-          resolveOnce({ status: 'strong' });
+        // If no bot detection but no valid JSON, it's weak (might work but not ideal)
+        if (!hasBotDetectionError && output.length > 100) {
+          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, but no valid JSON, code: ' + (code ?? 'null') + ')');
+          resolveOnce({ status: 'weak' });
           return;
         }
 
-        console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + (code ?? 'null') + ')');
-        resolveOnce({ status: 'weak' });
+        // Timeout or process error = fail
+        console.log('  ❌ Cookie test FAILED (no output or process error, code: ' + (code ?? 'null') + ')');
+        resolveOnce({ status: 'fail', reason: code === null ? 'timeout' : 'process_error' });
       });
 
       testProcess.on('error', (err) => {
-        console.log(`  ⚠️ Cookie test error: ${err.message}`);
+        console.log(`  ❌ Cookie test error: ${err.message}`);
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
-        console.log('  ⚠️ Cookie test timeout - assuming weak pass');
-        resolveOnce({ status: 'weak', reason: 'timeout' });
-      }, 7000);
+        console.log('  ❌ Cookie test timeout - rejecting');
+        resolveOnce({ status: 'fail', reason: 'timeout' });
+      }, 10000);
     });
   } catch (err) {
-    console.log(`  ⚠️ Cookie test failed: ${err.message}`);
+    console.log(`  ❌ Cookie test failed: ${err.message}`);
     return { status: 'fail', reason: 'exception' };
   }
 }
@@ -1121,13 +1138,36 @@ async function generateAndTestCookies(maxAttempts = 100) {
         const results = await Promise.all(cookiePromises);
         
         // Collect ALL successful cookies (not just first one)
+        // PRIORITIZE STRONG cookies - only accept weak if we're running out of time
         const successfulResults = results.filter(r => r.success);
         
         if (successfulResults.length > 0) {
-          // Save ALL working cookies to pool (fill missing slots)
-          const weakCount = successfulResults.filter(r => r.quality === 'weak').length;
-          for (const result of successfulResults) {
+          // Sort: strong cookies first, then weak
+          const sortedResults = successfulResults.sort((a, b) => {
+            if (a.quality === 'strong' && b.quality !== 'strong') return -1;
+            if (a.quality !== 'strong' && b.quality === 'strong') return 1;
+            return 0;
+          });
+          
+          // Only accept weak cookies if we're close to time/batch limits OR we have no strong cookies
+          const elapsedTime = Date.now() - startTime;
+          const nearTimeLimit = elapsedTime > (MAX_TIME * 0.7); // 70% of time limit
+          const nearBatchLimit = batch > (MAX_BATCHES * 0.7); // 70% of batch limit
+          const strongCookies = sortedResults.filter(r => r.quality === 'strong');
+          const acceptWeakCookies = strongCookies.length === 0 || nearTimeLimit || nearBatchLimit;
+          
+          if (!acceptWeakCookies && sortedResults.some(r => r.quality === 'weak')) {
+            console.log(`  ⏳ Skipping weak cookies - still have time to find strong ones...`);
+          }
+          
+          const weakCount = sortedResults.filter(r => r.quality === 'weak' && acceptWeakCookies).length;
+          for (const result of sortedResults) {
             if (cookiesFound >= cookiesNeeded) break;
+            
+            // Skip weak cookies if we're not accepting them yet
+            if (result.quality === 'weak' && !acceptWeakCookies) {
+              continue;
+            }
             
             // Find next available slot
             while (existingIndices.includes(nextAvailableSlot)) {
@@ -1145,8 +1185,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
             workingCookies.push(result.cookieContent);
             nextAvailableSlot++; // Move to next slot
             
-            // Save first one as primary cookie (if slot 0 is empty)
-            if (slotIndex === 0 || (cookiesFound === 0 && !existingIndices.includes(0))) {
+            // Save first STRONG cookie as primary cookie (prioritize strong)
+            if ((slotIndex === 0 || (cookiesFound === 0 && !existingIndices.includes(0))) && cookieQuality === 'strong') {
               await fs.writeFile(AUTO_COOKIE_PATH, result.cookieContent, 'utf8');
               
               const metadata = await loadCookieMetadata();
@@ -1393,6 +1433,13 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   // Try each cookie in priority order
   for (let attempt = 0; attempt < Math.min(cookies.length, maxRetries); attempt++) {
     const cookie = cookies[attempt];
+    
+    // Add delay between attempts to avoid rate limiting (exponential backoff)
+    if (attempt > 0) {
+      const delay = Math.min(1000 * Math.pow(1.5, attempt - 1), 5000); // Max 5s delay
+      console.log(`  ⏳ Waiting ${(delay/1000).toFixed(1)}s before next attempt...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
     
     try {
       console.log(`  🍪 Trying cookie ${cookie.index + 1}/${cookies.length} (${path.basename(cookie.path)})...`);
