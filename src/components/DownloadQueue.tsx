@@ -265,20 +265,20 @@ export const DownloadQueue = () => {
   }
 
   return (
-    <Card className="fixed left-0 md:left-4 top-0 md:top-4 bottom-0 md:bottom-4 w-full md:w-80 z-40 shadow-2xl border-0 md:border-2 flex flex-col bg-background/95 backdrop-blur-xl md:rounded-lg">
-      <CardHeader className="pb-3 border-b flex-shrink-0 bg-gradient-to-r from-primary/10 to-accent/10">
+    <Card className="fixed left-0 md:left-4 top-0 md:top-4 bottom-0 md:bottom-4 w-full md:w-72 z-30 shadow-2xl border-0 md:border border-border/50 flex flex-col bg-background/60 backdrop-blur-md md:rounded-lg hover:bg-background/80 transition-all duration-300">
+      <CardHeader className="pb-2 pt-3 px-3 border-b border-border/30 flex-shrink-0 bg-gradient-to-r from-primary/5 to-accent/5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-primary/20 rounded-lg">
-              <RefreshCw className="h-5 w-5 text-primary animate-spin-slow" />
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-primary/15 rounded-md">
+              <RefreshCw className="h-3.5 w-3.5 text-primary animate-spin-slow" />
             </div>
             <div>
-              <CardTitle className="text-lg font-bold">Processing Queue</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <CardTitle className="text-sm font-semibold">Queue</CardTitle>
+              <p className="text-[10px] text-muted-foreground/80 mt-0.5">
                 {activeCount > 0 
-                  ? `${activeCount} active • ${completedCount} done`
+                  ? `${activeCount} • ${completedCount}`
                   : completedCount > 0
-                    ? `${completedCount} completed`
+                    ? `${completedCount} done`
                     : 'Ready'}
               </p>
             </div>
@@ -286,26 +286,26 @@ export const DownloadQueue = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 hover:bg-primary/20"
+            className="h-7 w-7 hover:bg-primary/20 opacity-70 hover:opacity-100"
             onClick={() => setIsMinimized(!isMinimized)}
           >
             {isMinimized ? (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
       </CardHeader>
 
       {!isMinimized && (
-        <CardContent className="flex-1 overflow-y-auto space-y-3 p-4">
+        <CardContent className="flex-1 overflow-y-auto space-y-2 p-2.5">
           {/* Active Downloads Section */}
           {activeCount > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <Clock className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                <Clock className="h-3 w-3 text-primary/80" />
+                <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide">
                   Active ({activeCount})
                 </span>
               </div>
@@ -314,31 +314,31 @@ export const DownloadQueue = () => {
                 .map((download) => (
                   <div
                     key={download.downloadId}
-                    className="flex items-start gap-3 p-3 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg border border-primary/20 hover:border-primary/40 transition-all"
+                    className="flex items-start gap-2 p-2 bg-gradient-to-r from-primary/3 to-accent/3 rounded-md border border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all"
                   >
-                    <div className="p-2 bg-primary/20 rounded-lg flex-shrink-0">
+                    <div className="p-1.5 bg-primary/15 rounded-md flex-shrink-0">
                       {download.status === 'downloading' ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
                       ) : (
-                        <Clock className="h-4 w-4 text-primary/70" />
+                        <Clock className="h-3 w-3 text-primary/60" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <p className="text-sm font-semibold truncate">
+                      <div className="flex items-center justify-between gap-1.5 mb-1">
+                        <p className="text-xs font-medium truncate">
                           {download.folderName}
                         </p>
-                        <Badge variant={download.status === 'downloading' ? 'default' : 'secondary'} className="text-xs">
+                        <Badge variant={download.status === 'downloading' ? 'default' : 'secondary'} className="text-[10px] px-1 py-0 h-4">
                           {download.status === 'downloading' ? 'Active' : 'Queued'}
                         </Badge>
                       </div>
-                      <div className="space-y-1.5">
-                        <Progress value={download.progress} className="h-2" />
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">
-                            {download.completedTracks}/{download.totalTracks} tracks
+                      <div className="space-y-1">
+                        <Progress value={download.progress} className="h-1.5" />
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground/70">
+                            {download.completedTracks}/{download.totalTracks}
                           </span>
-                          <span className="font-medium text-primary">
+                          <span className="font-medium text-primary/80">
                             {download.progress}%
                           </span>
                         </div>
@@ -351,11 +351,11 @@ export const DownloadQueue = () => {
 
           {/* Completed Downloads Section */}
           {completedCount > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Completed ({completedCount})
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                <CheckCircle2 className="h-3 w-3 text-green-500/80" />
+                <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+                  Done ({completedCount})
                 </span>
               </div>
               {downloads
@@ -363,43 +363,43 @@ export const DownloadQueue = () => {
                 .map((download) => (
                   <div
                     key={download.downloadId}
-                    className="flex items-start gap-3 p-3 bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-green-950/20 dark:to-emerald-950/20 rounded-lg border border-green-200/50 dark:border-green-800/50 hover:border-green-400 dark:hover:border-green-600 transition-all"
+                    className="flex items-start gap-2 p-2 bg-gradient-to-r from-green-50/30 to-emerald-50/30 dark:from-green-950/10 dark:to-emerald-950/10 rounded-md border border-green-200/30 dark:border-green-800/30 hover:border-green-400/50 dark:hover:border-green-600/50 hover:bg-green-50/40 dark:hover:bg-green-950/20 transition-all"
                   >
-                    <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg flex-shrink-0">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <div className="p-1.5 bg-green-100/50 dark:bg-green-900/30 rounded-md flex-shrink-0">
+                      <CheckCircle2 className="h-3 w-3 text-green-600/80 dark:text-green-400/80" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <p className="text-sm font-semibold truncate">
+                      <div className="flex items-center justify-between gap-1.5 mb-1">
+                        <p className="text-xs font-medium truncate">
                           {download.folderName}
                         </p>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 flex-shrink-0 hover:bg-destructive/20"
+                          className="h-6 w-6 flex-shrink-0 hover:bg-destructive/20 opacity-70 hover:opacity-100"
                           onClick={() => handleRemove(download.downloadId)}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-3 w-3" />
                         </Button>
                       </div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-muted-foreground">
-                          {download.completedTracks}/{download.totalTracks} tracks
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {download.completedTracks}/{download.totalTracks}
                         </span>
                         {download.completedAt && (
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(download.completedAt).toLocaleTimeString()}
+                          <span className="text-[10px] text-muted-foreground/60">
+                            {new Date(download.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
                       </div>
                       <Button
                         variant="default"
                         size="sm"
-                        className="w-full h-8 text-xs font-medium"
+                        className="w-full h-7 text-[10px] font-medium"
                         onClick={() => handleDownload(download.downloadUrl!, download.folderName)}
                       >
-                        <Download className="h-3.5 w-3.5 mr-1.5" />
-                        Download Now
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
                       </Button>
                     </div>
                   </div>
@@ -409,30 +409,30 @@ export const DownloadQueue = () => {
 
           {/* Clear Completed Button */}
           {completedCount > 0 && (
-            <div className="pt-3 border-t border-border mt-auto">
+            <div className="pt-2 border-t border-border/30 mt-auto">
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full text-xs"
+                className="w-full text-[10px] h-7 opacity-70 hover:opacity-100"
                 onClick={handleClearCompleted}
               >
-                <Trash2 className="h-3.5 w-3.5 mr-2" />
-                Clear All ({completedCount})
+                <Trash2 className="h-3 w-3 mr-1.5" />
+                Clear ({completedCount})
               </Button>
             </div>
           )}
 
           {/* Empty State */}
           {downloads.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="p-4 bg-muted/50 rounded-full mb-3">
-                <RefreshCw className="h-6 w-6 text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="p-3 bg-muted/30 rounded-full mb-2">
+                <RefreshCw className="h-4 w-4 text-muted-foreground/60" />
               </div>
-              <p className="text-sm text-muted-foreground font-medium">
-                No downloads yet
+              <p className="text-xs text-muted-foreground/70 font-medium">
+                No downloads
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Your downloads will appear here
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                Downloads appear here
               </p>
             </div>
           )}
@@ -441,14 +441,14 @@ export const DownloadQueue = () => {
       
       {/* Minimized State */}
       {isMinimized && (
-        <div className="flex items-center justify-center p-4 border-t">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-primary/20 rounded-lg">
-              <RefreshCw className="h-4 w-4 text-primary" />
+        <div className="flex items-center justify-center p-2 border-t border-border/30">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1.5 bg-primary/15 rounded-md">
+              <RefreshCw className="h-3 w-3 text-primary/80 animate-spin-slow" />
             </div>
-            <div className="text-xs font-medium">
-              {activeCount > 0 && `${activeCount} active`}
-              {activeCount === 0 && completedCount > 0 && `${completedCount} done`}
+            <div className="text-[10px] font-medium text-muted-foreground/80">
+              {activeCount > 0 && `${activeCount}`}
+              {activeCount === 0 && completedCount > 0 && `${completedCount}`}
             </div>
           </div>
         </div>
