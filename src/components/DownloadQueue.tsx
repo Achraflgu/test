@@ -113,22 +113,39 @@ export const DownloadQueue = () => {
       // Track download progress
       socket.on('download:progress', (data: any) => {
         console.log('📊 Download progress:', data);
-      setDownloads(prev => prev.map(d => {
-        if (d.downloadId === data.downloadId) {
-          const progress = data.totalTracks > 0 
-            ? Math.round((data.completed / data.totalTracks) * 100)
-            : 0;
-          return {
-            ...d,
-            status: 'downloading',
-            progress,
-            completedTracks: data.completed || 0,
-            totalTracks: data.totalTracks || d.totalTracks
-          };
-        }
-        return d;
-      }));
-    });
+        setDownloads(prev => prev.map(d => {
+          if (d.downloadId === data.downloadId) {
+            // Handle both playlist progress (completed/totalTracks) and single track progress (progress: 100)
+            let progress = 0;
+            let completedTracks = d.completedTracks;
+            let totalTracks = d.totalTracks;
+            
+            if (data.totalTracks > 0 && data.completed !== undefined) {
+              // Playlist progress format
+              progress = Math.round((data.completed / data.totalTracks) * 100);
+              completedTracks = data.completed || 0;
+              totalTracks = data.totalTracks || d.totalTracks;
+            } else if (data.progress !== undefined) {
+              // Single track progress format (progress: 100)
+              progress = data.progress;
+              // If progress is 100, mark as completed
+              if (data.progress === 100 && data.status === 'completed') {
+                completedTracks = Math.max(completedTracks, 1);
+                totalTracks = Math.max(totalTracks, 1);
+              }
+            }
+            
+            return {
+              ...d,
+              status: data.status === 'completed' ? 'completed' : 'downloading',
+              progress: Math.max(d.progress, progress), // Don't go backwards
+              completedTracks,
+              totalTracks
+            };
+          }
+          return d;
+        }));
+      });
 
       // Track download completion
       socket.on('download:complete', (data: any) => {
@@ -143,13 +160,17 @@ export const DownloadQueue = () => {
               downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
             }
             
+            // For single track downloads, ensure we have at least 1 completed track
+            const completedTracks = data.totalSuccess || d.completedTracks || 1;
+            const totalTracks = data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : (d.totalTracks || 1);
+            
             return {
               ...d,
               status: 'completed',
               progress: 100,
-              completedTracks: data.totalSuccess || d.completedTracks,
-              totalTracks: data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : d.totalTracks,
-              downloadUrl,
+              completedTracks,
+              totalTracks,
+              downloadUrl: downloadUrl || d.downloadUrl, // Keep existing URL if new one is not provided
               completedAt: new Date().toISOString()
             };
           }
