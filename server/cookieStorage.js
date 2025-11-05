@@ -227,3 +227,105 @@ export async function clearAllCookiesFromRedis() {
   }
 }
 
+// ====================================
+// 🎁 COOKIE BACKUP POOL (for extra strong cookies)
+// ====================================
+const BACKUP_PREFIX = 'cookie_backup:';
+const BACKUP_MAX_SIZE = 10; // Keep max 10 backup cookies
+
+// Save cookie to backup pool
+export async function saveCookieToBackup(cookieContent, metadata = {}) {
+  if (!redis) return false;
+  
+  try {
+    // Get current backup count
+    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
+    const currentCount = keys.filter(k => !k.includes(':meta')).length;
+    
+    // If at max size, remove oldest (FIFO)
+    if (currentCount >= BACKUP_MAX_SIZE) {
+      const allKeys = await redis.keys(`${BACKUP_PREFIX}*`);
+      const backupKeys = allKeys.filter(k => !k.includes(':meta')).sort();
+      if (backupKeys.length > 0) {
+        const oldestKey = backupKeys[0];
+        await redis.del(oldestKey);
+        await redis.del(`${oldestKey}:meta`);
+      }
+    }
+    
+    // Generate unique backup ID (timestamp-based)
+    const backupId = `${BACKUP_PREFIX}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    await redis.set(backupId, cookieContent);
+    
+    // Save metadata
+    const fullMetadata = {
+      quality: 'strong',
+      savedAt: new Date().toISOString(),
+      ...metadata
+    };
+    await redis.set(`${backupId}:meta`, JSON.stringify(fullMetadata));
+    
+    return true;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to save cookie to backup pool: ${err.message}`);
+    return false;
+  }
+}
+
+// Get one cookie from backup pool (FIFO - oldest first)
+export async function getCookieFromBackup() {
+  if (!redis) return null;
+  
+  try {
+    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
+    const backupKeys = keys.filter(k => !k.includes(':meta')).sort();
+    
+    if (backupKeys.length === 0) return null;
+    
+    // Get oldest (first in sorted list)
+    const oldestKey = backupKeys[0];
+    const content = await redis.get(oldestKey);
+    
+    if (!content) {
+      // Clean up if content is missing
+      await redis.del(oldestKey);
+      await redis.del(`${oldestKey}:meta`);
+      return null;
+    }
+    
+    // Get metadata
+    let metadata = {};
+    try {
+      const metaStr = await redis.get(`${oldestKey}:meta`);
+      if (metaStr) {
+        metadata = typeof metaStr === 'string' ? JSON.parse(metaStr) : metaStr;
+      }
+    } catch {}
+    
+    // Remove from backup (it's being used)
+    await redis.del(oldestKey);
+    await redis.del(`${oldestKey}:meta`);
+    
+    return {
+      content,
+      metadata,
+      backupId: oldestKey
+    };
+  } catch (err) {
+    console.log(`  ⚠️ Failed to get cookie from backup pool: ${err.message}`);
+    return null;
+  }
+}
+
+// Get backup pool count
+export async function getBackupPoolCount() {
+  if (!redis) return 0;
+  
+  try {
+    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
+    return keys.filter(k => !k.includes(':meta')).length;
+  } catch (err) {
+    return 0;
+  }
+}
+

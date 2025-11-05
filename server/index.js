@@ -24,7 +24,10 @@ import {
   loadCookieMetadataFromRedis,
   saveCookiePoolMetadataToRedis,
   loadCookiePoolMetadataFromRedis,
-  deleteCookieFromRedis
+  deleteCookieFromRedis,
+  saveCookieToBackup,
+  getCookieFromBackup,
+  getBackupPoolCount
 } from './cookieStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1554,46 +1557,109 @@ async function generateAndTestCookies(maxAttempts = 100) {
 async function regenerateSingleCookie(slotIndex) {
   try {
     console.log(`\n🔄 Regenerating cookie slot ${slotIndex + 1}/${COOKIE_POOL_SIZE} (dead cookie detected)...`);
+    
+    // 🎯 STEP 1: Check backup pool first (faster than generating!)
+    if (isRedisAvailable()) {
+      const backupCookie = await getCookieFromBackup();
+      if (backupCookie && backupCookie.content) {
+        console.log(`  🎁 Found cookie in backup pool - using it immediately!`);
+        // ✅ Replace the FAILED cookie slot with backup cookie
+        await saveCookieToPool(backupCookie.content, slotIndex, { quality: 'strong' });
+        // This replaces cookie at slotIndex (the failed one)
+        console.log(`✅ Cookie slot ${slotIndex + 1} replaced from backup pool (replaced failed cookie!)`);
+        if (isRedisAvailable()) {
+          console.log(`  ☁️ New cookie automatically saved to Redis`);
+        }
+        return true;
+      } else {
+        console.log(`  📭 No cookies in backup pool - will generate new STRONG cookies`);
+      }
+    }
+    
+    // 🎯 STEP 2: Generate new STRONG cookies (parallel generation for efficiency)
     const startTime = Date.now();
+    const PARALLEL_GENERATION = 3; // Generate 3 cookies in parallel
     let attempts = 0;
-    const maxAttempts = 50; // Try up to 50 times to find a working replacement
+    const maxAttempts = 50;
     
     while (attempts < maxAttempts) {
-      attempts++;
+      attempts += PARALLEL_GENERATION;
       
-      // Generate new cookie
-      const cookieContent = generateRealisticYouTubeCookies(attempts - 1);
-      if (!cookieContent) continue;
+      // Generate multiple cookies in parallel
+      const generationPromises = [];
+      for (let i = 0; i < PARALLEL_GENERATION; i++) {
+        const attemptNum = attempts - PARALLEL_GENERATION + i;
+        generationPromises.push((async () => {
+          try {
+            const cookieContent = generateRealisticYouTubeCookies(attemptNum);
+            if (!cookieContent) return null;
+            
+            const tempCookiePath = path.join(__dirname, `.temp_regenerate_${slotIndex}_${Date.now()}_${i}.txt`);
+            await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+            
+            const testResult = await testCookies(tempCookiePath);
+            await fs.unlink(tempCookiePath).catch(() => {});
+            
+            // ✅ Only accept STRONG cookies (not weak, not failed)
+            if (testResult && testResult.status === 'strong') {
+              return { content: cookieContent, quality: 'strong' };
+            }
+            // Reject weak cookies - we only want STRONG
+            return null;
+          } catch (err) {
+            return null;
+          }
+        })());
+      }
       
-      // Save to temp file for testing
-      const tempCookiePath = path.join(__dirname, `.temp_regenerate_${slotIndex}_${Date.now()}.txt`);
-      await fs.writeFile(tempCookiePath, cookieContent, 'utf8');
+      const results = await Promise.all(generationPromises);
+      const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
       
-      // Test the cookie
-      const testResult = await testCookies(tempCookiePath);
-      
-      // Clean up temp file
-      await fs.unlink(tempCookiePath).catch(() => {});
-      
-      if (testResult && testResult.status && testResult.status !== 'fail') {
-        // Success! Replace the dead cookie
-        const cookieQuality = testResult.status === 'weak' ? 'weak' : 'strong';
-        await saveCookieToPool(cookieContent, slotIndex, { quality: cookieQuality });
-        if (cookieQuality === 'weak') {
-          console.log(`  ⚠️ Regenerated cookie slot ${slotIndex + 1} is a WEAK PASS (lower priority)`);
+      if (strongCookies.length > 0) {
+        // ✅ STEP 3: Replace failed cookie slot with FIRST strong cookie
+        const firstStrongCookie = strongCookies[0];
+        await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
+        // This replaces the failed cookie at slotIndex
+        console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie`);
+        
+        // ✅ STEP 4: If we got MORE than 1 strong cookie, save extras to backup
+        if (strongCookies.length > 1) {
+          // We have extras! Save them to backup pool
+          const extraStrongCookies = strongCookies.slice(1); // Skip first (already used), keep the rest
+          console.log(`  💾 Found ${extraStrongCookies.length} extra STRONG cookie(s) - saving to backup pool...`);
+          
+          if (isRedisAvailable()) {
+            for (const extraCookie of extraStrongCookies) {
+              await saveCookieToBackup(extraCookie.content, {
+                quality: 'strong',
+                source: 'regeneration',
+                originalSlot: slotIndex,
+                savedAt: new Date().toISOString()
+              });
+            }
+            const backupCount = await getBackupPoolCount();
+            console.log(`  ✅ Backup pool now has ${backupCount} cookie(s) ready for future use`);
+          }
+        } else {
+          // Only 1 strong cookie found - just replace slot, nothing to save to backup
+          console.log(`  ℹ️ Only 1 STRONG cookie found - replaced slot, no extras to save`);
         }
+        
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`✅ Cookie slot ${slotIndex + 1} regenerated successfully after ${attempts} attempts (${elapsed}s)`);
+        if (isRedisAvailable()) {
+          console.log(`  ☁️ New cookie automatically saved to Redis`);
+        }
         return true;
       }
       
       // Show progress every 10 attempts
       if (attempts % 10 === 0) {
-        console.log(`  ⏳ Regeneration attempt ${attempts}/${maxAttempts}...`);
+        console.log(`  ⏳ Regeneration attempt ${attempts}/${maxAttempts}... (looking for STRONG cookies)`);
       }
     }
     
-    console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${maxAttempts} attempts`);
+    console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${attempts} attempts (no STRONG cookies found)`);
     return false;
   } catch (err) {
     console.log(`❌ Error regenerating cookie slot ${slotIndex + 1}: ${err.message}`);
@@ -1804,15 +1870,14 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
         recordCookieFailure(cookie.index);
         console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - rotating to next cookie...`);
         
-        // If 3 consecutive failures, mark for regeneration
-        const stats = cookieStats.get(cookie.index);
-        if (stats && stats.consecutiveFailures >= 3) {
-          console.log(`  🔄 Cookie ${cookie.index + 1} has 3 consecutive failures - marking for background regeneration`);
-          // Regenerate in background (don't await)
-          regenerateSingleCookie(cookie.index).catch(() => {});
-        }
+        // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot
+        console.log(`  🔄 Cookie ${cookie.index + 1} (slot ${cookie.index}) failed - immediately starting background regeneration...`);
+        // Regenerate THIS cookie slot in background (don't await) - checks backup pool first, then generates
+        regenerateSingleCookie(cookie.index).catch((err) => {
+          console.log(`  ⚠️ Background regeneration failed for cookie ${cookie.index + 1}: ${err.message}`);
+        });
         
-        // Continue to next cookie (don't throw - let it try next cookie)
+        // ✅ ROTATE: Continue to next cookie in loop (Cookie 2 → Cookie 3 → Cookie 4, etc.)
         continue;
       }
       
@@ -7286,14 +7351,12 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                   if (match) {
                     const index = parseInt(match[1]);
                     recordCookieFailure(index);
-                    console.log(`  ⚠️ Marked cookie ${index + 1} as failed - will rotate to next on retry`);
+                    console.log(`  ⚠️ Cookie ${index + 1} failed (bot detection) - immediately starting background regeneration...`);
                     
-                    // If 3 consecutive failures, mark for regeneration
-                    const stats = cookieStats.get(index);
-                    if (stats && stats.consecutiveFailures >= 3) {
-                      console.log(`  🔄 Cookie ${index + 1} has 3 consecutive failures - marking for regeneration`);
-                      regenerateSingleCookie(index).catch(() => {});
-                    }
+                    // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot
+                    regenerateSingleCookie(index).catch((err) => {
+                      console.log(`  ⚠️ Background regeneration failed for cookie ${index + 1}: ${err.message}`);
+                    });
                   }
                 }
               }
@@ -7541,15 +7604,13 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                   const match = cookieFileName.match(/cookie_(\d+)\.txt/);
                   if (match) {
                     const cookieIndex = parseInt(match[1]);
-                    console.log(`  🔄 Marking cookie ${cookieIndex + 1} as failed (bot detection)`);
+                    console.log(`  ⚠️ Cookie ${cookieIndex + 1} failed (bot detection) - immediately starting background regeneration...`);
                     recordCookieFailure(cookieIndex);
                     
-                    // Check if needs regeneration (3+ failures)
-                    const stats = cookieStats.get(cookieIndex);
-                    if (stats && stats.consecutiveFailures >= 3) {
-                      console.log(`  🔄 Cookie ${cookieIndex + 1} has ${stats.consecutiveFailures} failures - triggering regeneration`);
-                      regenerateSingleCookie(cookieIndex).catch(() => {});
-                    }
+                    // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot
+                    regenerateSingleCookie(cookieIndex).catch((err) => {
+                      console.log(`  ⚠️ Background regeneration failed for cookie ${cookieIndex + 1}: ${err.message}`);
+                    });
                   }
                 }
               }
@@ -9091,9 +9152,18 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     // Set high water mark to prevent memory issues with large files
     archive.setMaxListeners(0); // Remove listener limit
     
+    // Track if archive is finalized or aborted (must be declared before handlers)
+    let archiveAborted = false;
+    let archiveFinalized = false;
+    let keepAliveInterval = null;
+    let stallChecker = null;
+    
     // Handle archive errors
     archive.on('error', (err) => {
       console.error('Archive error:', err);
+      archiveAborted = true;
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      if (stallChecker) clearInterval(stallChecker);
       if (!res.headersSent) {
         try { 
           res.status(500).json({ error: 'Archive creation failed', details: err.message }); 
@@ -9103,16 +9173,61 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       }
     });
     
+    // Track when archive finishes
+    archive.on('end', () => {
+      archiveFinalized = true;
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      if (stallChecker) clearInterval(stallChecker);
+    });
+    
     // Handle response errors
     res.on('error', (err) => {
       console.error('Response stream error:', err);
-      archive.abort();
+      if (!archiveFinalized && !archiveAborted) {
+        archiveAborted = true;
+        archive.abort();
+      }
     });
     
-    // Handle client disconnect
+    // Handle client disconnect with delay (network hiccup recovery)
     req.on('close', () => {
       console.log('⚠️  Client disconnected during archive download');
-      archive.abort();
+      // Don't abort immediately - wait a bit in case it's a temporary network issue
+      // The client might reconnect or the download manager might resume
+      setTimeout(() => {
+        if (!archiveFinalized && !archiveAborted) {
+          console.log('⚠️  Client disconnect confirmed - aborting archive after delay');
+          archiveAborted = true;
+          archive.abort();
+        }
+      }, 5000); // 5 second grace period
+    });
+    
+    // Add keep-alive mechanism to prevent network timeouts during large transfers
+    // Send periodic empty chunks to keep connection alive
+    let lastKeepAlive = Date.now();
+    keepAliveInterval = setInterval(() => {
+      if (archiveFinalized || archiveAborted) {
+        if (keepAliveInterval) clearInterval(keepAliveInterval);
+        return;
+      }
+      
+      // If archive is still streaming but no data sent in 30 seconds, send keep-alive
+      const timeSinceLastActivity = Date.now() - lastKeepAlive;
+      if (timeSinceLastActivity > 30000 && !res.destroyed && res.writable) {
+        try {
+          // Send a comment entry to keep connection alive (ZIP format allows this)
+          // This prevents network/proxy timeouts during large file processing
+          res.flush && res.flush(); // Force flush any buffered data
+        } catch (err) {
+          // Ignore flush errors
+        }
+      }
+    }, 10000); // Check every 10 seconds
+    
+    // Update last activity on data events
+    archive.on('data', () => {
+      lastKeepAlive = Date.now();
     });
     
     // Pipe archive to response
@@ -9122,13 +9237,31 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     let processedFiles = 0;
     let lastLogTime = 0;
     let entryCount = 0;
+    let lastBytesProcessed = 0;
+    let lastActivityTime = Date.now();
     const LOG_INTERVAL = 2000; // Log every 2 seconds max
+    
+    // Monitor for stalled transfers
+    stallChecker = setInterval(() => {
+      const timeSinceActivity = Date.now() - lastActivityTime;
+      if (timeSinceActivity > 60000 && !archiveFinalized && !archiveAborted) {
+        // No activity for 60 seconds - might be stalled
+        console.log(`⚠️  Archive transfer appears stalled (no activity for ${Math.floor(timeSinceActivity / 1000)}s)`);
+        console.log(`📊 Last processed: ${processedFiles}/${musicFiles.length} files, ${(lastBytesProcessed / 1024 / 1024 / 1024).toFixed(2)} GB`);
+      }
+    }, 30000); // Check every 30 seconds
     
     archive.on('progress', (progress) => {
       // Safe access to progress properties
       processedFiles = progress?.entries?.processed || 0;
       const bytesProcessed = progress?.bytes?.processed || 0;
       const now = Date.now();
+      
+      // Update activity tracking
+      if (bytesProcessed > lastBytesProcessed) {
+        lastBytesProcessed = bytesProcessed;
+        lastActivityTime = now;
+      }
       
       // Only log every 2 seconds to avoid Railway rate limits (500 logs/sec)
       if (now - lastLogTime >= LOG_INTERVAL) {
@@ -9150,6 +9283,9 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     archive.directory(outputFolder, false);
     
     // Finalize the archive
+    archiveFinalized = true;
+    if (keepAliveInterval) clearInterval(keepAliveInterval);
+    if (stallChecker) clearInterval(stallChecker);
     await archive.finalize();
     
     console.log(`✅ ZIP archive finalized: ${processedFiles} files processed`);
