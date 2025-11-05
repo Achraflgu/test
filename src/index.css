@@ -165,9 +165,22 @@ All colors MUST be HSL.
 }
 
 @layer utilities {
-  .animate-spin-slow {
-    animation: spin 3s linear infinite;
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
   }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
   .hover-scale {
     @apply transition-transform duration-300 ease-out hover:scale-[1.02];
   }

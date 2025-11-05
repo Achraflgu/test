@@ -282,24 +282,35 @@ export const DownloadQueue = () => {
           return next;
         });
 
-        // Only show toast if download URL is available
+        // Auto-trigger download when complete (like TrackList does)
         if (data.downloadUrl) {
+          const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+          let fullDownloadUrl = data.downloadUrl;
+          if (fullDownloadUrl && !fullDownloadUrl.startsWith('http')) {
+            fullDownloadUrl = `${API_URL}${fullDownloadUrl.startsWith('/') ? '' : '/'}${fullDownloadUrl}`;
+          }
+          
+          // Get folder name for filename
+          const folderName = data.outputFolder ? data.outputFolder.split(/[/\\]/).pop() || 'Download' : 'Download';
+          const downloadFilename = `${folderName}.zip`;
+          
+          // Auto-start download using iframe method (works with IDM and regular browsers)
+          console.log('📥 Auto-triggering download:', fullDownloadUrl, downloadFilename);
+          
+          // Create hidden iframe for download (IDM-compatible)
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = fullDownloadUrl;
+          document.body.appendChild(iframe);
+          
+          // Clean up iframe after download starts
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+          
           toast.success('Download Complete!', {
-            description: `Your files are ready to download`,
-            duration: 5000,
-            action: {
-              label: 'Download Now',
-              onClick: () => {
-                const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-                let url = data.downloadUrl;
-                if (url && !url.startsWith('http')) {
-                  url = `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-                }
-                if (url) {
-                  window.open(url, '_blank');
-                }
-              }
-            }
+            description: `Your files are downloading automatically...`,
+            duration: 3000,
           });
         }
       });
@@ -555,11 +566,11 @@ export const DownloadQueue = () => {
                         <Button
                           variant="default"
                           size="sm"
-                          className="w-full h-7 text-xs font-medium bg-green-600 hover:bg-green-700"
+                          className="w-full h-6 text-[10px] font-medium bg-green-600 hover:bg-green-700 px-2"
                           onClick={() => handleDownload(download.downloadUrl!, download.folderName)}
                         >
-                          <Download className="h-3 w-3 mr-1.5" />
-                          Download Now
+                          <Download className="h-2.5 w-2.5 mr-1" />
+                          Download
                         </Button>
                       ) : (
                         <div className="text-xs text-muted-foreground text-center py-1">
