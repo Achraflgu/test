@@ -5534,27 +5534,33 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
-    // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
-    const hasAgeRestricted = fullError.includes('age-restricted') || 
-                            (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
-                            (fullError.includes('sign in to confirm your age') && fullError.includes('video may be inappropriate')) ||
-                            (fullError.includes('confirm your age') && fullError.includes('inappropriate')) ||
-                            (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
-                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted')) ||
-                            (fullError.includes('login_required') && (fullError.includes('age') || fullError.includes('inappropriate')));
-    
-    // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
-    // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
-    const hasBotDetectionError = !hasAgeRestricted && (
-                                 fullError.includes('sign in to confirm you\'re not a bot') ||
+    // 🔥 CRITICAL: Check for bot detection FIRST (highest priority)
+    // Bot detection errors are more common and should trigger cookie rotation immediately
+    // Bot detection: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
+    const hasBotDetectionError = fullError.includes('sign in to confirm you\'re not a bot') ||
                                  fullError.includes('sign in to confirm you are not a bot') ||
                                  (fullError.includes('sign in to confirm') && fullError.includes('bot')) ||
-                                 (fullError.includes('login_required') && !fullError.includes('age') && !fullError.includes('inappropriate')) ||
-                                 (fullError.includes('please sign in to continue') && !fullError.includes('age') && !fullError.includes('inappropriate'))
-                                );
+                                 (fullError.includes('login_required') && !fullError.includes('age') && !fullError.includes('inappropriate') && !fullError.includes('confirm your age'));
     
-    // 🔥 SMART FALLBACK: If age-restricted, search for alternative video (prioritize over bot detection)
+    // 🔥 SECONDARY: Check for age-restricted (ONLY if NOT bot detection)
+    // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
+    const hasAgeRestricted = !hasBotDetectionError && (
+                            fullError.includes('age-restricted') || 
+                            (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
+                            (fullError.includes('sign in to confirm your age') && fullError.includes('video may be inappropriate')) ||
+                            (fullError.includes('confirm your age') && fullError.includes('inappropriate') && !fullError.includes('bot')) ||
+                            (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
+                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted')) ||
+                            (fullError.includes('login_required') && (fullError.includes('age') || fullError.includes('inappropriate')) && !fullError.includes('bot'))
+                           );
+    
+    // 🔥 PRIORITY: If bot detection, throw error for cookie rotation (don't try alternatives)
+    if (hasBotDetectionError) {
+      console.log('  🚨 Bot detection error detected - cookie may be dead');
+      throw new Error('COOKIE_BOT_DETECTION'); // Special error for cookie rotation
+    }
+    
+    // 🔥 SECONDARY: If age-restricted, search for alternative video
     if (hasAgeRestricted) {
       console.log('  🔒 Age-restricted video detected - searching for alternative...');
       
@@ -5604,13 +5610,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       }
     }
     
-    if (hasBotDetectionError) {
-      console.log('  🚨 Bot detection error detected - cookie may be dead');
-      // Don't regenerate here - let smartRetryWithCookies handle rotation
-      // Return special value to indicate cookie failure (caller should try next cookie)
-      throw new Error('COOKIE_BOT_DETECTION'); // Special error for cookie rotation
-    }
-    
+    // If we reach here, it's neither bot detection nor age-restricted - return false
     return false;
   }
 }
