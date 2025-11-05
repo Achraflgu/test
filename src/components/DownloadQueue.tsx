@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { getSocket } from "@/services/api";
+import { getSocket, initWebSocket } from "@/services/api";
 
 interface DownloadItem {
   downloadId: string;
@@ -46,7 +46,15 @@ export const DownloadQueue = () => {
 
   // Listen to Socket.IO events and custom DOM events
   useEffect(() => {
-    const socket = getSocket();
+    // Initialize socket if not already initialized
+    const socket = getSocket() || initWebSocket();
+    
+    if (!socket) {
+      console.warn('⚠️ Socket not available for DownloadQueue');
+      return;
+    }
+    
+    console.log('🔌 DownloadQueue: Setting up socket listeners, socket connected:', socket.connected);
 
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
@@ -87,8 +95,21 @@ export const DownloadQueue = () => {
     // Add event listener for custom DOM events FIRST (fires immediately, before Socket.IO)
     window.addEventListener('download:queue:start', handleQueueStart);
 
-    // Socket.IO listeners (only if socket is available)
-    if (socket) {
+    // Set up socket listeners
+    const setupSocketListeners = () => {
+      if (!socket) {
+        console.warn('⚠️ Socket not available for setting up listeners');
+        return;
+      }
+      
+      // Remove existing listeners to prevent duplicates
+      socket.off('download:queue:start');
+      socket.off('download:status');
+      socket.off('download:progress');
+      socket.off('download:complete');
+      socket.off('download:error');
+      socket.off('download:track');
+      
       // Listen for custom queue start event (emitted from TrackList via Socket.IO)
       socket.on('download:queue:start', (data: any) => {
         console.log('📥 Queue: Received download:queue:start Socket.IO event:', data);
