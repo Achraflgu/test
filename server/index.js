@@ -5709,25 +5709,44 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🔥 CRITICAL: Check for bot detection FIRST (highest priority)
-    // Bot detection errors are more common and should trigger cookie rotation immediately
-    // Bot detection: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
-    const hasBotDetectionError = fullError.includes('sign in to confirm you\'re not a bot') ||
-                                 fullError.includes('sign in to confirm you are not a bot') ||
-                                 (fullError.includes('sign in to confirm') && fullError.includes('bot')) ||
-                                 (fullError.includes('login_required') && !fullError.includes('age') && !fullError.includes('inappropriate') && !fullError.includes('confirm your age'));
+    // 🔥 CRITICAL: Explicit error detection with priority handling
+    // Handles edge case: if BOTH "confirm your age" AND "confirm you're not a bot" appear,
+    // prioritize bot detection (cookie is dead, needs rotation)
     
-    // 🔥 SECONDARY: Check for age-restricted (ONLY if NOT bot detection)
-    // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
+    // Step 1: Check for explicit phrases
+    const hasAgeRestrictionPhrase = fullError.includes('sign in to confirm your age') ||
+                                   fullError.includes('confirm your age') ||
+                                   fullError.includes('age-restricted');
+    
+    const hasBotDetectionPhrase = fullError.includes('sign in to confirm you\'re not a bot') ||
+                                 fullError.includes('sign in to confirm you are not a bot') ||
+                                 (fullError.includes('sign in to confirm') && (fullError.includes('not a bot') || fullError.includes('are not a bot')));
+    
+    // Step 2: Handle edge case - if BOTH appear, prioritize bot detection (cookie is dead)
+    if (hasAgeRestrictionPhrase && hasBotDetectionPhrase) {
+      console.log('  ⚠️ Both age-restriction and bot detection detected - prioritizing bot detection (cookie issue)');
+      console.log('  🚨 Bot detection error detected - cookie may be dead');
+      throw new Error('COOKIE_BOT_DETECTION'); // Cookie rotation takes priority
+    }
+    
+    // Step 3: Check for explicit bot detection (only if NOT age-restricted phrase)
+    const hasBotDetectionError = hasBotDetectionPhrase ||
+                                (fullError.includes('login_required') && 
+                                 !hasAgeRestrictionPhrase && 
+                                 !fullError.includes('age') && 
+                                 !fullError.includes('inappropriate') && 
+                                 !fullError.includes('confirm your age'));
+    
+    // Step 4: Check for age-restricted (ONLY if NOT bot detection)
     const hasAgeRestricted = !hasBotDetectionError && (
-                            fullError.includes('age-restricted') || 
-                            (fullError.includes('sign in to confirm your age') && fullError.includes('inappropriate')) ||
-                            (fullError.includes('sign in to confirm your age') && fullError.includes('video may be inappropriate')) ||
-                            (fullError.includes('confirm your age') && fullError.includes('inappropriate') && !fullError.includes('bot')) ||
-                            (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
-                            (fullError.includes('some formats may be missing') && fullError.includes('age-restricted')) ||
-                            (fullError.includes('login_required') && (fullError.includes('age') || fullError.includes('inappropriate')) && !fullError.includes('bot'))
-                           );
+      hasAgeRestrictionPhrase ||
+      fullError.includes('age-restricted') || 
+      (fullError.includes('sign in to confirm your age') && (fullError.includes('inappropriate') || fullError.includes('video may be inappropriate'))) ||
+      (fullError.includes('confirm your age') && fullError.includes('inappropriate')) ||
+      (fullError.includes('video may be inappropriate') && fullError.includes('age')) ||
+      (fullError.includes('some formats may be missing') && fullError.includes('age-restricted')) ||
+      (fullError.includes('login_required') && (fullError.includes('age') || fullError.includes('inappropriate')) && !fullError.includes('bot'))
+    );
     
     // 🔥 PRIORITY: If bot detection, throw error for cookie rotation (don't try alternatives)
     if (hasBotDetectionError) {
