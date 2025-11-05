@@ -255,18 +255,16 @@ export const DownloadQueue = () => {
   }
 
   return (
-    <Card className="fixed left-4 bottom-24 w-80 z-40 shadow-lg border border-border/30 flex flex-col bg-background/40 backdrop-blur-md rounded-xl hover:bg-background/85 hover:shadow-xl transition-all duration-300 max-h-[500px]">
-      <CardHeader className="pb-2.5 pt-3 px-3 border-b border-border/20 flex-shrink-0">
+    <Card className="fixed left-4 bottom-24 w-72 z-40 shadow-lg border border-border/40 flex flex-col bg-background/40 backdrop-blur-md rounded-xl hover:bg-background/85 hover:shadow-xl hover:border-border/60 transition-all duration-300 max-h-[450px]">
+      <CardHeader className="pb-2.5 pt-3 px-3 border-b border-border/30 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin-slow" />
+            <RefreshCw className="h-4 w-4 text-primary/70 animate-spin-slow" />
             <div>
-              <CardTitle className="text-sm font-semibold text-foreground">
-                Download Queue
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <CardTitle className="text-sm font-semibold">Queue</CardTitle>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">
                 {activeCount > 0 
-                  ? `${activeCount} active, ${completedCount} done`
+                  ? `${activeCount} active • ${completedCount} done`
                   : completedCount > 0
                     ? `${completedCount} completed`
                     : 'Ready'}
@@ -289,12 +287,12 @@ export const DownloadQueue = () => {
       </CardHeader>
 
       {!isMinimized && (
-        <CardContent className="flex-1 overflow-y-auto space-y-2 p-3">
+        <CardContent className="flex-1 overflow-y-auto space-y-2.5 p-3">
           {/* Active Downloads Section */}
           {activeCount > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 px-2 py-1">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock className="h-3 w-3 text-primary/70" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Active ({activeCount})
                 </span>
@@ -308,7 +306,7 @@ export const DownloadQueue = () => {
                   >
                     <div className="p-1.5 bg-muted/50 rounded flex-shrink-0">
                       {download.status === 'downloading' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-foreground" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                       ) : (
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                       )}
@@ -349,7 +347,7 @@ export const DownloadQueue = () => {
           {completedCount > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 px-2 py-1">
-                <CheckCircle2 className="h-3 w-3 text-muted-foreground" />
+                <CheckCircle2 className="h-3 w-3 text-green-500/70" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Completed ({completedCount})
                 </span>
@@ -362,7 +360,7 @@ export const DownloadQueue = () => {
                     className="flex items-start gap-2.5 p-2.5 bg-muted/20 rounded-lg border border-border/30 hover:bg-muted/30 hover:border-border/50 transition-all"
                   >
                     <div className="p-1.5 bg-muted/40 rounded flex-shrink-0">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1.5">
