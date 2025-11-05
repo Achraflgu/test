@@ -957,7 +957,10 @@ async function getAllCookiesFromPool() {
   
   // Return with stats sorted by priority
   const cookiesWithStats = cookies.map((cookie) => {
-    const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+    // Use index property if available (Redis cookies), otherwise parse from path
+    const index = cookie.index !== undefined 
+      ? cookie.index 
+      : parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
     const stats = cookieStats.get(index) || initCookieStats(index);
     return { path: cookie.path, index, stats };
   });
