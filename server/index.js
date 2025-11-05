@@ -14,6 +14,17 @@ import archiver from 'archiver';
 import { proxyManager } from './proxy-manager.js';
 import youtubedl from 'youtube-dl-exec';
 import { Innertube } from 'youtubei.js';
+import { 
+  isRedisAvailable,
+  saveCookieToRedis,
+  getAllCookiesFromRedis,
+  savePrimaryCookieToRedis,
+  getPrimaryCookieFromRedis,
+  saveCookieMetadataToRedis,
+  loadCookieMetadataFromRedis,
+  saveCookiePoolMetadataToRedis,
+  loadCookiePoolMetadataFromRedis
+} from './cookieStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -616,6 +627,18 @@ let cookieStats = new Map(); // In-memory stats (index -> stats)
 // Load cookie metadata
 async function loadCookieMetadata() {
   try {
+    // Try Redis first
+    if (isRedisAvailable()) {
+      const redisMetadata = await loadCookieMetadataFromRedis();
+      if (redisMetadata) {
+        // Ensure new fields exist for backward compatibility
+        if (redisMetadata.regenerationCount === undefined) redisMetadata.regenerationCount = 0;
+        if (redisMetadata.lastRegenerated === undefined) redisMetadata.lastRegenerated = null;
+        return redisMetadata;
+      }
+    }
+    
+    // Fallback to filesystem
     const content = await fs.readFile(COOKIE_METADATA_PATH, 'utf8');
     const metadata = JSON.parse(content);
     // Ensure new fields exist for backward compatibility
@@ -638,6 +661,12 @@ async function loadCookieMetadata() {
 // Save cookie metadata
 async function saveCookieMetadata(metadata) {
   try {
+    // Save to Redis first
+    if (isRedisAvailable()) {
+      await saveCookieMetadataToRedis(metadata);
+    }
+    
+    // Also save to filesystem (fallback)
     await fs.writeFile(COOKIE_METADATA_PATH, JSON.stringify(metadata, null, 2), 'utf8');
   } catch (err) {
     // Silent fail
@@ -657,6 +686,19 @@ async function initCookiePool() {
 // 📊 Load cookie pool metadata (stats per cookie)
 async function loadCookiePoolMetadata() {
   try {
+    // Try Redis first
+    if (isRedisAvailable()) {
+      const redisMetadata = await loadCookiePoolMetadataFromRedis();
+      if (redisMetadata) {
+        cookieStats.clear();
+        for (const [index, stats] of Object.entries(redisMetadata)) {
+          cookieStats.set(parseInt(index), stats);
+        }
+        return redisMetadata;
+      }
+    }
+    
+    // Fallback to filesystem
     const content = await fs.readFile(COOKIE_POOL_METADATA_PATH, 'utf8');
     const metadata = JSON.parse(content);
     
@@ -681,6 +723,13 @@ async function saveCookiePoolMetadata() {
     for (const [index, stats] of cookieStats.entries()) {
       metadata[index] = stats;
     }
+    
+    // Save to Redis first
+    if (isRedisAvailable()) {
+      await saveCookiePoolMetadataToRedis(metadata);
+    }
+    
+    // Also save to filesystem (fallback)
     await fs.writeFile(COOKIE_POOL_METADATA_PATH, JSON.stringify(metadata, null, 2), 'utf8');
   } catch (err) {
     // Silent fail
@@ -748,6 +797,16 @@ function recordCookieFailure(index) {
 
 async function saveCookieToPool(cookieContent, index, options = {}) {
   try {
+    // Save to Redis first (if available)
+    if (isRedisAvailable()) {
+      await saveCookieToRedis(index, cookieContent, {
+        quality: options.quality || 'strong',
+        created: new Date().toISOString(),
+        ...options
+      });
+    }
+    
+    // Also save to filesystem (fallback)
     const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${index}.txt`);
     await fs.writeFile(cookiePath, cookieContent, 'utf8');
     
@@ -777,6 +836,9 @@ async function saveCookieToPool(cookieContent, index, options = {}) {
     saveCookiePoolMetadata();
     
     console.log(`  💾 Saved working cookie to pool (slot ${index + 1}/${COOKIE_POOL_SIZE})`);
+    if (isRedisAvailable()) {
+      console.log(`  ☁️ Also saved to Redis for persistence`);
+    }
     return cookiePath;
   } catch (err) {
     console.log(`  ⚠️ Failed to save cookie to pool: ${err.message}`);
@@ -786,6 +848,22 @@ async function saveCookieToPool(cookieContent, index, options = {}) {
 
 async function getWorkingCookiesFromPool() {
   try {
+    // Try Redis first (if available)
+    if (isRedisAvailable()) {
+      const redisCookies = await getAllCookiesFromRedis();
+      if (redisCookies.length > 0) {
+        console.log(`  🍪 Loaded ${redisCookies.length} cookies from Redis`);
+        // Also sync to filesystem for compatibility
+        await initCookiePool();
+        for (const cookie of redisCookies) {
+          const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
+          await fs.writeFile(cookiePath, cookie.content, 'utf8').catch(() => {});
+        }
+        return redisCookies;
+      }
+    }
+    
+    // Fallback to filesystem
     await initCookiePool();
     const files = await fs.readdir(COOKIE_POOL_DIR);
     const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
@@ -794,7 +872,12 @@ async function getWorkingCookiesFromPool() {
     for (const file of cookieFiles) {
       try {
         const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
-        cookies.push({ path: path.join(COOKIE_POOL_DIR, file), content });
+        const index = parseInt(file.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+        cookies.push({ 
+          path: path.join(COOKIE_POOL_DIR, file), 
+          content,
+          index
+        });
       } catch {}
     }
     
@@ -1150,9 +1233,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
       
       // Check which slots are already filled
       const existingCookies = await getWorkingCookiesFromPool();
-      const existingIndices = existingCookies.map(c => 
-        parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0')
-      );
+      const existingIndices = existingCookies.map(c => {
+        // Handle Redis cookies (have index property) or filesystem cookies (parse from path)
+        return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      });
       const cookiesNeeded = COOKIE_POOL_SIZE - existingIndices.length;
       
       if (cookiesNeeded <= 0) {
@@ -1385,6 +1469,11 @@ async function generateAndTestCookies(maxAttempts = 100) {
             // Save first STRONG cookie as primary cookie
             if ((slotIndex === 0 || (cookiesFound === 0 && !existingIndices.includes(0))) && cookieQuality === 'strong') {
               await fs.writeFile(AUTO_COOKIE_PATH, result.cookieContent, 'utf8');
+              
+              // Also save to Redis
+              if (isRedisAvailable()) {
+                await savePrimaryCookieToRedis(result.cookieContent);
+              }
               
               const metadata = await loadCookieMetadata();
               metadata.lastTested = new Date().toISOString();
@@ -1779,6 +1868,23 @@ async function initializeAutoCookies() {
   try {
     console.log('🔄 Checking auto-generated cookies...');
     
+    // Try loading primary cookie from Redis first
+    if (isRedisAvailable()) {
+      const redisPrimary = await getPrimaryCookieFromRedis();
+      if (redisPrimary && redisPrimary.length > 200 && redisPrimary.includes('VISITOR_INFO1_LIVE')) {
+        // Save to filesystem for compatibility
+        await fs.writeFile(AUTO_COOKIE_PATH, redisPrimary, 'utf8').catch(() => {});
+        console.log('  🍪 Loaded primary cookie from Redis');
+        
+        // Test it
+        const testResult = await testCookies(AUTO_COOKIE_PATH);
+        if (testResult && testResult.status && testResult.status !== 'fail') {
+          console.log('  ✅ Primary cookie from Redis is valid');
+          return AUTO_COOKIE_PATH;
+        }
+      }
+    }
+    
     // ✅ NEW: Validate cookie pool first (fast validation)
     const poolStatus = await validateCookiePool();
     
@@ -1792,9 +1898,10 @@ async function initializeAutoCookies() {
       // Only generate missing cookies (not all 5)
       const missingSlots = COOKIE_POOL_SIZE - poolStatus.valid;
       const existingCookies = await getWorkingCookiesFromPool();
-      const existingIndices = existingCookies.map(c => 
-        parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0')
-      );
+      const existingIndices = existingCookies.map(c => {
+        // Handle Redis cookies (have index property) or filesystem cookies (parse from path)
+        return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      });
       
       // Find first available slot
       let nextSlot = 0;
