@@ -926,7 +926,7 @@ async function testCookies(cookiePath) {
 
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 10000 // Increased timeout for better success
+        timeout: 15000 // Increased to 15s for Docker/cloud environments (better success rate)
       });
 
       testProcess.stdout.on('data', (data) => {
@@ -1161,19 +1161,29 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       const startTime = Date.now();
-      const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
-      const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts) - reduced for faster failover
-      const MAX_TIME = 180000; // Safety limit: 3 minutes max - reduced to prevent blocking downloads
-      const MIN_COOKIES_TO_ACCEPT = 1; // Accept if we have at least 1 working cookie
+      let PARALLEL_TESTS = 5; // Start with 5 parallel tests (adaptive)
+      const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts)
+      const MAX_TIME = 180000; // Safety limit: 3 minutes max
+      const PHASE1_TIME = 90000; // Phase 1: Get 2-3 STRONG cookies quickly (90s max)
       
-      console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`🎯 Target: ${cookiesNeeded} new cookies (${existingIndices.length}/${COOKIE_POOL_SIZE} already exist)`);
+      // 🎯 HYBRID ADAPTIVE STRATEGY
+      const MIN_STRONG_FOR_OPERATION = 2; // System can work with 2 strong cookies
+      const TARGET_STRONG_COOKIES = 3; // Ideal: 3 strong cookies
+      const TARGET_TOTAL_COOKIES = 5; // Final goal: 5 total
+      
+      console.log(`🔄 Starting HYBRID ADAPTIVE cookie generation with ${PARALLEL_TESTS} parallel tests...`);
+      console.log(`🎯 Strategy: Phase 1 (${PHASE1_TIME/1000}s): Get ${MIN_STRONG_FOR_OPERATION}-${TARGET_STRONG_COOKIES} STRONG cookies`);
+      console.log(`🎯 Strategy: Phase 2 (background): Fill remaining slots to ${TARGET_TOTAL_COOKIES} total`);
+      console.log(`📊 Target: ${cookiesNeeded} new cookies (${existingIndices.length}/${COOKIE_POOL_SIZE} already exist)`);
       console.log(`🛡️ Safety limits: ${MAX_BATCHES} batches max, ${MAX_TIME/1000}s timeout`);
-      console.log(`✅ Will accept ${MIN_COOKIES_TO_ACCEPT}+ working cookies if time/batches limit reached`);
       
       let totalAttempts = 0;
       let cookiesFound = 0;
+      let strongCookiesFound = 0; // Track STRONG cookies separately
+      let mediumCookiesFound = 0; // Track medium/weak cookies
       let batch = 0;
+      let consecutiveFailures = 0; // Track failures for adaptive parallelism
+      let phase1Complete = false; // Track Phase 1 completion
       const workingCookies = [];
       let nextAvailableSlot = 0;
       
@@ -1185,37 +1195,74 @@ async function generateAndTestCookies(maxAttempts = 100) {
         }
       }
       
-      // Test multiple cookies in parallel batches UNTIL we have enough cookies OR hit limits
+      // 🎯 PHASE 1: Get 2-3 STRONG cookies quickly (blocking, up to 90s)
+      // 🎯 PHASE 2: Fill remaining slots in background (non-blocking after Phase 1)
       while (cookiesFound < cookiesNeeded) {
         batch++;
         const elapsed = Date.now() - startTime;
+        const inPhase1 = elapsed < PHASE1_TIME && strongCookiesFound < MIN_STRONG_FOR_OPERATION;
         
-        // Safety check: Stop if we've exceeded limits
+        // 🎯 ADAPTIVE: Reduce parallelism if too many failures (rate limiting detected)
+        if (consecutiveFailures >= 3 && PARALLEL_TESTS > 2) {
+          PARALLEL_TESTS = Math.max(2, PARALLEL_TESTS - 1);
+          console.log(`  🔧 Adaptive: Reduced parallelism to ${PARALLEL_TESTS} (rate limiting detected)`);
+          consecutiveFailures = 0; // Reset counter
+        }
+        
+        // Safety check: Stop if we've exceeded batch limit
         if (batch > MAX_BATCHES) {
           console.log(`\n⚠️ Safety limit reached: ${MAX_BATCHES} batches tested`);
-          if (cookiesFound >= MIN_COOKIES_TO_ACCEPT) {
-            console.log(`✅ Accepting ${cookiesFound} working cookies (above minimum ${MIN_COOKIES_TO_ACCEPT})`);
+          if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
+            console.log(`✅ Have ${strongCookiesFound} STRONG cookies (minimum ${MIN_STRONG_FOR_OPERATION} met)`);
+            console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
+            if (cookiesFound < cookiesNeeded) {
+              console.log(`🔄 Continuing in background to fill remaining ${cookiesNeeded - cookiesFound} slots...`);
+            }
             break;
           } else {
-            console.log(`❌ Only found ${cookiesFound} cookies (need at least ${MIN_COOKIES_TO_ACCEPT})`);
+            console.log(`❌ Only found ${cookiesFound} cookies (${strongCookiesFound} strong, need ${MIN_STRONG_FOR_OPERATION} minimum)`);
             console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
             break;
           }
         }
         
+        // Phase 1 timeout: Check if we have minimum strong cookies
+        if (elapsed > PHASE1_TIME && !phase1Complete) {
+          phase1Complete = true;
+          if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
+            console.log(`\n✅ Phase 1 complete: ${strongCookiesFound} STRONG cookies (${elapsed/1000}s)`);
+            console.log(`🔄 Phase 2: Continuing in background to fill remaining slots...`);
+            // Don't break - continue to Phase 2
+          } else {
+            console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION})`);
+            console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookies...`);
+            // Continue trying (don't break)
+          }
+        }
+        
+        // Final time limit
         if (elapsed > MAX_TIME) {
           console.log(`\n⚠️ Time limit reached: ${(elapsed/1000).toFixed(0)}s elapsed`);
-          if (cookiesFound >= MIN_COOKIES_TO_ACCEPT) {
-            console.log(`✅ Accepting ${cookiesFound} working cookies (above minimum ${MIN_COOKIES_TO_ACCEPT})`);
+          if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
+            console.log(`✅ Have ${strongCookiesFound} STRONG cookies (minimum ${MIN_STRONG_FOR_OPERATION} met)`);
+            console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${cookiesFound} total`);
+            if (cookiesFound < cookiesNeeded && cookiesFound < TARGET_TOTAL_COOKIES) {
+              console.log(`🔄 Continuing in background to fill remaining ${cookiesNeeded - cookiesFound} slots...`);
+            }
+            break;
+          } else if (cookiesFound >= 1) {
+            console.log(`⚠️ Only found ${cookiesFound} cookies (${strongCookiesFound} strong, need ${MIN_STRONG_FOR_OPERATION} minimum)`);
+            console.log(`🔄 System will proceed with available cookies`);
             break;
           } else {
-            console.log(`❌ Only found ${cookiesFound} cookies (need at least ${MIN_COOKIES_TO_ACCEPT})`);
+            console.log(`❌ No cookies found - need at least ${MIN_STRONG_FOR_OPERATION} STRONG cookies`);
             console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
             break;
           }
         }
         
-        console.log(`\n🔄 Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
+        const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
+        console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
         // Generate multiple cookie sets in parallel
         const cookiePromises = [];
@@ -1257,11 +1304,12 @@ async function generateAndTestCookies(maxAttempts = 100) {
         // Wait for all parallel tests to complete
         const results = await Promise.all(cookiePromises);
         
-        // Collect ALL successful cookies (not just first one)
-        // PRIORITIZE STRONG cookies - only accept weak if we're running out of time
+        // Collect ALL successful cookies
         const successfulResults = results.filter(r => r.success);
         
         if (successfulResults.length > 0) {
+          consecutiveFailures = 0; // Reset failure counter on success
+          
           // Sort: strong cookies first, then weak
           const sortedResults = successfulResults.sort((a, b) => {
             if (a.quality === 'strong' && b.quality !== 'strong') return -1;
@@ -1269,24 +1317,47 @@ async function generateAndTestCookies(maxAttempts = 100) {
             return 0;
           });
           
-          // Only accept weak cookies if we're close to time/batch limits OR we have no strong cookies
-          const elapsedTime = Date.now() - startTime;
-          const nearTimeLimit = elapsedTime > (MAX_TIME * 0.7); // 70% of time limit
-          const nearBatchLimit = batch > (MAX_BATCHES * 0.7); // 70% of batch limit
-          const strongCookies = sortedResults.filter(r => r.quality === 'strong');
-          const acceptWeakCookies = strongCookies.length === 0 || nearTimeLimit || nearBatchLimit;
+          // 🎯 STRATEGY: Get STRONG cookies first, then fill with medium
+          const strongInBatch = sortedResults.filter(r => r.quality === 'strong').length;
+          const strongNeeded = Math.max(0, TARGET_STRONG_COOKIES - strongCookiesFound);
+          const totalNeeded = cookiesNeeded - cookiesFound;
           
-          if (!acceptWeakCookies && sortedResults.some(r => r.quality === 'weak')) {
-            console.log(`  ⏳ Skipping weak cookies - still have time to find strong ones...`);
+          // Only accept weak/medium cookies if:
+          // 1. We already have MIN_STRONG_FOR_OPERATION strong cookies (Phase 2), OR
+          // 2. We're in Phase 2 and need to fill remaining slots, OR
+          // 3. We're near time limits and have no strong cookies yet
+          const elapsedTime = Date.now() - startTime;
+          const inPhase2 = phase1Complete || strongCookiesFound >= MIN_STRONG_FOR_OPERATION;
+          const nearTimeLimit = elapsedTime > (MAX_TIME * 0.8);
+          const hasMinimumStrong = strongCookiesFound >= MIN_STRONG_FOR_OPERATION;
+          
+          // Accept medium cookies only in Phase 2 or if we're desperate
+          const acceptMediumCookies = inPhase2 || (strongCookiesFound === 0 && nearTimeLimit);
+          
+          if (!acceptMediumCookies && sortedResults.some(r => r.quality === 'weak')) {
+            console.log(`  ⏳ Skipping medium cookies - need ${strongNeeded} more STRONG first...`);
           }
           
-          const weakCount = sortedResults.filter(r => r.quality === 'weak' && acceptWeakCookies).length;
           for (const result of sortedResults) {
             if (cookiesFound >= cookiesNeeded) break;
             
-            // Skip weak cookies if we're not accepting them yet
-            if (result.quality === 'weak' && !acceptWeakCookies) {
-              continue;
+            // Priority logic: STRONG cookies first
+            if (result.quality === 'strong') {
+              // Always accept strong cookies if we need them
+              if (strongCookiesFound < TARGET_TOTAL_COOKIES || cookiesFound < cookiesNeeded) {
+                // Accept this strong cookie
+              } else {
+                continue; // We have enough strong, skip
+              }
+            } else {
+              // Medium/weak cookie - only accept in Phase 2 or if desperate
+              if (!acceptMediumCookies) {
+                continue; // Still in Phase 1, skip medium
+              }
+              // Only accept medium if we have minimum strong and need to fill slots
+              if (strongCookiesFound < MIN_STRONG_FOR_OPERATION) {
+                continue; // Still need more strong cookies
+              }
             }
             
             // Find next available slot
@@ -1298,14 +1369,20 @@ async function generateAndTestCookies(maxAttempts = 100) {
             const slotIndex = nextAvailableSlot;
             const cookieQuality = result.quality === 'weak' ? 'weak' : 'strong';
             await saveCookieToPool(result.cookieContent, slotIndex, { quality: cookieQuality });
+            
             if (cookieQuality === 'weak') {
-              console.log(`  ⚠️ Saved cookie slot ${slotIndex + 1} as WEAK PASS (lower priority)`);
+              mediumCookiesFound++;
+              console.log(`  ⚠️ Saved cookie slot ${slotIndex + 1} as MEDIUM (${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM)`);
+            } else {
+              strongCookiesFound++;
+              console.log(`  ✅ Saved cookie slot ${slotIndex + 1} as STRONG (${strongCookiesFound}/${TARGET_STRONG_COOKIES} STRONG)`);
             }
+            
             existingIndices.push(slotIndex); // Mark as filled
             workingCookies.push(result.cookieContent);
             nextAvailableSlot++; // Move to next slot
             
-            // Save first STRONG cookie as primary cookie (prioritize strong)
+            // Save first STRONG cookie as primary cookie
             if ((slotIndex === 0 || (cookiesFound === 0 && !existingIndices.includes(0))) && cookieQuality === 'strong') {
               await fs.writeFile(AUTO_COOKIE_PATH, result.cookieContent, 'utf8');
               
@@ -1318,23 +1395,29 @@ async function generateAndTestCookies(maxAttempts = 100) {
             }
             
             cookiesFound++;
+            
+            // 🎯 Early exit: If we have 2+ STRONG in Phase 1, we can continue in background
+            if (inPhase1 && strongCookiesFound >= MIN_STRONG_FOR_OPERATION && !phase1Complete) {
+              phase1Complete = true;
+              console.log(`  ✅ Phase 1 complete: ${strongCookiesFound} STRONG cookies (system ready)`);
+              console.log(`  🔄 Phase 2: Continuing in background to reach ${TARGET_TOTAL_COOKIES} total...`);
+            }
           }
           
           const totalCookies = existingIndices.length;
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch}!`);
-          if (weakCount > 0) {
-            console.log(`  ⚠️ ${weakCount} cookie(s) are WEAK PASS (kept with lower priority)`);
-          }
-          console.log(`📊 Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
+          console.log(`📊 Progress: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${totalCookies}/${TARGET_TOTAL_COOKIES} total (${elapsed}s)`);
         } else {
+          consecutiveFailures++; // Track consecutive failures
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`  ❌ Batch ${batch} failed: 0/${PARALLEL_TESTS} successful (${elapsed}s elapsed) - retrying...`);
         }
         
-        // Small delay between batches
+        // Adaptive delay: Longer if failures detected (rate limiting)
+        const batchDelay = consecutiveFailures >= 2 ? 2000 : 500;
         if (cookiesFound < cookiesNeeded) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
       }
       
@@ -1342,13 +1425,20 @@ async function generateAndTestCookies(maxAttempts = 100) {
       const totalCookies = existingIndices.length;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       
-      if (totalCookies >= COOKIE_POOL_SIZE) {
-        console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+      if (totalCookies >= TARGET_TOTAL_COOKIES) {
+        console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${totalCookies}/${TARGET_TOTAL_COOKIES} working cookies after ${elapsed}s`);
+        console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM`);
+      } else if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
+        console.log(`\n✅ OPERATIONAL: System ready with ${strongCookiesFound} STRONG cookies (${elapsed}s)`);
+        console.log(`📊 Current: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${totalCookies} total`);
+        if (totalCookies < TARGET_TOTAL_COOKIES) {
+          console.log(`🔄 Background: Continuing to fill remaining ${TARGET_TOTAL_COOKIES - totalCookies} slots...`);
+        }
       } else if (totalCookies > 0) {
-        console.log(`\n⚠️ PARTIAL SUCCESS: Cookie pool has ${totalCookies}/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+        console.log(`\n⚠️ PARTIAL: Cookie pool has ${totalCookies} cookies (${strongCookiesFound} STRONG) after ${elapsed}s`);
         console.log(`💡 System will use available cookies and continue regenerating in background`);
       } else {
-        console.log(`\n❌ FAILED: Cookie pool has 0/${COOKIE_POOL_SIZE} working cookies after ${elapsed}s`);
+        console.log(`\n❌ FAILED: Cookie pool has 0/${TARGET_TOTAL_COOKIES} working cookies after ${elapsed}s`);
         console.log(`💡 Generated cookies may not work - consider using real browser cookies`);
         console.log(`🔄 System will proceed without cookies and try cookie-less methods`);
       }
