@@ -27,32 +27,22 @@ export const DownloadQueue = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<Set<string>>(new Set());
 
-  // Load completed downloads from localStorage on mount
+  // Don't load old downloads from localStorage - start fresh on each page load
+  // Clear localStorage on mount to remove old downloads
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setDownloads(parsed);
-        // Check which downloads are still active
-        const active = parsed.filter((d: DownloadItem) => 
-          d.status === 'downloading' || d.status === 'queued'
-        ).map((d: DownloadItem) => d.downloadId);
-        setActiveDownloads(new Set(active));
-      }
+      // Clear old downloads from localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      // Start with empty downloads array
+      setDownloads([]);
+      setActiveDownloads(new Set());
     } catch (err) {
-      console.error('Failed to load download queue:', err);
+      console.error('Failed to clear download queue:', err);
     }
   }, []);
 
-  // Save to localStorage whenever downloads change
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(downloads));
-    } catch (err) {
-      console.error('Failed to save download queue:', err);
-    }
-  }, [downloads]);
+  // Don't persist downloads to localStorage - only keep in memory during session
+  // Removed localStorage persistence to avoid showing old downloads on reload
 
   // Listen to Socket.IO events and custom DOM events
   useEffect(() => {
