@@ -229,6 +229,126 @@ app.delete('/api/youtube-cookies', async (_req, res) => {
   }
 });
 
+// Debug endpoint: List and view cookie files
+app.get('/api/debug/cookies', async (req, res) => {
+  try {
+    const { file } = req.query; // Optional: ?file=cookie_1.txt to view specific file content
+    
+    const result = {
+      ok: true,
+      cookies: {
+        pool: [],
+        primary: null,
+        metadata: null,
+        poolMetadata: null
+      },
+      directories: {
+        cookiePool: COOKIE_POOL_DIR,
+        serverDir: __dirname
+      }
+    };
+
+    // 1. Check primary auto cookie
+    try {
+      const autoExists = await fs.access(AUTO_COOKIE_PATH).then(() => true).catch(() => false);
+      if (autoExists) {
+        const autoStat = await fs.stat(AUTO_COOKIE_PATH);
+        const autoContent = await fs.readFile(AUTO_COOKIE_PATH, 'utf8');
+        result.cookies.primary = {
+          path: AUTO_COOKIE_PATH,
+          filename: path.basename(AUTO_COOKIE_PATH),
+          size: autoStat.size,
+          modified: autoStat.mtime,
+          lineCount: autoContent.split('\n').filter(line => line.trim()).length,
+          content: file === '.auto_generated_cookies.txt' ? autoContent : undefined // Only include content if specifically requested
+        };
+      }
+    } catch (err) {
+      result.cookies.primary = { error: err.message };
+    }
+
+    // 2. List cookie pool files
+    try {
+      const poolExists = await fs.access(COOKIE_POOL_DIR).then(() => true).catch(() => false);
+      if (poolExists) {
+        const poolFiles = await fs.readdir(COOKIE_POOL_DIR);
+        const cookieFiles = poolFiles.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
+        
+        for (const filename of cookieFiles.sort()) {
+          try {
+            const cookiePath = path.join(COOKIE_POOL_DIR, filename);
+            const stat = await fs.stat(cookiePath);
+            const content = await fs.readFile(cookiePath, 'utf8');
+            const index = parseInt(filename.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+            
+            result.cookies.pool.push({
+              index,
+              path: cookiePath,
+              filename,
+              size: stat.size,
+              modified: stat.mtime,
+              lineCount: content.split('\n').filter(line => line.trim()).length,
+              content: file === filename ? content : undefined // Only include content if specifically requested
+            });
+          } catch (err) {
+            result.cookies.pool.push({
+              filename,
+              error: err.message
+            });
+          }
+        }
+      }
+    } catch (err) {
+      result.cookies.pool = { error: err.message };
+    }
+
+    // 3. Load cookie metadata
+    try {
+      const metadataExists = await fs.access(COOKIE_METADATA_PATH).then(() => true).catch(() => false);
+      if (metadataExists) {
+        const metadataContent = await fs.readFile(COOKIE_METADATA_PATH, 'utf8');
+        result.cookies.metadata = JSON.parse(metadataContent);
+      }
+    } catch (err) {
+      result.cookies.metadata = { error: err.message };
+    }
+
+    // 4. Load cookie pool metadata
+    try {
+      const poolMetadataExists = await fs.access(COOKIE_POOL_METADATA_PATH).then(() => true).catch(() => false);
+      if (poolMetadataExists) {
+        const poolMetadataContent = await fs.readFile(COOKIE_POOL_METADATA_PATH, 'utf8');
+        result.cookies.poolMetadata = JSON.parse(poolMetadataContent);
+      }
+    } catch (err) {
+      result.cookies.poolMetadata = { error: err.message };
+    }
+
+    // 5. Check user-provided cookies (if exists)
+    try {
+      const userCookiesExists = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
+      if (userCookiesExists) {
+        const userStat = await fs.stat(YOUTUBE_COOKIES_PATH);
+        const userContent = await fs.readFile(YOUTUBE_COOKIES_PATH, 'utf8');
+        result.cookies.userProvided = {
+          path: YOUTUBE_COOKIES_PATH,
+          filename: path.basename(YOUTUBE_COOKIES_PATH),
+          size: userStat.size,
+          modified: userStat.mtime,
+          lineCount: userContent.split('\n').filter(line => line.trim()).length,
+          content: file === path.basename(YOUTUBE_COOKIES_PATH) ? userContent : undefined
+        };
+      }
+    } catch (err) {
+      // Ignore if user cookies don't exist
+    }
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // NOTE: User cookie collection endpoints removed – we operate cookie-less by default
 
 // Store active downloads
