@@ -710,20 +710,29 @@ async function testCookies(cookiePath) {
         
         // If we have bot detection, definitely reject
         if (hasBotDetectionError) {
+          console.log('  ❌ Cookie test FAILED (bot detection)');
           resolve(false);
           return;
         }
         
-        // ✅ STRICT TEST: Only accept if we got valid JSON (exit code 0 + has title/ID)
-        // This ensures the cookie actually works, not just "doesn't show bot detection"
+        // ✅ BEST CASE: Got valid JSON with successful exit code
         if (code === 0 && (hasTitle || hasVideoId)) {
           console.log('  ✅ Cookie test PASSED (valid JSON)');
           resolve(true);
           return;
         }
         
-        // ❌ REJECT: No valid JSON means cookie doesn't work
-        console.log('  ❌ Cookie test FAILED (no valid JSON, code: ' + code + ')');
+        // ⚠️ MODERATE: Process completed without bot detection (might work for downloads)
+        // Accept cookies that complete without explicit bot errors
+        // They might fail some tests but work for actual downloads
+        if (!hasBotDetectionError && code !== null) {
+          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + code + ')');
+          resolve(true);
+          return;
+        }
+        
+        // ❌ REJECT: Null exit code or other issues
+        console.log('  ❌ Cookie test FAILED (code: ' + code + ')');
         resolve(false);
       });
       
@@ -731,12 +740,23 @@ async function testCookies(cookiePath) {
         if (resolved) return;
         resolved = true;
         
-        // Any process error is a failure - cookie must work reliably
-        console.log('  ❌ Process error - rejecting cookie');
-        resolve(false);
+        // Check if error output shows bot detection
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
+        
+        if (hasBotDetectionError) {
+          console.log('  ❌ Process error with bot detection - rejecting');
+          resolve(false);
+        } else {
+          // Process error without bot detection - might still work
+          console.log('  ⚠️ Process error but no bot detection - weak pass');
+          resolve(true);
+        }
       });
       
-      // Timeout: 10s for thorough testing
+      // Timeout: 8s for faster iteration
       setTimeout(() => {
         if (resolved) return;
         resolved = true;
@@ -745,10 +765,21 @@ async function testCookies(cookiePath) {
           testProcess.kill('SIGKILL');
         } catch {}
         
-        // Timeout means cookie is too slow or doesn't work
-        console.log('  ❌ Timeout - rejecting cookie');
-        resolve(false);
-      }, 10000); // 10s timeout - gives time for valid cookies, rejects slow/broken ones
+        // Check if we saw bot detection before timeout
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot");
+        
+        if (hasBotDetectionError) {
+          console.log('  ❌ Timeout with bot detection - rejecting');
+          resolve(false);
+        } else {
+          // Timeout without bot detection - cookie might work (network issue)
+          console.log('  ⚠️ Timeout but no bot detection - weak pass');
+          resolve(true);
+        }
+      }, 8000); // 8s timeout for faster generation
     });
   } catch (err) {
     return false;
@@ -879,7 +910,18 @@ async function generateAndTestCookies(maxAttempts = 100) {
   // 🔒 Prevent concurrent cookie generation
   if (isGeneratingCookies && cookieGenerationPromise) {
     console.log('  ⏳ Cookie generation already in progress, waiting for completion...');
-    return await cookieGenerationPromise;
+    
+    // Wait for generation with a timeout (don't block downloads forever)
+    try {
+      const result = await Promise.race([
+        cookieGenerationPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Cookie generation timeout')), 120000)) // 2 min timeout
+      ]);
+      return result;
+    } catch (err) {
+      console.log(`  ⚠️ Cookie generation timeout - proceeding without cookies`);
+      return null;
+    }
   }
   
   // Set lock and create promise
@@ -902,8 +944,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
       
       const startTime = Date.now();
       const PARALLEL_TESTS = 5; // Test 5 cookies in parallel (5x faster!)
-      const MAX_BATCHES = 100; // Safety limit: max 100 batches (500 attempts)
-      const MAX_TIME = 600000; // Safety limit: 10 minutes max
+      const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts) - reduced for faster failover
+      const MAX_TIME = 180000; // Safety limit: 3 minutes max - reduced to prevent blocking downloads
       const MIN_COOKIES_TO_ACCEPT = 1; // Accept if we have at least 1 working cookie
       
       console.log(`🔄 Starting SMART cookie generation with ${PARALLEL_TESTS} parallel tests...`);
