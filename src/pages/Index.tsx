@@ -586,21 +586,21 @@ const Index = () => {
                       updatedPlaylistNames.push(playlistData.name);
                       updatedPlaylistImages.push(playlistData.imageUrl);
                       updatedPlaylistUrls.push(playlistData.url);
-                      
-                      const combinedName = updatedPlaylistNames.length > 0 
-                        ? updatedPlaylistNames.join(' + ')
+                    
+                    const combinedName = updatedPlaylistNames.length > 0 
+                      ? updatedPlaylistNames.join(' + ')
                         : playlist.name;
-                      
-                      setPlaylistNames(updatedPlaylistNames);
-                      setPlaylistImages(updatedPlaylistImages);
-                      setPlaylistUrls(updatedPlaylistUrls);
-                      setPlaylist({
-                        ...playlist,
-                        name: combinedName,
+                    
+                    setPlaylistNames(updatedPlaylistNames);
+                    setPlaylistImages(updatedPlaylistImages);
+                    setPlaylistUrls(updatedPlaylistUrls);
+                    setPlaylist({
+                      ...playlist,
+                      name: combinedName,
                         imageUrl: playlistData.imageUrl, // Use new playlist thumbnail
-                        totalTracks: mergedTracks.length,
-                        totalDuration: playlist.totalDuration + playlistData.totalDuration,
-                      });
+                      totalTracks: mergedTracks.length,
+                      totalDuration: playlist.totalDuration + playlistData.totalDuration,
+                    });
                     } else {
                       // Single track: keep existing name, just add tracks
                       setPlaylist({

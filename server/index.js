@@ -393,6 +393,103 @@ const COOKIE_POOL_SIZE = 5;
 let cookiePoolIndex = 0; // Round-robin rotation
 const COOKIE_POOL_METADATA_PATH = path.join(__dirname, '.cookie_pool_metadata.json');
 
+// 🎯 CLIENT PROFILES FOR YOUTUBE DL EXEC
+const COOKIE_CLIENT_PROFILES = [
+  {
+    name: 'android',
+    extractorArgs: 'youtube:player_client=android',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UPB5.230623.003; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.134 Mobile Safari/537.36 GSA/14.47.37.29.arm64',
+    headers: [
+      'x-youtube-client-name:3',
+      'x-youtube-client-version:19.47.37',
+      'origin:https://www.youtube.com'
+    ]
+  },
+  {
+    name: 'ios',
+    extractorArgs: 'youtube:player_client=ios',
+    userAgent: 'com.google.ios.youtube/19.47.3 (iPhone; U; CPU iOS 17_1 like Mac OS X; en_US)',
+    headers: [
+      'x-youtube-client-name:5',
+      'x-youtube-client-version:19.47.3',
+      'origin:https://www.youtube.com'
+    ]
+  },
+  {
+    name: 'tv',
+    extractorArgs: 'youtube:player_client=tv',
+    userAgent: 'Mozilla/5.0 (Chromecast; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.134 Safari/537.36 CrKey/1.56.500000',
+    headers: [
+      'x-youtube-client-name:85',
+      'x-youtube-client-version:3.0',
+      'origin:https://www.youtube.com'
+    ]
+  }
+];
+
+const COOKIELESS_CLIENT_PROFILES = [
+  {
+    name: 'android_sdkless',
+    extractorArgs: 'youtube:player_client=android_sdkless',
+    userAgent: 'Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SP2A.220505.002) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
+    headers: [
+      'x-youtube-client-name:3',
+      'x-youtube-client-version:19.47.37'
+    ]
+  },
+  {
+    name: 'tv_embedded',
+    extractorArgs: 'youtube:player_client=tv_embedded',
+    userAgent: 'Mozilla/5.0 (CrKey armv7l 1.56.500000) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.134 Safari/537.36',
+    headers: [
+      'x-youtube-client-name:85',
+      'x-youtube-client-version:3.0'
+    ]
+  },
+  {
+    name: 'web_embedded',
+    extractorArgs: 'youtube:player_client=web_embedded',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Safari/537.36',
+    headers: [
+      'accept-language:en-US,en;q=0.9',
+      'origin:https://www.youtube.com'
+    ]
+  }
+];
+
+function applyClientProfileToOptions(downloadOptions, profile) {
+  const headerSet = new Set();
+  const headers = [];
+
+  const pushHeader = (header) => {
+    const normalized = header.toLowerCase();
+    if (!headerSet.has(normalized)) {
+      headerSet.add(normalized);
+      headers.push(header);
+    }
+  };
+
+  pushHeader('referer:https://www.youtube.com');
+  if (profile.userAgent) {
+    pushHeader(`user-agent:${profile.userAgent}`);
+    downloadOptions.userAgent = profile.userAgent;
+  }
+
+  if (profile.headers && Array.isArray(profile.headers)) {
+    for (const header of profile.headers) {
+      if (typeof header === 'string' && header.includes(':')) {
+        pushHeader(header);
+      }
+    }
+  }
+
+  downloadOptions.addHeader = headers;
+
+  if (profile.extractorArgs) {
+    downloadOptions.extractorArgs = profile.extractorArgs;
+  }
+}
+
 // 📊 COOKIE HEALTH TRACKING
 let cookieStats = new Map(); // In-memory stats (index -> stats)
 
@@ -529,13 +626,35 @@ function recordCookieFailure(index) {
   saveCookiePoolMetadata(); // Save asynchronously (don't await)
 }
 
-async function saveCookieToPool(cookieContent, index) {
+async function saveCookieToPool(cookieContent, index, options = {}) {
   try {
     const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${index}.txt`);
     await fs.writeFile(cookiePath, cookieContent, 'utf8');
     
     // Initialize stats for new cookie
-    initCookieStats(index);
+    const stats = initCookieStats(index);
+
+    if (options.quality === 'weak') {
+      stats.successCount = 0;
+      stats.totalDownloads = 4;
+      stats.successRate = 0.5;
+      stats.tier = Math.max(stats.tier, 3);
+      stats.lastSuccess = null;
+      stats.lastUsed = null;
+      stats.quality = 'weak';
+      stats.consecutiveFailures = 0;
+    } else {
+      stats.successCount = 4;
+      stats.totalDownloads = 4;
+      stats.successRate = 1.0;
+      stats.tier = 1;
+      stats.lastSuccess = new Date().toISOString();
+      stats.lastUsed = null;
+      stats.quality = 'strong';
+      stats.consecutiveFailures = 0;
+    }
+    cookieStats.set(index, stats);
+    saveCookiePoolMetadata();
     
     console.log(`  💾 Saved working cookie to pool (slot ${index + 1}/${COOKIE_POOL_SIZE})`);
     return cookiePath;
@@ -661,130 +780,90 @@ async function replaceCookieInPool(index, newCookieContent) {
 // ⚡ FAST cookie test (5s timeout for quick iteration)
 async function testCookies(cookiePath) {
   try {
-    // Use yt-dlp to test cookies with a short test video
     const testArgs = [
       '-m', 'yt_dlp',
       `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`,
       '--cookies', cookiePath,
-      '--dump-json', // Just get info, don't download
+      '--dump-json',
       '--no-playlist',
-      '--quiet',
+      '--ignore-errors',
       '--no-warnings',
-      '--skip-download', // Don't download, just test access
-      '--extractor-args', 'youtube:player_client=web_embedded',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      '--skip-download',
+      '--extractor-args', 'youtube:player_client=android,ios,tv_embedded,web_embedded',
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36'
     ];
-    
-    return new Promise((resolve) => {
-      const testProcess = spawn(PYTHON_CMD, testArgs, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 5000 // 5 second timeout (2x faster!)
-      });
-      
+
+    return await new Promise((resolve) => {
       let output = '';
       let errorOutput = '';
       let resolved = false;
-      
+
+      const resolveOnce = (value) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(value);
+      };
+
+      const testProcess = spawn(PYTHON_CMD, testArgs, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 7000
+      });
+
       testProcess.stdout.on('data', (data) => {
         output += data.toString();
       });
-      
+
       testProcess.stderr.on('data', (data) => {
         errorOutput += data.toString();
       });
-      
+
       testProcess.on('close', (code) => {
         if (resolved) return;
-        resolved = true;
-        
-        // Check for success indicators
-        const hasTitle = output.includes('"title"') || output.includes('"id"');
-        const hasVideoId = output.includes('"video_id"') || output.includes('"id":');
-        
-        // Critical bot detection errors (definitely cookie problem - REJECT)
-        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
-                                     errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot") ||
-                                     errorOutput.includes('confirm you are not a bot');
-        
-        // If we have bot detection, definitely reject
+
+        const normalizedError = errorOutput.toLowerCase();
+        const hasBotDetectionError =
+          normalizedError.includes('sign in to confirm') ||
+          normalizedError.includes('login_required') ||
+          normalizedError.includes("you're not a bot") ||
+          normalizedError.includes('confirm you are not a bot') ||
+          normalizedError.includes('consent required') ||
+          normalizedError.includes('captcha') ||
+          normalizedError.includes('please sign in to continue');
+
         if (hasBotDetectionError) {
           console.log('  ❌ Cookie test FAILED (bot detection)');
-          resolve(false);
+          resolveOnce({ status: 'fail', reason: 'bot' });
           return;
         }
-        
-        // ✅ BEST CASE: Got valid JSON with successful exit code
+
+        const hasTitle = output.includes('"title"') || output.includes('"id"');
+        const hasVideoId = output.includes('"video_id"') || output.includes('"id":');
+
         if (code === 0 && (hasTitle || hasVideoId)) {
           console.log('  ✅ Cookie test PASSED (valid JSON)');
-          resolve(true);
+          resolveOnce({ status: 'strong' });
           return;
         }
-        
-        // ⚠️ MODERATE: Process completed without bot detection (might work for downloads)
-        // Accept cookies that complete without explicit bot errors
-        // They might fail some tests but work for actual downloads
-        // Note: code can be null if process was killed, but we check for bot detection first
-        if (!hasBotDetectionError) {
-          // Accept if no bot detection (even with null code - process might have been killed by timeout)
-          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + (code ?? 'null') + ')');
-          resolve(true);
-          return;
-        }
-        
-        // ❌ REJECT: Only reject if we have bot detection
-        console.log('  ❌ Cookie test FAILED (bot detection detected)');
-        resolve(false);
+
+        console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, code: ' + (code ?? 'null') + ')');
+        resolveOnce({ status: 'weak' });
       });
-      
+
       testProcess.on('error', (err) => {
-        if (resolved) return;
-        resolved = true;
-        
-        // Check if error output shows bot detection
-        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
-                                     errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot");
-        
-        if (hasBotDetectionError) {
-          console.log('  ❌ Process error with bot detection - rejecting');
-          resolve(false);
-        } else {
-          // Process error without bot detection - might still work
-          console.log('  ⚠️ Process error but no bot detection - weak pass');
-          resolve(true);
-        }
+        console.log(`  ⚠️ Cookie test error: ${err.message}`);
+        resolveOnce({ status: 'fail', reason: 'error' });
       });
-      
-      // Timeout: 8s for faster iteration
+
       setTimeout(() => {
         if (resolved) return;
-        resolved = true;
-        
-        try {
-          testProcess.kill('SIGKILL');
-        } catch {}
-        
-        // Check if we saw bot detection before timeout
-        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
-                                     errorOutput.includes('LOGIN_REQUIRED') ||
-                                     errorOutput.includes('Please sign in to continue') ||
-                                     errorOutput.includes("you're not a bot");
-        
-        if (hasBotDetectionError) {
-          console.log('  ❌ Timeout with bot detection - rejecting');
-          resolve(false);
-        } else {
-          // Timeout without bot detection - cookie might work (network issue)
-          console.log('  ⚠️ Timeout but no bot detection - weak pass');
-          resolve(true);
-        }
-      }, 8000); // 8s timeout for faster generation
+        try { testProcess.kill('SIGKILL'); } catch {}
+        console.log('  ⚠️ Cookie test timeout - assuming weak pass');
+        resolveOnce({ status: 'weak', reason: 'timeout' });
+      }, 7000);
     });
   } catch (err) {
-    return false;
+    console.log(`  ⚠️ Cookie test failed: ${err.message}`);
+    return { status: 'fail', reason: 'exception' };
   }
 }
 
@@ -1022,8 +1101,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
               // Clean up temp file
               await fs.unlink(tempCookiePath).catch(() => {});
               
+              const isSuccess = testResult && testResult.status !== 'fail';
               return { 
-                success: testResult, 
+                success: isSuccess, 
+                quality: testResult?.status || 'fail',
                 attempt, 
                 cookieContent,
                 tempPath: tempCookiePath
@@ -1044,6 +1125,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
         
         if (successfulResults.length > 0) {
           // Save ALL working cookies to pool (fill missing slots)
+          const weakCount = successfulResults.filter(r => r.quality === 'weak').length;
           for (const result of successfulResults) {
             if (cookiesFound >= cookiesNeeded) break;
             
@@ -1054,7 +1136,11 @@ async function generateAndTestCookies(maxAttempts = 100) {
             }
             
             const slotIndex = nextAvailableSlot;
-            await saveCookieToPool(result.cookieContent, slotIndex);
+            const cookieQuality = result.quality === 'weak' ? 'weak' : 'strong';
+            await saveCookieToPool(result.cookieContent, slotIndex, { quality: cookieQuality });
+            if (cookieQuality === 'weak') {
+              console.log(`  ⚠️ Saved cookie slot ${slotIndex + 1} as WEAK PASS (lower priority)`);
+            }
             existingIndices.push(slotIndex); // Mark as filled
             workingCookies.push(result.cookieContent);
             nextAvailableSlot++; // Move to next slot
@@ -1077,6 +1163,9 @@ async function generateAndTestCookies(maxAttempts = 100) {
           const totalCookies = existingIndices.length;
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`✅ Found ${successfulResults.length} working cookie(s) in batch ${batch}!`);
+          if (weakCount > 0) {
+            console.log(`  ⚠️ ${weakCount} cookie(s) are WEAK PASS (kept with lower priority)`);
+          }
           console.log(`📊 Cookie pool: ${totalCookies}/${COOKIE_POOL_SIZE} slots filled (${elapsed}s elapsed)`);
         } else {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1146,9 +1235,13 @@ async function regenerateSingleCookie(slotIndex) {
       // Clean up temp file
       await fs.unlink(tempCookiePath).catch(() => {});
       
-      if (testResult) {
+      if (testResult && testResult.status && testResult.status !== 'fail') {
         // Success! Replace the dead cookie
-        await saveCookieToPool(cookieContent, slotIndex);
+        const cookieQuality = testResult.status === 'weak' ? 'weak' : 'strong';
+        await saveCookieToPool(cookieContent, slotIndex, { quality: cookieQuality });
+        if (cookieQuality === 'weak') {
+          console.log(`  ⚠️ Regenerated cookie slot ${slotIndex + 1} is a WEAK PASS (lower priority)`);
+        }
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`✅ Cookie slot ${slotIndex + 1} regenerated successfully after ${attempts} attempts (${elapsed}s)`);
         return true;
@@ -1292,7 +1385,7 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   if (cookies.length === 0) {
     // No cookies available, just try operation once
     console.log('  ⚠️ No cookies in pool - attempting without cookies');
-    return await operation(null);
+    return await operation(null, 0);
   }
   
   let botDetectionCount = 0; // Track how many cookies failed with bot detection
@@ -1303,7 +1396,7 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
     
     try {
       console.log(`  🍪 Trying cookie ${cookie.index + 1}/${cookies.length} (${path.basename(cookie.path)})...`);
-      const result = await operation(cookie.path);
+      const result = await operation(cookie.path, attempt);
       
       // Success! Record it
       if (result !== false && result !== null) {
@@ -1386,7 +1479,7 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
       if (freshCookies.length > 0) {
         console.log(`  🔄 Retrying with fresh cookie ${freshCookies[0].index + 1}...`);
         try {
-          const result = await operation(freshCookies[0].path);
+          const result = await operation(freshCookies[0].path, 0);
           if (result !== false && result !== null) {
             recordCookieSuccess(freshCookies[0].index);
             global[cookieFailureKey] = 0; // Reset on success
@@ -1412,7 +1505,7 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   // Try operation WITHOUT cookies (cookie-less mode)
   console.log(`  🔄 Attempting operation without cookies (cookie-less client types)...`);
   try {
-    const result = await operation(null); // null = no cookies
+    const result = await operation(null, cookies.length + botDetectionCount); // null = no cookies
     if (result !== false && result !== null) {
       console.log(`  ✅ Cookie-less operation succeeded!`);
       return result;
@@ -1476,7 +1569,7 @@ async function initializeAutoCookies() {
         // Test existing cookies
         const testResult = await testCookies(AUTO_COOKIE_PATH);
         
-        if (testResult) {
+        if (testResult && testResult.status && testResult.status !== 'fail') {
           // ✅ Existing cookies work!
           const metadata = await loadCookieMetadata();
           metadata.lastTested = new Date().toISOString();
@@ -1484,7 +1577,11 @@ async function initializeAutoCookies() {
           metadata.isValid = true;
           await saveCookieMetadata(metadata);
           
-          console.log('✅ Existing cookies are WORKING - reusing them!');
+          if (testResult.status === 'weak') {
+            console.log('⚠️ Existing cookies only WEAK PASS - keeping but prioritising regenerated ones');
+          } else {
+            console.log('✅ Existing cookies are WORKING - reusing them!');
+          }
           console.log(`🍪 Auto-cookies available at: ${AUTO_COOKIE_PATH}`);
           return AUTO_COOKIE_PATH;
         } else {
@@ -5414,7 +5511,7 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
@@ -5492,10 +5589,6 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       noCheckCertificates: true,
       // noWarnings removed - when omitted, warnings are shown by default
       preferFreeFormats: true,
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-      ],
       noPlaylist: true,
       verbose: true,  // ✅ OPTION B: Enable verbose logging
       print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
@@ -5505,6 +5598,11 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     if (cookiePath) {
       downloadOptions.cookies = cookiePath;
     }
+
+    const profileList = cookiePath ? COOKIE_CLIENT_PROFILES : COOKIELESS_CLIENT_PROFILES;
+    const profile = profileList[clientAttempt % profileList.length];
+    applyClientProfileToOptions(downloadOptions, profile);
+    console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
     
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
@@ -6071,8 +6169,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         track.searchTerm = searchTerm;
         
         // Use smart cookie rotation
-        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath) => {
-          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath);
+        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
+          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
         }, 5);
         
         if (ytdlExecSuccess) {
@@ -6096,8 +6194,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         track.url = originalUrl;
       } else if (track.url && track.url.includes('youtube.com')) {
         // YouTube direct link - use smart cookie rotation
-        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath) => {
-          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath);
+        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
+          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
         }, 5);
         
         if (ytdlExecSuccess) {
