@@ -433,7 +433,7 @@ const Index = () => {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,hsl(141_76%_36%/0.15),transparent_60%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,hsl(0_0%_7%)_100%)]" />
         
-        <div className="container mx-auto px-4 py-12 md:py-16 lg:py-20 relative z-10 ml-0 md:ml-[20rem] transition-all duration-300" style={{ maxWidth: 'var(--container-max-width)' }}>
+        <div className="container mx-auto px-4 py-12 md:py-16 lg:py-20 relative z-10" style={{ maxWidth: 'var(--container-max-width)' }}>
           <div className="flex flex-col items-center text-center space-y-4 md:space-y-6 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-gradient-to-r from-[#1DB954]/10 to-red-500/10 border border-primary/20 rounded-full backdrop-blur-sm">
               <Sparkles className="w-3.5 md:w-4 h-3.5 md:h-4 text-primary" />
@@ -476,7 +476,7 @@ const Index = () => {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-8 md:py-10 lg:py-12 relative z-10 ml-0 md:ml-[20rem] transition-all duration-300" style={{ maxWidth: 'var(--container-max-width)' }}>
+      <div className="container mx-auto px-4 py-8 md:py-10 lg:py-12 relative z-10" style={{ maxWidth: 'var(--container-max-width)' }}>
         {/* Input Section */}
         <div ref={inputSectionRef} className="animate-fade-in space-y-6" style={{ animationDelay: '0.2s' }}>
           {/* Mode Toggle Switch */}
@@ -821,7 +821,7 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="border-t border-border mt-16 md:mt-20 lg:mt-24 py-6 md:py-8 relative">
-        <div className="container mx-auto px-4 ml-0 md:ml-[20rem] transition-all duration-300" style={{ maxWidth: 'var(--container-max-width)' }}>
+        <div className="container mx-auto px-4" style={{ maxWidth: 'var(--container-max-width)' }}>
           <div className="flex flex-col gap-3">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               {/* Left: Branding */}
