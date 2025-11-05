@@ -149,29 +149,29 @@ export const DownloadQueue = () => {
           return prev.map(d => {
             if (d.downloadId === data.downloadId) {
             // Handle both playlist progress (completed/totalTracks) and single track progress (progress: 100)
-            let progress = 0;
+            let progress = d.progress; // Start with current progress
             let completedTracks = d.completedTracks;
-            let totalTracks = d.totalTracks;
+            let totalTracks = d.totalTracks || 1;
             
-            if (data.totalTracks > 0 && data.completed !== undefined) {
+            // Check if status is completed FIRST - this takes priority
+            if (data.status === 'completed') {
+              progress = 100;
+              completedTracks = 1;
+              totalTracks = 1;
+            } else if (data.totalTracks > 0 && data.completed !== undefined) {
               // Playlist progress format
               progress = Math.round((data.completed / data.totalTracks) * 100);
               completedTracks = data.completed || 0;
-              totalTracks = data.totalTracks || d.totalTracks;
+              totalTracks = data.totalTracks || d.totalTracks || 1;
             } else if (data.progress !== undefined) {
               // Single track progress format (progress: 100)
-              progress = data.progress;
-              // If progress is 100 OR status is completed, mark as completed
-              if (data.progress === 100 || data.status === 'completed') {
+              progress = Math.max(d.progress, data.progress); // Update progress, don't go backwards
+              // If progress is 100, mark as completed
+              if (data.progress === 100) {
                 completedTracks = 1;
                 totalTracks = 1;
                 progress = 100; // Force to 100 if completed
               }
-            } else if (data.status === 'completed') {
-              // If status is completed but no progress, assume 100%
-              progress = 100;
-              completedTracks = 1;
-              totalTracks = totalTracks || 1;
             }
             
             // Update status - if completed, mark as completed (check both status and progress)
@@ -196,7 +196,12 @@ export const DownloadQueue = () => {
         });
         
         // If progress event indicates completion, also remove from active downloads
-        if (data.status === 'completed' || data.progress === 100) {
+        // Check multiple conditions to ensure we catch completion
+        const isCompleted = data.status === 'completed' || 
+                           data.progress === 100 || 
+                           (data.progress !== undefined && data.progress >= 100);
+        
+        if (isCompleted) {
           setActiveDownloads(prev => {
             const next = new Set(prev);
             next.delete(data.downloadId);
@@ -296,6 +301,37 @@ export const DownloadQueue = () => {
           next.delete(data.downloadId);
           return next;
         });
+      });
+
+      // Track individual track completion (for single track downloads)
+      socket.on('download:track', (data: any) => {
+        console.log('📨 Download track event:', data);
+        if (!data.downloadId) {
+          return;
+        }
+        
+        // If track status is completed, update the download progress
+        if (data.status === 'completed' && data.progress === 100) {
+          setDownloads(prev => prev.map(d => {
+            if (d.downloadId === data.downloadId) {
+              console.log(`✅ Track completed for download ${data.downloadId}, updating to 100%`);
+              return {
+                ...d,
+                status: 'completed',
+                progress: 100,
+                completedTracks: 1,
+                totalTracks: 1,
+                completedAt: d.completedAt || new Date().toISOString()
+              };
+            }
+            return d;
+          }));
+          setActiveDownloads(prev => {
+            const next = new Set(prev);
+            next.delete(data.downloadId);
+            return next;
+          });
+        }
       });
     }
 
