@@ -6842,11 +6842,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           successCount++;
           
           completedCount++;
+          // For TrackList: emit download:track event (matches by trackId)
+          socket.emit('download:track', {
+            downloadId,
+            trackId: track.id || `${track.artist}-${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ ${track.name}`
+          });
+          console.log(`📤 Emitted download:track for track: ${track.name} (id: ${track.id || 'generated'})`);
+          // For TrackList and DownloadQueue: emit download:progress event
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: completedCount >= totalTracks ? 'completed' : 'downloading',
-            progress: Math.round((completedCount / totalTracks) * 100),
+            status: 'completed', // Individual track is completed (for TrackList)
+            progress: Math.round((completedCount / totalTracks) * 100), // Overall progress (for DownloadQueue)
             completed: completedCount,
             totalTracks: totalTracks,
             message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
@@ -6871,11 +6881,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           successCount++;
           
           completedCount++;
+          // For TrackList: emit download:track event (matches by trackId)
+          socket.emit('download:track', {
+            downloadId,
+            trackId: track.id || `${track.artist}-${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ ${track.name}`
+          });
+          console.log(`📤 Emitted download:track for track: ${track.name} (id: ${track.id || 'generated'})`);
+          // For TrackList and DownloadQueue: emit download:progress event
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: completedCount >= totalTracks ? 'completed' : 'downloading',
-            progress: Math.round((completedCount / totalTracks) * 100),
+            status: 'completed', // Individual track is completed (for TrackList)
+            progress: Math.round((completedCount / totalTracks) * 100), // Overall progress (for DownloadQueue)
             completed: completedCount,
             totalTracks: totalTracks,
             message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
@@ -6900,11 +6920,21 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           successCount++;
           
           completedCount++;
+          // For TrackList: emit download:track event (matches by trackId)
+          socket.emit('download:track', {
+            downloadId,
+            trackId: track.id || `${track.artist}-${track.name}`,
+            status: 'completed',
+            progress: 100,
+            message: `✅ ${track.name}`
+          });
+          console.log(`📤 Emitted download:track for track: ${track.name} (id: ${track.id || 'generated'})`);
+          // For TrackList and DownloadQueue: emit download:progress event
           socket.emit('download:progress', {
             downloadId,
             trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-            status: completedCount >= totalTracks ? 'completed' : 'downloading',
-            progress: Math.round((completedCount / totalTracks) * 100),
+            status: 'completed', // Individual track is completed (for TrackList)
+            progress: Math.round((completedCount / totalTracks) * 100), // Overall progress (for DownloadQueue)
             completed: completedCount,
             totalTracks: totalTracks,
             message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
