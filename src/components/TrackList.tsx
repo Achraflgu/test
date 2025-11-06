@@ -2323,6 +2323,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
     console.log(`🎯 Starting single track download for: ${track.name}`);
     
+    // Generate a temporary downloadId IMMEDIATELY to prevent race conditions
+    // This ensures the track has a downloadId before any events arrive
+    const tempDownloadId = `temp_${Date.now()}_${track.id}`;
+    trackDownloadIdMap.current.set(track.id, tempDownloadId);
+    console.log(`📌 [TrackList] Pre-mapped track ${track.id} to temp downloadId ${tempDownloadId} (will update when real downloadId arrives)`);
+    
     // IMMEDIATELY set ONLY this track to pending, preserve ALL other tracks unchanged
     setTracks(prev => {
       const updated = prev.map(t => {
@@ -2382,9 +2388,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
-      // Store downloadId for this track (for concurrent download tracking)
+      // Update downloadId for this track (replace temp with real downloadId)
       trackDownloadIdMap.current.set(track.id, response.downloadId);
-      console.log(`📌 [TrackList] Mapped track ${track.id} to downloadId ${response.downloadId}`);
+      console.log(`📌 [TrackList] Updated track ${track.id} mapping: ${tempDownloadId} → ${response.downloadId}`);
       
       // Emit download start event for queue tracking (single track) - both Socket.IO and custom event
       const socketForSingle = getSocket();
@@ -2599,20 +2605,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Try multiple matching strategies
         let matchingTrack = null;
         
-        // Strategy 1: Exact ID match + downloadId validation (CRITICAL for concurrent downloads)
+        // Strategy 1: Exact ID match + STRICT downloadId validation (CRITICAL for concurrent downloads)
         matchingTrack = prev.find(t => {
           const trackMatchesId = t.id === data.trackId;
           if (!trackMatchesId) return false;
           
-          // CRITICAL: Only match if downloadId matches (prevents cross-download matches)
+          // CRITICAL: STRICT downloadId validation - BOTH must exist and match
+          // If either is missing, don't match (prevents false matches during race conditions)
           const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-          const downloadIdMatches = !data.downloadId || !trackDownloadId || trackDownloadId === data.downloadId;
+          
+          if (!data.downloadId) {
+            console.log(`⚠️ [TrackList] Strategy 1: Event missing downloadId, skipping match for ${t.name}`);
+            return false;
+          }
+          
+          if (!trackDownloadId) {
+            console.log(`⚠️ [TrackList] Strategy 1: Track ${t.name} has no downloadId mapped, skipping match`);
+            return false;
+          }
+          
+          const downloadIdMatches = trackDownloadId === data.downloadId;
           
           if (trackMatchesId && downloadIdMatches) {
             console.log(`✅ [TrackList] Strategy 1 (Exact ID + downloadId) matched: ${t.name} (downloadId: ${data.downloadId})`);
             return true;
           } else if (trackMatchesId && !downloadIdMatches) {
-            console.log(`⚠️ [TrackList] Strategy 1: ID matches but downloadId mismatch - track: ${trackDownloadId}, event: ${data.downloadId}`);
+            console.log(`⚠️ [TrackList] Strategy 1: ID matches but downloadId mismatch - track: ${trackDownloadId}, event: ${data.downloadId}, skipping ${t.name}`);
             return false;
           }
           return false;
@@ -2656,10 +2674,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         if (!matchingTrack && data.message) {
           const messageLower = data.message.toLowerCase();
           matchingTrack = prev.find(t => {
-            // CRITICAL: Only match if downloadId matches (prevents cross-download matches)
-            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-            const downloadIdMatches = !data.downloadId || !trackDownloadId || trackDownloadId === data.downloadId;
+            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
+            if (!data.downloadId) {
+              return false; // Skip if event has no downloadId
+            }
             
+            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
+            if (!trackDownloadId) {
+              return false; // Skip if track has no downloadId mapped
+            }
+            
+            const downloadIdMatches = trackDownloadId === data.downloadId;
             if (!downloadIdMatches) {
               return false; // Skip if downloadId doesn't match
             }
@@ -2786,9 +2811,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                                          track.downloadStatus === 'pending' || 
                                          track.downloadStatus === 'downloading';
             
-            // CRITICAL: Only match if downloadId matches (prevents cross-download matches)
+            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
+            // If either is missing, don't match (prevents false matches during race conditions)
+            if (!data.downloadId) {
+              return track; // Skip if event has no downloadId
+            }
+            
             const trackDownloadId = trackDownloadIdMap.current.get(track.id);
-            const downloadIdMatches = !data.downloadId || !trackDownloadId || trackDownloadId === data.downloadId;
+            if (!trackDownloadId) {
+              return track; // Skip if track has no downloadId mapped
+            }
+            
+            const downloadIdMatches = trackDownloadId === data.downloadId;
             
             const isExactMatch = data.trackName && (
               // Exact full name match
@@ -3104,6 +3138,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setDownloading(true);
     setAttemptCount(0);
     
+    // Generate a temporary downloadId IMMEDIATELY to prevent race conditions
+    // This ensures all tracks have a downloadId before any events arrive
+    const tempDownloadId = `temp_batch_${Date.now()}`;
+    selectedTracks.forEach(track => {
+      trackDownloadIdMap.current.set(track.id, tempDownloadId);
+    });
+    console.log(`📌 [TrackList] Pre-mapped ${selectedTracks.length} tracks to temp downloadId ${tempDownloadId} (will update when real downloadId arrives)`);
+    
     // Reset download status for selected tracks
     setTracks(prev => prev.map(track => ({
       ...track,
@@ -3130,11 +3172,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
-      // Store downloadId for all selected tracks (for concurrent download tracking)
+      // Update downloadId for all selected tracks (replace temp with real downloadId)
       selectedTracks.forEach(track => {
         trackDownloadIdMap.current.set(track.id, response.downloadId);
       });
-      console.log(`📌 [TrackList] Mapped ${selectedTracks.length} tracks to downloadId ${response.downloadId}`);
+      console.log(`📌 [TrackList] Updated ${selectedTracks.length} tracks mapping: ${tempDownloadId} → ${response.downloadId}`);
       
       // Emit download start event for queue tracking (both Socket.IO and custom event for immediate UI)
       const socket = getSocket();
