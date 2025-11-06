@@ -482,11 +482,8 @@ export const DownloadQueue = () => {
   const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
   const completedCount = downloads.filter(d => d.status === 'completed').length;
 
-  // Always show component if there are any downloads (active or completed)
-  // Hide only if completely empty and no downloads in localStorage
-  if (downloads.length === 0) {
-    return null;
-  }
+  // Always render component (even if empty) to ensure socket listeners are always active
+  // This ensures DownloadQueue receives events even before first download starts
 
   return (
     <Card className="fixed left-2 bottom-24 w-72 z-40 shadow-lg border border-border/40 flex flex-col bg-background/40 backdrop-blur-md rounded-xl hover:bg-background/85 hover:shadow-xl hover:border-border/60 transition-all duration-300 max-h-[450px]">
