@@ -77,7 +77,10 @@ export const DownloadQueue = () => {
 
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
-      console.log('📥 Download started:', { downloadId, folderName, totalTracks });
+      console.log('📥 [DownloadQueue] ========================================');
+      console.log('📥 [DownloadQueue] handleDownloadStart() called');
+      console.log('📥 [DownloadQueue] Data:', { downloadId, folderName, totalTracks });
+      console.log('📥 [DownloadQueue] ========================================');
       const newDownload: DownloadItem = {
         downloadId,
         playlistName: folderName,
