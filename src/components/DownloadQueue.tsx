@@ -181,11 +181,12 @@ export const DownloadQueue = () => {
               totalTracks = data.totalTracks;
               progress = Math.round((data.completed / data.totalTracks) * 100);
             }
-            // Priority 2: Check if this is a single track completion event (increment counter)
-            else if (data.status === 'completed' && data.progress === 100 && totalTracks > 1) {
-              // Individual track completed in playlist - increment counter
-              completedTracks = Math.min((d.completedTracks || 0) + 1, totalTracks);
-              progress = Math.round((completedTracks / totalTracks) * 100);
+            // Priority 2: Individual track completed (status: 'completed' with completed/totalTracks info)
+            else if (data.status === 'completed' && data.totalTracks > 0 && data.completed !== undefined) {
+              // Individual track completed - use the completed count from backend
+              completedTracks = data.completed;
+              totalTracks = data.totalTracks;
+              progress = Math.round((data.completed / data.totalTracks) * 100);
             }
             // Priority 3: Single track download (progress: 100)
             else if (data.progress !== undefined && totalTracks === 1) {
@@ -211,9 +212,10 @@ export const DownloadQueue = () => {
             }
             
             // Update status - mark as completed only when ALL tracks are done
+            // Individual tracks send status: 'completed', but overall download is only complete when all tracks are done
             const isCompleted = (completedTracks >= totalTracks && totalTracks > 1) || 
                                (data.status === 'completed' && totalTracks === 1) ||
-                               progress === 100;
+                               (progress === 100 && completedTracks >= totalTracks);
             const newStatus = isCompleted ? 'completed' : 'downloading';
             
             // Ensure progress doesn't go backwards and is clamped to valid range
