@@ -2898,19 +2898,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Dismiss persistent attempt toast
         toast.dismiss('download-attempt');
         
-        // Mark all selected tracks as completed if they're not already failed
-        // This ensures all tracks show as completed when the download finishes
-        setTracks(prev => prev.map(track => {
-          if (track.selected && track.downloadStatus !== 'failed' && track.downloadStatus !== 'completed') {
-            console.log(`✅ [TrackList] Marking track "${track.name}" as completed from download:complete event`);
-            return {
-              ...track,
-              downloadStatus: 'completed' as const,
-              downloadProgress: 100
-            };
-          }
-          return track;
-        }));
+        // 🚫 CRITICAL: Skip bulk completion for single track downloads when ANY completed tracks exist
+        // This prevents marking pending track 2 as completed when re-downloading track 1
+        const isSingleTrackDownload = data.totalSuccess === 1 && data.totalFailed === 0;
+        const hasAnyCompletedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'completed').length > 0;
+        
+        // Only run bulk completion if:
+        // 1. It's NOT a single track download (multi-track playlist), OR
+        // 2. It's a single track download BUT there are NO completed tracks (first download)
+        const shouldRunBulkCompletion = !isSingleTrackDownload || (isSingleTrackDownload && !hasAnyCompletedTracks);
+        
+        if (shouldRunBulkCompletion) {
+          // For multi-track downloads or first single-track download, mark all selected pending tracks as completed
+          setTracks(prev => prev.map(track => {
+            if (track.selected && track.downloadStatus !== 'failed' && track.downloadStatus !== 'completed') {
+              console.log(`✅ [TrackList] Marking track "${track.name}" as completed from download:complete event (multi-track or first download)`);
+              return {
+                ...track,
+                downloadStatus: 'completed' as const,
+                downloadProgress: 100
+              };
+            }
+            return track;
+          }));
+        } else {
+          console.log(`🚫 [TrackList] Skipping bulk completion - single track re-download scenario (${hasAnyCompletedTracks ? 'completed tracks exist' : 'no completed tracks'})`);
+        }
         
         // Collect failed tracks
         const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
