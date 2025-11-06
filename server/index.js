@@ -990,24 +990,30 @@ async function replaceCookieInPool(index, newCookieContent) {
   return await saveCookieToPool(newCookieContent, index);
 }
 
-// ⚡ STRICT cookie test (requires actual JSON output to pass)
+// ⚡ ULTRA-STRICT cookie test - Tests ACTUAL audio extraction (not just metadata!)
+// This ensures cookies work for REAL downloads, not just API calls
 async function testCookies(cookiePath) {
   try {
+    // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (the REAL test!)
     const testArgs = [
       '-m', 'yt_dlp',
       `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`,
       '--cookies', cookiePath,
-      '--dump-json',
+      '--print', 'after_move:filepath', // Only prints filepath if extraction succeeds
+      '--extract-audio',
+      '--audio-format', 'mp3',
+      '--audio-quality', '64K', // Very low quality for fast testing
       '--no-playlist',
-      '--ignore-errors',
+      '--quiet',
       '--no-warnings',
-      '--skip-download',
-      '--extractor-args', 'youtube:player_client=android,ios,tv_embedded,web_embedded',
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36'
+      '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
+      '--max-filesize', '3M' // Abort if too large (just testing)
     ];
 
     return await new Promise((resolve) => {
-      let output = '';
+      let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
 
@@ -1019,18 +1025,18 @@ async function testCookies(cookiePath) {
 
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 15000 // Increased to 15s for Docker/cloud environments (better success rate)
+        timeout: 12000 // 12s timeout for actual extraction
       });
 
       testProcess.stdout.on('data', (data) => {
-        output += data.toString();
+        stdoutData += data.toString();
       });
 
       testProcess.stderr.on('data', (data) => {
         errorOutput += data.toString();
       });
 
-      testProcess.on('close', (code) => {
+      testProcess.on('close', async (code) => {
         if (resolved) return;
 
         const normalizedError = errorOutput.toLowerCase();
@@ -1041,7 +1047,22 @@ async function testCookies(cookiePath) {
           normalizedError.includes('confirm you are not a bot') ||
           normalizedError.includes('consent required') ||
           normalizedError.includes('captcha') ||
-          normalizedError.includes('please sign in to continue');
+          normalizedError.includes('please sign in to continue') ||
+          normalizedError.includes('video unavailable') ||
+          normalizedError.includes('unplayable');
+
+        // Check for successful extraction (got file path in stdout)
+        const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
+        
+        // Cleanup temp file if created
+        if (hasExtractedFile) {
+          const match = stdoutData.match(/\/tmp\/cookie_test_[^\s]+/);
+          if (match) {
+            try {
+              await fs.unlink(match[0]).catch(() => {});
+            } catch {}
+          }
+        }
 
         if (hasBotDetectionError) {
           console.log('  ❌ Cookie test FAILED (bot detection)');
@@ -1049,33 +1070,15 @@ async function testCookies(cookiePath) {
           return;
         }
 
-        // STRICT: Must have valid JSON with title/id
-        try {
-          const jsonOutput = output.trim();
-          if (jsonOutput) {
-            const parsed = JSON.parse(jsonOutput);
-            const hasTitle = parsed.title && parsed.title.length > 0;
-            const hasId = parsed.id && parsed.id.length > 0;
-            
-            if (code === 0 && hasTitle && hasId) {
-              console.log('  ✅ Cookie test STRONG PASS (valid JSON with title/id)');
-              resolveOnce({ status: 'strong' });
-              return;
-            }
-          }
-        } catch (parseErr) {
-          // Not valid JSON
-        }
-
-        // If no bot detection but no valid JSON, it's weak (might work but not ideal)
-        if (!hasBotDetectionError && output.length > 100) {
-          console.log('  ⚠️ Cookie test WEAK PASS (no bot detection, but no valid JSON, code: ' + (code ?? 'null') + ')');
-          resolveOnce({ status: 'weak' });
+        // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
+        if (code === 0 && hasExtractedFile) {
+          console.log('  ✅ Cookie test STRONG PASS (successfully extracted audio file)');
+          resolveOnce({ status: 'strong' });
           return;
         }
 
         // Timeout or process error = fail
-        console.log('  ❌ Cookie test FAILED (no output or process error, code: ' + (code ?? 'null') + ')');
+        console.log('  ❌ Cookie test FAILED (no audio extracted, code: ' + (code ?? 'null') + ')');
         resolveOnce({ status: 'fail', reason: code === null ? 'timeout' : 'process_error' });
       });
 
@@ -1089,7 +1092,7 @@ async function testCookies(cookiePath) {
         try { testProcess.kill('SIGKILL'); } catch {}
         console.log('  ❌ Cookie test timeout - rejecting');
         resolveOnce({ status: 'fail', reason: 'timeout' });
-      }, 10000);
+      }, 12000);
     });
   } catch (err) {
     console.log(`  ❌ Cookie test failed: ${err.message}`);
