@@ -2980,18 +2980,35 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         });
       }
     });
+    };
+    
+    // Set up listeners immediately if socket is connected, otherwise wait for connection
+    // This is the same pattern as DownloadQueue
+    if (socket.connected) {
+      console.log('🔌 [TrackList] Socket already connected, setting up listeners');
+      setupSocketListeners();
+    } else {
+      console.log('🔌 [TrackList] Socket not connected yet, waiting for connection...');
+      socket.on('connect', () => {
+        console.log('🔌 [TrackList] Socket connected, setting up listeners');
+        setupSocketListeners();
+      });
+    }
 
     return () => {
-      socket.off('download:status');
-      socket.off('download:attempt');
-      socket.off('download:track');
-      socket.off('download:progress');
-      socket.off('download:error');
-      socket.off('download:retry');
-      socket.off('download:complete');
-      socket.off('download:timeout');
-      socket.off('download:cancelled');
-      socket.off('download:skipped');
+      if (socket) {
+        socket.off('download:status');
+        socket.off('download:attempt');
+        socket.off('download:track');
+        socket.off('download:progress');
+        socket.off('download:error');
+        socket.off('download:retry');
+        socket.off('download:complete');
+        socket.off('download:timeout');
+        socket.off('download:cancelled');
+        socket.off('download:skipped');
+        socket.off('connect');
+      }
     };
   }, []); // Empty dependencies - track updates work for ALL downloads, never recreate listeners
 
