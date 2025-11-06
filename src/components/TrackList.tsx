@@ -2490,7 +2490,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   // Initialize WebSocket connection
   useEffect(() => {
     console.log('🔌 [TrackList] Initializing socket listeners...');
-    const socket = initWebSocket();
+    // Get existing socket or create new one (same as DownloadQueue)
+    const socket = getSocket() || initWebSocket();
     
     if (!socket) {
       console.error('❌ [TrackList] Failed to initialize socket!');
@@ -2501,6 +2502,26 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     // Initialize Live Listening service
     liveListeningService.init(socket);
+    
+    // Set up socket listeners in a function (same pattern as DownloadQueue)
+    const setupSocketListeners = () => {
+      if (!socket) {
+        console.warn('⚠️ [TrackList] Socket not available for setting up listeners');
+        return;
+      }
+      
+      console.log('🔧 [TrackList] Setting up socket event listeners...');
+      
+      // Remove existing listeners to prevent duplicates
+      socket.off('download:status');
+      socket.off('download:attempt');
+      socket.off('download:track');
+      socket.off('download:progress');
+      socket.off('download:complete');
+      socket.off('download:error');
+      socket.off('download:timeout');
+      socket.off('download:cancelled');
+      socket.off('download:skipped');
 
     socket.on('download:status', (data: any) => {
       console.log('📨 [TrackList] Download status:', data);
