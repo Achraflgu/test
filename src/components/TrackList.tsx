@@ -2857,55 +2857,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           
           console.log('❌ Failed tracks:', data.failedTracks);
           
-          // Show warning notification with download option
-          if (data.downloadUrl) {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-            const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
-            
-            // Generate descriptive filename for IDM detection
-            const folderName = getFolderName(data.outputFolder);
-            const downloadFilename = `${folderName}.zip`;
-            
-            // Auto-start download (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl, downloadFilename);
-            
-            // Add to tray
-            setRecentDownloads(prev => [{ 
-              id: data.downloadId, 
-              name: folderName, 
-              url: fullDownloadUrl, 
-              time: Date.now() 
-            }, ...prev].slice(0, 5));
-            
-            // Show detailed toast with success rate
-            const successPercent = Math.round((data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100);
-            const emoji = successPercent >= 70 ? '✅' : successPercent >= 40 ? '⚠️' : '❌';
-            
-            toast.warning(`${emoji} Download Complete - ${data.totalSuccess}/${data.totalSuccess + data.totalFailed} tracks (${successPercent}%)`, {
-              description: `📦 ZIP ready • ${data.totalFailed} track${data.totalFailed > 1 ? 's' : ''} could not be downloaded due to YouTube blocking`,
-              duration: 15000,
-              action: {
-                label: 'View Failed',
-                onClick: () => {
-                  if (data.failedTracks && data.failedTracks.length > 0) {
-                    const failedList = data.failedTracks.slice(0, 8).join('\n• ');
-                    const more = data.failedTracks.length > 8 ? `\n• ...and ${data.failedTracks.length - 8} more` : '';
-                    toast.error(`Failed to download:\n\n• ${failedList}${more}`, {
-                      duration: 20000,
-                      description: 'Tip: Try downloading these individually or wait and try again later',
-                    });
-                  } else {
-                    setShowFailedTracksDialog(true);
-                  }
-                },
-              },
-            });
-          } else {
-            toast.warning(data.message, {
-              duration: 10000,
-              description: `${Math.round(successRate)}% success rate`,
-            });
-          }
+          // DownloadQueue now handles auto-download and main notification
+          // TrackList only shows failed tracks info
+          console.log('[TrackList] Download completed with failures - DownloadQueue will handle auto-download');
         } else {
           // Full success - show success notification
           const successCount = data.totalSuccess || tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
