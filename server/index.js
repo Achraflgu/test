@@ -2396,21 +2396,70 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   return null;
 }
 
+// 🚀 GENERATE SINGLE STRONG COOKIE (for fast startup)
+async function generateSingleStrongCookie() {
+  const MAX_ATTEMPTS = 30;
+  const PARALLEL_TESTS = 3;
+  
+  for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
+    // Generate 3 cookies in parallel
+    const generationPromises = [];
+    for (let i = 0; i < PARALLEL_TESTS; i++) {
+      generationPromises.push(generateSmartYouTubeCookies(batch * PARALLEL_TESTS + i));
+    }
+    
+    const cookies = await Promise.all(generationPromises);
+    
+    // Test all 3 in parallel
+    const testPromises = cookies.map(cookie => testCookies(cookie));
+    const results = await Promise.all(testPromises);
+    
+    // Find first STRONG cookie
+    for (let i = 0; i < results.length; i++) {
+      if (results[i] && results[i].status === 'strong') {
+        // Save it to slot 0
+        await saveCookieToPool(cookies[i], 0, { quality: 'strong' });
+        console.log(`    ✅ Generated STRONG cookie (batch ${batch}/${MAX_ATTEMPTS / PARALLEL_TESTS})`);
+        return true;
+      }
+    }
+    
+    // All failed, wait before retry
+    if (batch < MAX_ATTEMPTS / PARALLEL_TESTS) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+  
+  return false;
+}
+
 // Initialize auto-cookies on startup with smart testing
 async function initializeAutoCookies() {
   try {
     console.log('🔄 Checking auto-generated cookies...');
     console.log('');
     
-    // ✅ PRIORITY 1: Validate cookie pool FIRST (full validation with audio extraction)
+    // ✅ STEP 1: Initialize cookie pool (loads from Redis if available)
+    await initCookiePool();
+    
+    // ✅ STEP 2: Load existing cookies from Redis
+    let existingCookies = [];
+    if (isRedisAvailable()) {
+      existingCookies = await getAllCookiesFromRedis();
+      if (existingCookies.length > 0) {
+        console.log(`  🍪 Loaded ${existingCookies.length} existing cookie(s) from Redis`);
+      }
+    }
+    
+    // ✅ STEP 3: Validate existing cookies (quick validation during startup)
     console.log('🔍 Validating existing cookie pool...');
     const poolStatus = await validateCookiePool();
     
     console.log(`  📊 Pool status: ${poolStatus.valid}/${poolStatus.total} cookies validated as working`);
     
-    // If pool is full, we're ready!
-    if (poolStatus.valid >= COOKIE_POOL_SIZE) {
-      console.log(`  ✅ Cookie pool is FULL (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - ready to use!`);
+    // ✅ STEP 4: If we have at least 1 working cookie, START SERVER NOW and fill pool in background
+    if (poolStatus.valid >= 1) {
+      console.log(`  ✅ Found ${poolStatus.valid} working cookie(s) - server ready!`);
       
       // Update primary cookie from pool
       if (isRedisAvailable()) {
@@ -2422,37 +2471,38 @@ async function initializeAutoCookies() {
         }
       }
       
-      return AUTO_COOKIE_PATH;
-    }
-    
-    // If pool is partial, fill it NOW (not in background) before accepting requests
-    if (poolStatus.valid > 0 && poolStatus.valid < COOKIE_POOL_SIZE) {
-      console.log(`  ⚠️ Cookie pool is PARTIAL (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - filling missing slots NOW...`);
-      console.log(`  ⏳ This may take 30-60s to ensure cookies are ready before accepting requests...`);
-      
-      // WAIT for pool to be filled (not background)
-      const fillSuccess = await ensurePoolIsFull();
-      
-      if (fillSuccess) {
-        console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE} - ready!`);
-      } else {
-        console.log(`  ⚠️ Pool fill incomplete - proceeding with ${poolStatus.valid} working cookie(s)`);
+      // Fill remaining slots in BACKGROUND (don't block startup)
+      if (poolStatus.valid < COOKIE_POOL_SIZE) {
+        console.log(`  🔄 Will fill remaining ${COOKIE_POOL_SIZE - poolStatus.valid} slot(s) in background...`);
+        // Background fill - will respect download pause mechanism
+        setTimeout(() => {
+          ensurePoolIsFull().catch(() => {});
+        }, 5000); // Wait 5s after startup, then fill
       }
       
       return AUTO_COOKIE_PATH;
     }
     
-    // If pool is empty, generate all 5 cookies NOW before starting
+    // ✅ STEP 5: If pool is empty (0 working cookies), generate 1 STRONG cookie NOW, then fill rest in background
     if (poolStatus.valid === 0) {
-      console.log(`  📝 Cookie pool is EMPTY - generating ${COOKIE_POOL_SIZE} new cookies NOW...`);
-      console.log(`  ⏳ This may take 1-3 minutes to ensure cookies are ready before accepting requests...`);
+      console.log(`  ⚠️ No working cookies found - generating 1 STRONG cookie NOW to start server...`);
+      console.log(`  ⏳ This may take 30-60s (will generate remaining 4 cookies in background)...`);
       
-      const newCookies = await generateAndTestCookies(100); // Generate all 5
-      if (newCookies) {
-        console.log(`  ✅ Generated ${COOKIE_POOL_SIZE} new cookies - ready!`);
+      // Generate just 1 strong cookie to get started
+      const firstCookie = await generateSingleStrongCookie();
+      
+      if (firstCookie) {
+        console.log(`  ✅ Generated 1 STRONG cookie - server ready!`);
+        console.log(`  🔄 Will generate remaining ${COOKIE_POOL_SIZE - 1} cookies in background...`);
+        
+        // Fill remaining 4 slots in BACKGROUND
+        setTimeout(() => {
+          ensurePoolIsFull().catch(() => {});
+        }, 10000); // Wait 10s after startup, then fill remaining
+        
         return AUTO_COOKIE_PATH;
       } else {
-        console.log(`  ⚠️ Cookie generation failed - will try again on first download`);
+        console.log(`  ⚠️ Failed to generate initial cookie - will retry on first download`);
       }
     }
     
