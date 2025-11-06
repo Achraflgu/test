@@ -3360,8 +3360,7 @@ async function detectPythonCommand() {
   return 'python'; // fallback
 }
 
-// Detect Python on startup
-detectPythonCommand();
+// Detect Python on startup (will be awaited before use)
 
 // Store version information
 let versionInfo = {
@@ -3528,9 +3527,14 @@ async function checkAndUpdateVersions() {
   
   versionInfo.lastChecked = new Date().toISOString();
   
-  // Auto-update Python tools
+  // Auto-update Python tools (with error handling to prevent crashes)
   console.log('🔄 Updating Python tools (yt-dlp, spotdl)...');
-  await updateDependencies();
+  try {
+    await updateDependencies();
+  } catch (error) {
+    console.log('⚠️ Python tools update failed:', error.message);
+    console.log('   Server will continue with existing installations');
+  }
   
   // Auto-update Node.js packages
   await updateNodePackages();
@@ -10269,9 +10273,16 @@ io.on('connection', (socket) => {
   });
 });
 
-// Check versions on startup
-checkAndUpdateVersions().then(async () => {
-  // If dependencies are not installed, try to install them
+// ⚡ STARTUP SEQUENCE: Detect Python FIRST, then check versions
+async function startupSequence() {
+  // Step 1: Detect Python command
+  console.log('🔄 Checking dependencies...');
+  await detectPythonCommand();
+  
+  // Step 2: Check and update versions
+  await checkAndUpdateVersions();
+  
+  // Step 3: If dependencies are not installed, try to install them
   if (versionInfo.spotdl === 'Unknown' || versionInfo.ytdlp === 'Unknown') {
     console.log('\n🔄 Dependencies not found, attempting to install...');
     try {
@@ -10280,8 +10291,14 @@ checkAndUpdateVersions().then(async () => {
       console.log('✅ Dependencies installed successfully!');
     } catch (error) {
       console.log('⚠️ Failed to install dependencies:', error.message);
+      console.log('   Server will continue - some features may be limited');
     }
   }
+}
+
+// Start the sequence
+startupSequence().then(async () => {
+  // ✅ Python detected - continue with server startup
   
   // 🔍 CHECK PROXY CONFIGURATION
   console.log('\n🔍 Checking proxy configuration...');
@@ -10386,5 +10403,9 @@ checkAndUpdateVersions().then(async () => {
       console.log('⚠️ Auto-update disabled (AUTO_UPDATE=false)');
     }
   });
+}).catch((error) => {
+  console.error('❌ Fatal startup error:', error);
+  console.error('   Stack:', error.stack);
+  process.exit(1); // Exit if startup fails
 });
 
