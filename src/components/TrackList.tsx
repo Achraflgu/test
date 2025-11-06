@@ -2651,10 +2651,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             
             // ALWAYS update if matched, regardless of selection status (especially for completed tracks)
             if (isMatch) {
-              // Only update if status is better (pending -> downloading -> completed) or if explicitly completed
+              // Always update if status is completed, or if progress is increasing
               const shouldUpdate = data.status === 'completed' || 
-                                  (track.downloadStatus === 'pending' && data.status === 'downloading') ||
-                                  (track.downloadStatus !== 'completed' && data.status === 'completed');
+                                  data.progress > (track.downloadProgress || 0) ||
+                                  (track.downloadStatus === 'pending' && data.status !== 'pending');
               
               if (shouldUpdate) {
                 console.log(`📊 Progress update: ${track.name} - ${track.downloadStatus} → ${data.status} (${data.progress}%)`);
