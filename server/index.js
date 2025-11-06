@@ -6765,11 +6765,13 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             successCount++;
             
             completedCount++;
+            // For TrackList: mark individual track as 'completed' when it finishes
+            // For DownloadQueue: use completed/totalTracks to show overall progress
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: completedCount >= totalTracks ? 'completed' : 'downloading',
-              progress: Math.round((completedCount / totalTracks) * 100),
+              status: 'completed', // Individual track is completed (for TrackList)
+              progress: Math.round((completedCount / totalTracks) * 100), // Overall progress (for DownloadQueue)
               completed: completedCount,
               totalTracks: totalTracks,
               message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
@@ -6793,11 +6795,13 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             successCount++;
             
             completedCount++;
+            // For TrackList: mark individual track as 'completed' when it finishes
+            // For DownloadQueue: use completed/totalTracks to show overall progress
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
-              status: completedCount >= totalTracks ? 'completed' : 'downloading',
-              progress: Math.round((completedCount / totalTracks) * 100),
+              status: 'completed', // Individual track is completed (for TrackList)
+              progress: Math.round((completedCount / totalTracks) * 100), // Overall progress (for DownloadQueue)
               completed: completedCount,
               totalTracks: totalTracks,
               message: `✅ Downloaded ${completedCount}/${totalTracks} tracks: ${track.name}`
