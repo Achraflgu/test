@@ -2801,8 +2801,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             return track;
           });
           
-          // Fallback: If status is 'completed' and we have exactly one pending/downloading track, update it
-          if (data.status === 'completed' && !updatedTracks.some(t => {
+          // Fallback: ONLY if no match was found in first pass AND status is 'completed' AND we have exactly one pending/downloading track
+          // ⚠️ CRITICAL: Only run fallback if matchedTrackId is null to prevent false positives during re-downloads
+          if (!matchedTrackId && data.status === 'completed' && !updatedTracks.some(t => {
             const trackFullName = `${t.artist} - ${t.name}`;
             const normalizedTrackName = trackFullName.toLowerCase().trim();
             const normalizedDataName = (data.trackName || '').toLowerCase().trim();
@@ -2811,9 +2812,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               normalizedDataName.includes(t.name.toLowerCase().trim())
             );
           })) {
-            const pendingTracks = updatedTracks.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+            const pendingTracks = updatedTracks.filter(t => t.selected && (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading'));
             if (pendingTracks.length === 1) {
-              console.log(`🔄 [TrackList] Progress: Fallback - updating single pending track: ${pendingTracks[0].name}`);
+              console.log(`🔄 [TrackList] Progress: Fallback - updating single selected pending track: ${pendingTracks[0].name}`);
               return updatedTracks.map(t => {
                 if (t.id === pendingTracks[0].id) {
                   return {
@@ -2824,7 +2825,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 }
                 return t;
               });
+            } else if (pendingTracks.length > 1) {
+              console.log(`⏭️ [TrackList] Progress: Fallback skipped - multiple pending tracks (${pendingTracks.length}), cannot determine which one to update`);
             }
+          } else if (matchedTrackId) {
+            console.log(`✅ [TrackList] Progress: First-pass match found - skipping fallback logic`);
           }
           
           // Update tab title with progress
