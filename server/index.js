@@ -8661,6 +8661,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
           
+          // 🧹 Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          
           // 🔄 Resume pool regeneration when download completes (after a short delay for cleanup)
           setTimeout(() => {
             checkAndResumeRegeneration().catch(() => {});
@@ -8810,6 +8813,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
           
+          // 🧹 Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          
+          // 🔄 Resume pool regeneration when download completes
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000);
+          
           shouldContinue = false;
           continue;
         } else {
@@ -8867,6 +8878,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           downloadUrl: `/api/download/archive/${downloadId}`,
           message: `🎉 All ${musicFiles.length} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
         });
+        
+        // 🧹 Clean up activeDownloads to allow regeneration to resume
+        activeDownloads.delete(downloadId);
+        
+        // 🔄 Resume pool regeneration when download completes
+        setTimeout(() => {
+          checkAndResumeRegeneration().catch(() => {});
+        }, 2000);
         
         shouldContinue = false;
         continue;
@@ -9376,6 +9395,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               failedTracks: failedTracksList,
               message: `✅ Downloaded ${successfulTracks}/${tracks.length} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${remaining} track(s) could not be downloaded\n📦 Click to download available tracks!`
             });
+            
+            // 🧹 Clean up activeDownloads to allow regeneration to resume
+            activeDownloads.delete(downloadId);
+            
+            // 🔄 Resume pool regeneration when download completes
+            setTimeout(() => {
+              checkAndResumeRegeneration().catch(() => {});
+            }, 2000);
 
             resolve('complete');
             return;
@@ -9512,6 +9539,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             message: `🎉 All ${successfulTracks} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
                   });
                   
+                  // 🧹 Clean up activeDownloads to allow regeneration to resume
+                  activeDownloads.delete(downloadId);
+                  
+                  // 🔄 Resume pool regeneration when download completes
+                  setTimeout(() => {
+                    checkAndResumeRegeneration().catch(() => {});
+                  }, 2000);
+                  
                   resolve('complete');
                   return;
                 } else {
@@ -9576,6 +9611,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             downloadUrl: `/api/download/archive/${downloadId}`,
             message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
             });
+            
+            // 🧹 Clean up activeDownloads to allow regeneration to resume
+            activeDownloads.delete(downloadId);
+            
+            // 🔄 Resume pool regeneration when download completes
+            setTimeout(() => {
+              checkAndResumeRegeneration().catch(() => {});
+            }, 2000);
 
             resolve('complete');
           } else {
@@ -9612,6 +9655,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 attempts: attempt,
                 message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}`
               });
+              
+              // 🧹 Clean up activeDownloads to allow regeneration to resume
+              activeDownloads.delete(downloadId);
+              
+              // 🔄 Resume pool regeneration when download completes
+              setTimeout(() => {
+                checkAndResumeRegeneration().catch(() => {});
+              }, 2000);
             }
 
             // Signal to exit the retry loop
@@ -9648,6 +9699,14 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             downloadUrl: `/api/download/archive/${downloadId}`,
             message: `Download completed! Check ${outputFolder} for your files.\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
           });
+          
+          // 🧹 Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          
+          // 🔄 Resume pool regeneration when download completes
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000);
 
           resolve('complete');
         }
