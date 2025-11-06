@@ -3726,28 +3726,16 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        if (track.downloadStatus === 'completed') {
-                          toast.info('This track has already been downloaded', {
-                            description: 'Click the button below to download it again',
-                            action: {
-                              label: '🔄 Re-download',
-                              onClick: () => {
-                                downloadSingleTrack(track, true);
-                              }
-                            },
-                            duration: 5000
-                          });
-                          return;
-                        }
                         if (track.downloadStatus === 'downloading' || track.downloadStatus === 'pending') {
                           toast.warning(`"${track.name}" is already downloading`);
                           return;
                         }
-                        downloadSingleTrack(track);
+                        // Always allow re-download (even if completed) - will remove old entry from DownloadQueue
+                        downloadSingleTrack(track, track.downloadStatus === 'completed');
                       }}
                       disabled={track.downloadStatus === 'downloading' || track.downloadStatus === 'pending'}
                       className="h-8 sm:h-9 w-8 sm:w-9 p-0 border-2 border-border/50 hover:border-primary/50 hover:bg-primary/10 hover:text-primary rounded-lg hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                      title={track.downloadStatus === 'completed' ? 'Click to re-download this track' : 'Download this track instantly'}
+                      title={track.downloadStatus === 'completed' ? 'Re-download this track (will replace old entry)' : 'Download this track instantly'}
                     >
                       <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </Button>
