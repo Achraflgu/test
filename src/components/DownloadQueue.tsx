@@ -119,16 +119,18 @@ export const DownloadQueue = () => {
       socket.off('download:track');
       
       console.log('✅ [DownloadQueue] Old listeners removed, adding new listeners...');
+      console.log('🔧 [DownloadQueue] Socket state - connected:', socket.connected, 'id:', socket.id);
       
       // Listen for custom queue start event (emitted from TrackList via Socket.IO)
       socket.on('download:queue:start', (data: any) => {
-        console.log('📥 Queue: Received download:queue:start Socket.IO event:', data);
+        console.log('📥 [DownloadQueue] Received download:queue:start Socket.IO event:', data);
         handleDownloadStart(
           data.downloadId,
           data.folderName || 'Unknown',
           data.totalTracks || 0
         );
       });
+      console.log('✅ [DownloadQueue] Listener attached: download:queue:start');
 
       // Also listen for download status updates (which includes start and completion)
       socket.on('download:status', (data: any) => {
@@ -164,7 +166,11 @@ export const DownloadQueue = () => {
 
       // Track download progress
       socket.on('download:progress', (data: any) => {
+        console.log('📊 [DownloadQueue] ========================================');
+        console.log('📊 [DownloadQueue] RECEIVED download:progress EVENT');
+        console.log('📊 [DownloadQueue] ========================================');
         console.log('📊 [DownloadQueue] Download progress:', JSON.stringify(data, null, 2));
+        console.log('📊 [DownloadQueue] ========================================');
         if (!data.downloadId) {
           console.warn('⚠️ [DownloadQueue] Progress event missing downloadId:', data);
           return;
@@ -266,7 +272,11 @@ export const DownloadQueue = () => {
 
       // Track download completion
       socket.on('download:complete', (data: any) => {
+        console.log('✅ [DownloadQueue] ========================================');
+        console.log('✅ [DownloadQueue] RECEIVED download:complete EVENT');
+        console.log('✅ [DownloadQueue] ========================================');
         console.log('✅ [DownloadQueue] Download completed:', JSON.stringify(data, null, 2));
+        console.log('✅ [DownloadQueue] ========================================');
         if (!data.downloadId) {
           console.warn('⚠️ [DownloadQueue] Complete event missing downloadId:', data);
           return;
@@ -379,7 +389,11 @@ export const DownloadQueue = () => {
 
       // Track individual track completion (for single track downloads)
       socket.on('download:track', (data: any) => {
+        console.log('📨 [DownloadQueue] ========================================');
+        console.log('📨 [DownloadQueue] RECEIVED download:track EVENT');
+        console.log('📨 [DownloadQueue] ========================================');
         console.log('📨 [DownloadQueue] Download track event:', JSON.stringify(data, null, 2));
+        console.log('📨 [DownloadQueue] ========================================');
         if (!data.downloadId) {
           console.warn('⚠️ [DownloadQueue] Track event missing downloadId:', data);
           return;
@@ -417,6 +431,9 @@ export const DownloadQueue = () => {
           });
         }
       });
+      
+      console.log('✅ [DownloadQueue] ALL socket listeners attached successfully!');
+      console.log('✅ [DownloadQueue] Listening for: download:queue:start, download:status, download:progress, download:complete, download:error, download:track');
     };
     
     // Set up listeners - try multiple times to ensure they're attached
