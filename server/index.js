@@ -8677,20 +8677,66 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             failedTracksList.forEach(name => console.log(`   - ${name}`));
           }
           
-          socket.emit('download:complete', {
-            downloadId,
-            outputFolder,
-            totalSuccess: currentSuccess,
-            totalFailed: totalTracks - currentSuccess,
-            attempts: attempt,
-            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
-            failedTracks: failedTracksList,
-            message: currentSuccess >= totalTracks
-              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
-              : currentSuccess > 0
-                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
-                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
-          });
+          // Emit completion event (CRITICAL: Always emit, even if socket errors)
+          try {
+            const completeEventData = {
+              downloadId,
+              outputFolder,
+              totalSuccess: currentSuccess,
+              totalFailed: totalTracks - currentSuccess,
+              attempts: attempt,
+              downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+              failedTracks: failedTracksList,
+              message: currentSuccess >= totalTracks
+                ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+                : currentSuccess > 0
+                  ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                  : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+            };
+            
+            console.log(`📤 Emitting download:complete for ${downloadId}: ${currentSuccess}/${totalTracks} tracks`);
+            
+            // Get the client socket from downloadInfo (more reliable than passed socket)
+            const clientSocketId = downloadInfo.socketId;
+            const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
+            const emitSocket = clientSocket || socket || io; // Prefer clientSocket, then passed socket, then broadcast
+            
+            if (clientSocket) {
+              console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
+              clientSocket.emit('download:complete', completeEventData);
+            } else if (socket && socket.connected !== false) {
+              console.log(`✅ Emitting to passed socket: ${socket.id}`);
+              socket.emit('download:complete', completeEventData);
+            } else {
+              console.log(`⚠️ No specific socket found - broadcasting to all clients`);
+              io.emit('download:complete', completeEventData);
+            }
+            
+            console.log(`✅ download:complete event emitted successfully`);
+          } catch (emitError) {
+            console.error(`❌ Error emitting download:complete: ${emitError.message}`);
+            console.error(emitError.stack);
+            // Try broadcasting to all clients as fallback
+            try {
+              io.emit('download:complete', {
+                downloadId,
+                outputFolder,
+                totalSuccess: currentSuccess,
+                totalFailed: totalTracks - currentSuccess,
+                attempts: attempt,
+                downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+                failedTracks: failedTracksList,
+                message: currentSuccess >= totalTracks
+                  ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+                  : currentSuccess > 0
+                    ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                    : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+              });
+              console.log(`✅ Fallback broadcast successful`);
+            } catch (broadcastError) {
+              console.error(`❌ Fallback broadcast also failed: ${broadcastError.message}`);
+            }
+          }
           
           // 🔄 Resume pool regeneration when download completes (after a short delay for cleanup)
           setTimeout(() => {
@@ -8827,19 +8873,63 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const elapsedTime = formatElapsedTime(downloadInfo.startTime);
           console.log(`⏱️  Total download time: ${elapsedTime}`);
           
-          socket.emit('download:complete', {
-            downloadId,
-            outputFolder,
-            totalSuccess: currentSuccess,
-            totalFailed: totalTracks - currentSuccess,
-            attempts: attempt,
-            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
-            message: currentSuccess >= totalTracks
-              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
-              : currentSuccess > 0
-                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
-                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
-          });
+          // Emit completion event (CRITICAL: Always emit, even if socket errors)
+          try {
+            const completeEventData = {
+              downloadId,
+              outputFolder,
+              totalSuccess: currentSuccess,
+              totalFailed: totalTracks - currentSuccess,
+              attempts: attempt,
+              downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+              message: currentSuccess >= totalTracks
+                ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+                : currentSuccess > 0
+                  ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                  : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+            };
+            
+            console.log(`📤 Emitting download:complete for ${downloadId}: ${currentSuccess}/${totalTracks} tracks`);
+            
+            // Get the client socket from downloadInfo (more reliable than passed socket)
+            const clientSocketId = downloadInfo.socketId;
+            const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
+            
+            if (clientSocket) {
+              console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
+              clientSocket.emit('download:complete', completeEventData);
+            } else if (socket && socket.connected !== false) {
+              console.log(`✅ Emitting to passed socket: ${socket.id}`);
+              socket.emit('download:complete', completeEventData);
+            } else {
+              console.log(`⚠️ No specific socket found - broadcasting to all clients`);
+              io.emit('download:complete', completeEventData);
+            }
+            
+            console.log(`✅ download:complete event emitted successfully`);
+          } catch (emitError) {
+            console.error(`❌ Error emitting download:complete: ${emitError.message}`);
+            console.error(emitError.stack);
+            // Try broadcasting to all clients as fallback
+            try {
+              io.emit('download:complete', {
+                downloadId,
+                outputFolder,
+                totalSuccess: currentSuccess,
+                totalFailed: totalTracks - currentSuccess,
+                attempts: attempt,
+                downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+                message: currentSuccess >= totalTracks
+                  ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+                  : currentSuccess > 0
+                    ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                    : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+              });
+              console.log(`✅ Fallback broadcast successful`);
+            } catch (broadcastError) {
+              console.error(`❌ Fallback broadcast also failed: ${broadcastError.message}`);
+            }
+          }
           
           shouldContinue = false;
           continue;
