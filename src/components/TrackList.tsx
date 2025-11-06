@@ -2531,21 +2531,32 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
-      console.log('📨 Received download:track event:', {
+      console.log('📨 [TrackList] Received download:track event:', JSON.stringify({
         downloadId: data.downloadId,
         trackId: data.trackId,
         status: data.status,
         progress: data.progress,
         message: data.message
-      });
+      }, null, 2));
       
       // Always accept track updates - match by trackId first, then fallback to name matching
       setTracks(prev => {
+        console.log(`🔍 [TrackList] Searching for track with trackId: "${data.trackId}"`);
+        console.log(`📋 [TrackList] Current tracks (${prev.length}):`, prev.map(t => ({ 
+          id: t.id, 
+          name: t.name, 
+          artist: t.artist,
+          downloadStatus: t.downloadStatus 
+        })));
+        
         // Try multiple matching strategies
         let matchingTrack = null;
         
         // Strategy 1: Exact ID match
         matchingTrack = prev.find(t => t.id === data.trackId);
+        if (matchingTrack) {
+          console.log(`✅ [TrackList] Strategy 1 (Exact ID) matched: ${matchingTrack.name}`);
+        }
         
         // Strategy 2: If trackId is in format "artist-name", try to match by name/artist
         if (!matchingTrack && data.trackId) {
@@ -2559,12 +2570,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const normalizedArtist = t.artist.toLowerCase().trim();
             
             // Try multiple matching patterns
-            return normalizedTrackId === normalizedTrackName ||
+            const matches = normalizedTrackId === normalizedTrackName ||
                    normalizedTrackId === `${normalizedArtist}-${normalizedName}` ||
                    normalizedTrackId.includes(normalizedName) ||
                    normalizedTrackName.includes(normalizedTrackId) ||
                    (trackIdParts.length > 1 && normalizedName.includes(trackIdParts[trackIdParts.length - 1].toLowerCase())) ||
                    (trackIdParts.length > 1 && normalizedArtist.includes(trackIdParts[0].toLowerCase()) && normalizedName.includes(trackIdParts.slice(1).join('-').toLowerCase()));
+            
+            if (matches) {
+              console.log(`✅ [TrackList] Strategy 2 (Name/Artist) matched: ${t.name} (trackId: "${data.trackId}" vs track: "${normalizedTrackName}")`);
+            }
+            return matches;
           });
         }
         
@@ -2574,18 +2590,37 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           matchingTrack = prev.find(t => {
             const trackNameLower = t.name.toLowerCase();
             const artistLower = t.artist.toLowerCase();
-            return messageLower.includes(trackNameLower) || messageLower.includes(artistLower);
+            const matches = messageLower.includes(trackNameLower) || messageLower.includes(artistLower);
+            if (matches) {
+              console.log(`✅ [TrackList] Strategy 3 (Message) matched: ${t.name}`);
+            }
+            return matches;
           });
         }
         
+        // Strategy 4: If status is 'completed', find any pending track (last resort for single track downloads)
+        if (!matchingTrack && data.status === 'completed') {
+          const pendingTracks = prev.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+          if (pendingTracks.length === 1) {
+            matchingTrack = pendingTracks[0];
+            console.log(`✅ [TrackList] Strategy 4 (Single Pending) matched: ${matchingTrack.name} (only pending track)`);
+          }
+        }
+        
         if (!matchingTrack) {
-          console.warn(`⚠️ Track ${data.trackId} not found in current tracks. Available tracks:`, prev.map(t => ({ id: t.id, name: t.name, artist: t.artist })));
-          console.warn(`📋 Event data:`, data);
+          console.error(`❌ [TrackList] Track ${data.trackId} not found in current tracks!`);
+          console.error(`📋 [TrackList] Event data:`, JSON.stringify(data, null, 2));
+          console.error(`📋 [TrackList] Available tracks:`, prev.map(t => ({ 
+            id: t.id, 
+            name: t.name, 
+            artist: t.artist,
+            downloadStatus: t.downloadStatus 
+          })));
           return prev;
         }
         
-        console.log(`✅ Found matching track "${matchingTrack.name}" (id: ${matchingTrack.id}) for trackId: ${data.trackId}`);
-        console.log(`🔄 Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
+        console.log(`✅ [TrackList] Found matching track "${matchingTrack.name}" (id: ${matchingTrack.id}) for trackId: ${data.trackId}`);
+        console.log(`🔄 [TrackList] Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
         
         const updatedTracks = prev.map((track) => {
           // Match by id, or by the same track we found
@@ -2594,7 +2629,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                          (track.artist === matchingTrack.artist && track.name === matchingTrack.name);
           
           if (isMatch) {
-            console.log(`✅ Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
+            console.log(`✅ [TrackList] Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
             return {
               ...track,
               downloadStatus: data.status,
@@ -2607,7 +2642,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Log final state for debugging
         const updatedTrack = updatedTracks.find(t => t.id === matchingTrack.id);
         if (updatedTrack) {
-          console.log(`✅ Final track state: ${updatedTrack.name} - ${updatedTrack.downloadStatus} (${updatedTrack.downloadProgress}%)`);
+          console.log(`✅ [TrackList] Final track state: ${updatedTrack.name} - ${updatedTrack.downloadStatus} (${updatedTrack.downloadProgress}%)`);
+        } else {
+          console.error(`❌ [TrackList] Updated track not found in results!`);
         }
         
         return updatedTracks;
