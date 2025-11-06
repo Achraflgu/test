@@ -23,6 +23,7 @@ export interface Track {
   downloadStatus?: 'pending' | 'downloading' | 'completed' | 'failed';
   downloadProgress?: number;
   selected?: boolean;
+  downloadId?: string; // Store downloadId for accurate event matching
 }
 
 export interface DownloadSettings {
