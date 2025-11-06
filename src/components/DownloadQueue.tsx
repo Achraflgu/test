@@ -419,33 +419,46 @@ export const DownloadQueue = () => {
       });
     };
     
-    // Set up listeners immediately if socket is connected, otherwise wait for connection
-    // Also set up listeners after a short delay to catch late connections
-    const setupListenersNow = () => {
-      console.log('🔧 [DownloadQueue] Attempting to set up listeners...');
+    // Set up listeners - try multiple times to ensure they're attached
+    // This handles cases where socket connects before component mounts
+    const ensureListenersSetup = () => {
+      console.log('🔧 [DownloadQueue] Ensuring socket listeners are set up...');
+      
+      // Try immediately
       if (socket.connected) {
         console.log('✅ [DownloadQueue] Socket is connected, setting up listeners immediately');
         setupSocketListeners();
-      } else {
-        console.log('⏳ [DownloadQueue] Socket not connected yet, will wait for connection...');
-        // Set up listener for connect event
-        socket.once('connect', () => {
-          console.log('✅ [DownloadQueue] Socket connected via event, setting up listeners now');
-          setupSocketListeners();
-        });
-        // Also try after a delay in case socket connects quickly
+        return;
+      }
+      
+      console.log('⏳ [DownloadQueue] Socket not connected, setting up connection handler...');
+      
+      // Set up listener for connect event (use 'on' not 'once' to catch reconnections)
+      const connectHandler = () => {
+        console.log('✅ [DownloadQueue] Socket connected via event, setting up listeners now');
+        setupSocketListeners();
+      };
+      socket.on('connect', connectHandler);
+      
+      // Also try after delays to catch late connections
+      const trySetup = (attempt: number) => {
         setTimeout(() => {
           if (socket.connected) {
-            console.log('✅ [DownloadQueue] Socket connected (delayed check), setting up listeners');
+            console.log(`✅ [DownloadQueue] Socket connected (attempt ${attempt}), setting up listeners`);
             setupSocketListeners();
+          } else if (attempt < 3) {
+            console.log(`⏳ [DownloadQueue] Socket still not connected (attempt ${attempt}), will retry...`);
+            trySetup(attempt + 1);
           } else {
-            console.warn('⚠️ [DownloadQueue] Socket still not connected after delay');
+            console.warn('⚠️ [DownloadQueue] Socket still not connected after 3 attempts');
           }
-        }, 1000);
-      }
+        }, attempt * 500); // 500ms, 1000ms, 1500ms
+      };
+      
+      trySetup(1);
     };
     
-    setupListenersNow();
+    ensureListenersSetup();
     console.log('✅ [DownloadQueue] Socket setup initiated');
 
     return () => {
