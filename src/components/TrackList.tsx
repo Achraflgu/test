@@ -2865,43 +2865,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           const successCount = data.totalSuccess || tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
           showCompleteNotification(successCount, playlistName);
           
-          // Show toast with download button if downloadUrl is provided
-          if (data.downloadUrl) {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-            const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
-            
-            // Generate descriptive filename for IDM detection
-            const folderName = getFolderName(data.outputFolder);
-            const downloadFilename = data.totalSuccess === 1 
-              ? `${tracks.find(t => t.downloadStatus === 'completed')?.name || 'track'}.mp3`
-              : `${folderName}.zip`;
-            
-            // Auto-start download immediately (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl, downloadFilename);
-            
-            // Add to tray
-            setRecentDownloads(prev => [{ 
-              id: data.downloadId, 
-              name: folderName, 
-              url: fullDownloadUrl, 
-              time: Date.now() 
-            }, ...prev].slice(0, 5));
-            
-            // Persistent richer toast with retry/open actions
-            const fileType = data.totalSuccess === 1 ? 'MP3' : 'ZIP';
-            toast.success(`🎉 ${folderName} is ready!`, {
-              description: `All ${successCount} tracks downloaded successfully. Your ${fileType} is downloading...`,
-              duration: 10000,
-              action: {
-                label: `Open ${fileType} Again`,
-                onClick: () => triggerSmartDownload(fullDownloadUrl, downloadFilename),
-              },
-            });
-          } else {
-            toast.success(data.message, {
-              duration: 5000,
-            });
-        }
+          // DownloadQueue now handles auto-download and notifications exclusively
+          console.log('[TrackList] Download completed successfully - DownloadQueue will handle auto-download');
       }
     });
 
