@@ -2541,38 +2541,60 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       // Always accept track updates - match by trackId first, then fallback to name matching
       setTracks(prev => {
-        // Try to find by trackId first
-        let matchingTrack = prev.find(t => t.id === data.trackId);
+        // Try multiple matching strategies
+        let matchingTrack = null;
         
-        // Fallback: if trackId doesn't match, try matching by name/artist
+        // Strategy 1: Exact ID match
+        matchingTrack = prev.find(t => t.id === data.trackId);
+        
+        // Strategy 2: If trackId is in format "artist-name", try to match by name/artist
         if (!matchingTrack && data.trackId) {
-          // trackId might be in format "artist-name", try to match by name
           const trackIdParts = data.trackId.split('-');
+          const normalizedTrackId = data.trackId.toLowerCase().trim();
+          
           matchingTrack = prev.find(t => {
             const trackFullName = `${t.artist} - ${t.name}`;
-            const normalizedTrackId = data.trackId.toLowerCase();
-            const normalizedTrackName = trackFullName.toLowerCase();
-            return normalizedTrackId.includes(t.name.toLowerCase()) || 
+            const normalizedTrackName = trackFullName.toLowerCase().trim();
+            const normalizedName = t.name.toLowerCase().trim();
+            const normalizedArtist = t.artist.toLowerCase().trim();
+            
+            // Try multiple matching patterns
+            return normalizedTrackId === normalizedTrackName ||
+                   normalizedTrackId === `${normalizedArtist}-${normalizedName}` ||
+                   normalizedTrackId.includes(normalizedName) ||
                    normalizedTrackName.includes(normalizedTrackId) ||
-                   (trackIdParts.length > 1 && t.name.toLowerCase().includes(trackIdParts[trackIdParts.length - 1].toLowerCase()));
+                   (trackIdParts.length > 1 && normalizedName.includes(trackIdParts[trackIdParts.length - 1].toLowerCase())) ||
+                   (trackIdParts.length > 1 && normalizedArtist.includes(trackIdParts[0].toLowerCase()) && normalizedName.includes(trackIdParts.slice(1).join('-').toLowerCase()));
+          });
+        }
+        
+        // Strategy 3: Match by message content (if trackId not found)
+        if (!matchingTrack && data.message) {
+          const messageLower = data.message.toLowerCase();
+          matchingTrack = prev.find(t => {
+            const trackNameLower = t.name.toLowerCase();
+            const artistLower = t.artist.toLowerCase();
+            return messageLower.includes(trackNameLower) || messageLower.includes(artistLower);
           });
         }
         
         if (!matchingTrack) {
-          console.warn(`⚠️ Track ${data.trackId} not found in current tracks. Available tracks:`, prev.map(t => ({ id: t.id, name: t.name })));
+          console.warn(`⚠️ Track ${data.trackId} not found in current tracks. Available tracks:`, prev.map(t => ({ id: t.id, name: t.name, artist: t.artist })));
+          console.warn(`📋 Event data:`, data);
           return prev;
         }
         
-        console.log(`✅ Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId}, trackId: ${data.trackId})`);
+        console.log(`✅ Found matching track "${matchingTrack.name}" (id: ${matchingTrack.id}) for trackId: ${data.trackId}`);
+        console.log(`🔄 Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
         
         const updatedTracks = prev.map((track) => {
-          // Match by id if available, otherwise match by the same logic used to find matchingTrack
+          // Match by id, or by the same track we found
           const isMatch = track.id === data.trackId || 
-                         (track.id === matchingTrack.id) ||
+                         track.id === matchingTrack.id ||
                          (track.artist === matchingTrack.artist && track.name === matchingTrack.name);
           
           if (isMatch) {
-            console.log(`🔄 Track update applied: ${track.name} status changed to ${data.status}`);
+            console.log(`✅ Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
             return {
               ...track,
               downloadStatus: data.status,
@@ -2581,6 +2603,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           }
           return track;
         });
+        
+        // Log final state for debugging
+        const updatedTrack = updatedTracks.find(t => t.id === matchingTrack.id);
+        if (updatedTrack) {
+          console.log(`✅ Final track state: ${updatedTrack.name} - ${updatedTrack.downloadStatus} (${updatedTrack.downloadProgress}%)`);
+        }
+        
         return updatedTracks;
       });
     });
@@ -2610,20 +2639,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             
             const isMatch = data.trackName && (
               normalizedDataName === normalizedTrackName ||
-              normalizedDataName.includes(track.name.toLowerCase()) || 
-              normalizedDataName.includes(track.artist.toLowerCase()) ||
+              normalizedDataName === `${track.artist.toLowerCase().trim()} - ${track.name.toLowerCase().trim()}` ||
+              normalizedDataName.includes(track.name.toLowerCase().trim()) || 
+              normalizedDataName.includes(track.artist.toLowerCase().trim()) ||
               normalizedTrackName.includes(normalizedDataName) ||
-              track.name.toLowerCase().includes(normalizedDataName.split(' - ').pop() || '') ||
-              normalizedDataName.split(' - ').pop()?.includes(track.name.toLowerCase())
+              track.name.toLowerCase().trim().includes(normalizedDataName.split(' - ').pop() || '') ||
+              normalizedDataName.split(' - ').pop()?.includes(track.name.toLowerCase().trim()) ||
+              // Also try matching just the track name part
+              (normalizedDataName.split(' - ').length > 1 && track.name.toLowerCase().trim() === normalizedDataName.split(' - ')[1]?.trim())
             );
             
-            // Update track if matched and selected, OR if status is completed (always update completed tracks)
-            if (isMatch && (track.selected || data.status === 'completed')) {
-              return {
-                ...track,
-                downloadStatus: data.status,
-                downloadProgress: data.progress || 0
-              };
+            // ALWAYS update if matched, regardless of selection status (especially for completed tracks)
+            if (isMatch) {
+              // Only update if status is better (pending -> downloading -> completed) or if explicitly completed
+              const shouldUpdate = data.status === 'completed' || 
+                                  (track.downloadStatus === 'pending' && data.status === 'downloading') ||
+                                  (track.downloadStatus !== 'completed' && data.status === 'completed');
+              
+              if (shouldUpdate) {
+                console.log(`📊 Progress update: ${track.name} - ${track.downloadStatus} → ${data.status} (${data.progress}%)`);
+                return {
+                  ...track,
+                  downloadStatus: data.status,
+                  downloadProgress: data.progress || 0
+                };
+              }
             }
             return track;
           });
