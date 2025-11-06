@@ -46,15 +46,20 @@ export const DownloadQueue = () => {
 
   // Listen to Socket.IO events and custom DOM events
   useEffect(() => {
+    console.log('🔌 [DownloadQueue] ========================================');
+    console.log('🔌 [DownloadQueue] MOUNTING - Setting up socket listeners');
+    console.log('🔌 [DownloadQueue] ========================================');
+    
     // Initialize socket if not already initialized
     const socket = getSocket() || initWebSocket();
     
     if (!socket) {
-      console.warn('⚠️ Socket not available for DownloadQueue');
+      console.error('❌ [DownloadQueue] Socket not available for DownloadQueue');
       return;
     }
     
-    console.log('🔌 DownloadQueue: Setting up socket listeners, socket connected:', socket.connected);
+    console.log('✅ [DownloadQueue] Socket obtained, connected:', socket.connected);
+    console.log('🔌 [DownloadQueue] Setting up socket listeners, socket connected:', socket.connected);
 
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
@@ -97,10 +102,13 @@ export const DownloadQueue = () => {
 
     // Set up socket listeners
     const setupSocketListeners = () => {
+      console.log('🔧 [DownloadQueue] setupSocketListeners() called');
       if (!socket) {
-        console.warn('⚠️ Socket not available for setting up listeners');
+        console.error('❌ [DownloadQueue] Socket not available for setting up listeners');
         return;
       }
+      
+      console.log('🔧 [DownloadQueue] Removing old listeners and adding new ones...');
       
       // Remove existing listeners to prevent duplicates
       socket.off('download:queue:start');
@@ -109,6 +117,8 @@ export const DownloadQueue = () => {
       socket.off('download:complete');
       socket.off('download:error');
       socket.off('download:track');
+      
+      console.log('✅ [DownloadQueue] Old listeners removed, adding new listeners...');
       
       // Listen for custom queue start event (emitted from TrackList via Socket.IO)
       socket.on('download:queue:start', (data: any) => {
@@ -411,15 +421,17 @@ export const DownloadQueue = () => {
     
     // Set up listeners immediately if socket is connected, otherwise wait for connection
     if (socket.connected) {
-      console.log('🔌 DownloadQueue: Socket already connected, setting up listeners');
+      console.log('✅ [DownloadQueue] Socket already connected, setting up listeners immediately');
       setupSocketListeners();
     } else {
-      console.log('🔌 DownloadQueue: Socket not connected yet, waiting for connection...');
+      console.log('⏳ [DownloadQueue] Socket not connected yet, waiting for connection...');
       socket.on('connect', () => {
-        console.log('🔌 DownloadQueue: Socket connected, setting up listeners');
+        console.log('✅ [DownloadQueue] Socket connected, setting up listeners now');
         setupSocketListeners();
       });
     }
+    
+    console.log('✅ [DownloadQueue] Socket setup complete');
 
     return () => {
       if (socket) {
