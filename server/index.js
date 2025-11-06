@@ -2400,53 +2400,59 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
 async function initializeAutoCookies() {
   try {
     console.log('🔄 Checking auto-generated cookies...');
+    console.log('');
     
-    // Try loading primary cookie from Redis first
-    if (isRedisAvailable()) {
-      const redisPrimary = await getPrimaryCookieFromRedis();
-      if (redisPrimary && redisPrimary.length > 200 && redisPrimary.includes('VISITOR_INFO1_LIVE')) {
-        // Save to filesystem for compatibility
-        await fs.writeFile(AUTO_COOKIE_PATH, redisPrimary, 'utf8').catch(() => {});
-        console.log('  🍪 Loaded primary cookie from Redis');
-        
-        // Test it
-        const testResult = await testCookies(AUTO_COOKIE_PATH);
-        if (testResult && testResult.status && testResult.status !== 'fail') {
-          console.log('  ✅ Primary cookie from Redis is valid');
-          return AUTO_COOKIE_PATH;
-        }
-      }
-    }
-    
-    // ✅ NEW: Validate cookie pool first (fast validation)
+    // ✅ PRIORITY 1: Validate cookie pool FIRST (full validation with audio extraction)
+    console.log('🔍 Validating existing cookie pool...');
     const poolStatus = await validateCookiePool();
     
+    console.log(`  📊 Pool status: ${poolStatus.valid}/${poolStatus.total} cookies validated as working`);
+    
+    // If pool is full, we're ready!
     if (poolStatus.valid >= COOKIE_POOL_SIZE) {
-      console.log(`  ✅ Cookie pool is full (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - ready to use!`);
-      return AUTO_COOKIE_PATH;
-    }
-    
-    if (poolStatus.valid > 0 && poolStatus.valid < COOKIE_POOL_SIZE) {
-      console.log(`  ⚠️ Cookie pool has ${poolStatus.valid}/${COOKIE_POOL_SIZE} cookies - filling ${COOKIE_POOL_SIZE - poolStatus.valid} missing slots...`);
-      // Ensure pool is full (fills missing slots in background, only if safe)
-      const hasActive = hasActiveDownloads();
-      if (hasActive && poolStatus.valid >= 1) {
-        console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${poolStatus.valid} working cookie(s) - will fill pool when downloads complete`);
-      } else {
-        ensurePoolIsFull().then(() => {
-          console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE}`);
-        }).catch((err) => {
-          console.log(`  ⚠️ Failed to fill pool completely: ${err.message}`);
-        });
+      console.log(`  ✅ Cookie pool is FULL (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - ready to use!`);
+      
+      // Update primary cookie from pool
+      if (isRedisAvailable()) {
+        const cookies = await getAllCookiesFromRedis();
+        if (cookies.length > 0) {
+          await setPrimaryCookieToRedis(cookies[0].content);
+          await fs.writeFile(AUTO_COOKIE_PATH, cookies[0].content, 'utf8').catch(() => {});
+          console.log('  💾 Updated primary cookie from pool');
+        }
       }
+      
       return AUTO_COOKIE_PATH;
     }
     
+    // If pool is partial, fill it NOW (not in background) before accepting requests
+    if (poolStatus.valid > 0 && poolStatus.valid < COOKIE_POOL_SIZE) {
+      console.log(`  ⚠️ Cookie pool is PARTIAL (${poolStatus.valid}/${COOKIE_POOL_SIZE}) - filling missing slots NOW...`);
+      console.log(`  ⏳ This may take 30-60s to ensure cookies are ready before accepting requests...`);
+      
+      // WAIT for pool to be filled (not background)
+      const fillSuccess = await ensurePoolIsFull();
+      
+      if (fillSuccess) {
+        console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE} - ready!`);
+      } else {
+        console.log(`  ⚠️ Pool fill incomplete - proceeding with ${poolStatus.valid} working cookie(s)`);
+      }
+      
+      return AUTO_COOKIE_PATH;
+    }
+    
+    // If pool is empty, generate all 5 cookies NOW before starting
     if (poolStatus.valid === 0) {
-      console.log(`  📝 Cookie pool is empty - generating ${COOKIE_POOL_SIZE} new cookies...`);
+      console.log(`  📝 Cookie pool is EMPTY - generating ${COOKIE_POOL_SIZE} new cookies NOW...`);
+      console.log(`  ⏳ This may take 1-3 minutes to ensure cookies are ready before accepting requests...`);
+      
       const newCookies = await generateAndTestCookies(100); // Generate all 5
       if (newCookies) {
+        console.log(`  ✅ Generated ${COOKIE_POOL_SIZE} new cookies - ready!`);
         return AUTO_COOKIE_PATH;
+      } else {
+        console.log(`  ⚠️ Cookie generation failed - will try again on first download`);
       }
     }
     
