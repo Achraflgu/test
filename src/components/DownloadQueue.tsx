@@ -154,16 +154,16 @@ export const DownloadQueue = () => {
 
       // Track download progress
       socket.on('download:progress', (data: any) => {
-        console.log('📊 Download progress:', data);
+        console.log('📊 [DownloadQueue] Download progress:', JSON.stringify(data, null, 2));
         if (!data.downloadId) {
-          console.warn('⚠️ Progress event missing downloadId:', data);
+          console.warn('⚠️ [DownloadQueue] Progress event missing downloadId:', data);
           return;
         }
         
         setDownloads(prev => {
           const found = prev.find(d => d.downloadId === data.downloadId);
           if (!found) {
-            console.warn('⚠️ Progress event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
+            console.warn('⚠️ [DownloadQueue] Progress event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
             return prev;
           }
           
@@ -222,7 +222,7 @@ export const DownloadQueue = () => {
             const finalProgress = Math.min(Math.max(d.progress, progress), 100);
             const finalCompletedTracks = Math.min(completedTracks, totalTracks);
             
-            console.log(`📊 Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${finalProgress}%, ${d.completedTracks}/${d.totalTracks} → ${finalCompletedTracks}/${totalTracks}`);
+            console.log(`📊 [DownloadQueue] Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${finalProgress}%, ${d.completedTracks}/${d.totalTracks} → ${finalCompletedTracks}/${totalTracks}`);
             
             return {
               ...d,
@@ -248,7 +248,7 @@ export const DownloadQueue = () => {
           setActiveDownloads(prev => {
             const next = new Set(prev);
             next.delete(data.downloadId);
-            console.log(`✅ Removed ${data.downloadId} from active downloads (progress: ${data.progress}, status: ${data.status})`);
+            console.log(`✅ [DownloadQueue] Removed ${data.downloadId} from active downloads (progress: ${data.progress}, status: ${data.status})`);
             return next;
           });
         }
@@ -369,30 +369,40 @@ export const DownloadQueue = () => {
 
       // Track individual track completion (for single track downloads)
       socket.on('download:track', (data: any) => {
-        console.log('📨 Download track event:', data);
+        console.log('📨 [DownloadQueue] Download track event:', JSON.stringify(data, null, 2));
         if (!data.downloadId) {
+          console.warn('⚠️ [DownloadQueue] Track event missing downloadId:', data);
           return;
         }
         
         // If track status is completed, update the download progress
         if (data.status === 'completed' && data.progress === 100) {
-          setDownloads(prev => prev.map(d => {
-            if (d.downloadId === data.downloadId) {
-              console.log(`✅ Track completed for download ${data.downloadId}, updating to 100%`);
-              return {
-                ...d,
-                status: 'completed',
-                progress: 100,
-                completedTracks: 1,
-                totalTracks: 1,
-                completedAt: d.completedAt || new Date().toISOString()
-              };
+          setDownloads(prev => {
+            const found = prev.find(d => d.downloadId === data.downloadId);
+            if (!found) {
+              console.warn('⚠️ [DownloadQueue] Track event for unknown downloadId:', data.downloadId);
+              return prev;
             }
-            return d;
-          }));
+            
+            return prev.map(d => {
+              if (d.downloadId === data.downloadId) {
+                console.log(`✅ [DownloadQueue] Track completed for download ${data.downloadId}, updating to 100%`);
+                return {
+                  ...d,
+                  status: 'completed',
+                  progress: 100,
+                  completedTracks: 1,
+                  totalTracks: 1,
+                  completedAt: d.completedAt || new Date().toISOString()
+                };
+              }
+              return d;
+            });
+          });
           setActiveDownloads(prev => {
             const next = new Set(prev);
             next.delete(data.downloadId);
+            console.log(`✅ [DownloadQueue] Removed ${data.downloadId} from active downloads (from download:track)`);
             return next;
           });
         }

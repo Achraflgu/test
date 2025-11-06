@@ -2731,21 +2731,31 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           })));
           
           const updatedTracks = prev.map((track) => {
-            // Match by track name - more reliable than index
+            // Match by track name - STRICT matching to avoid false positives
             const trackFullName = `${track.artist} - ${track.name}`;
             const normalizedTrackName = trackFullName.toLowerCase().trim();
             const normalizedDataName = (data.trackName || '').toLowerCase().trim();
+            const normalizedTrackNameOnly = track.name.toLowerCase().trim();
+            const normalizedArtistOnly = track.artist.toLowerCase().trim();
             
+            // Extract track name from data (format: "Artist - Track Name")
+            const dataParts = normalizedDataName.split(' - ');
+            const dataArtist = dataParts[0] || '';
+            const dataTrackName = dataParts.length > 1 ? dataParts.slice(1).join(' - ') : normalizedDataName;
+            
+            // STRICT matching - only match if:
+            // 1. Exact full name match
+            // 2. Exact track name match (when data has "Artist - Track" format)
+            // 3. Track is selected AND track name is a significant part of data track name (at least 10 chars)
             const isMatch = data.trackName && (
+              // Exact full name match
               normalizedDataName === normalizedTrackName ||
-              normalizedDataName === `${track.artist.toLowerCase().trim()} - ${track.name.toLowerCase().trim()}` ||
-              normalizedDataName.includes(track.name.toLowerCase().trim()) || 
-              normalizedDataName.includes(track.artist.toLowerCase().trim()) ||
-              normalizedTrackName.includes(normalizedDataName) ||
-              track.name.toLowerCase().trim().includes(normalizedDataName.split(' - ').pop() || '') ||
-              normalizedDataName.split(' - ').pop()?.includes(track.name.toLowerCase().trim()) ||
-              // Also try matching just the track name part
-              (normalizedDataName.split(' - ').length > 1 && track.name.toLowerCase().trim() === normalizedDataName.split(' - ')[1]?.trim())
+              // Exact track name match (when data has "Artist - Track" format)
+              (dataParts.length > 1 && normalizedTrackNameOnly === dataTrackName) ||
+              // Track name is selected AND track name is significant part of data (at least 10 chars to avoid false matches)
+              (track.selected && normalizedTrackNameOnly.length >= 10 && dataTrackName.includes(normalizedTrackNameOnly)) ||
+              // Exact artist + track match
+              (normalizedArtistOnly === dataArtist && normalizedTrackNameOnly === dataTrackName)
             );
             
             // ALWAYS update if matched, regardless of selection status (especially for completed tracks)
