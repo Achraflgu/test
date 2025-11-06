@@ -64,20 +64,32 @@ export const DownloadQueue = () => {
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
       console.log('📥 Download started:', { downloadId, folderName, totalTracks });
-      const newDownload: DownloadItem = {
-        downloadId,
-        playlistName: folderName,
-        folderName,
-        status: 'queued',
-        progress: 0,
-        totalTracks: totalTracks || 1, // Ensure at least 1 for single tracks
-        completedTracks: 0,
-        startedAt: new Date().toISOString()
-      };
-
+      
       setDownloads(prev => {
-        // Remove if already exists (restart scenario)
-        const filtered = prev.filter(d => d.downloadId !== downloadId);
+        // Remove if already exists (same downloadId) OR if same folderName is already completed (re-download scenario)
+        const filtered = prev.filter(d => 
+          d.downloadId !== downloadId && 
+          !(d.folderName === folderName && d.status === 'completed')
+        );
+        
+        // Only add if not already in the list
+        const exists = filtered.some(d => d.downloadId === downloadId);
+        if (exists) {
+          console.log('⚠️ [DownloadQueue] Download already exists, skipping duplicate');
+          return filtered;
+        }
+        
+        const newDownload: DownloadItem = {
+          downloadId,
+          playlistName: folderName,
+          folderName,
+          status: 'queued',
+          progress: 0,
+          totalTracks: totalTracks || 1, // Ensure at least 1 for single tracks
+          completedTracks: 0,
+          startedAt: new Date().toISOString()
+        };
+        
         return [newDownload, ...filtered];
       });
       setActiveDownloads(prev => new Set(prev).add(downloadId));
@@ -416,6 +428,7 @@ export const DownloadQueue = () => {
               return prev;
             }
             
+            // Update to completed and ensure it's removed from active
             return prev.map(d => {
               if (d.downloadId === data.downloadId) {
                 console.log(`✅ [DownloadQueue] Track completed for download ${data.downloadId}, updating to 100%`);
@@ -431,6 +444,8 @@ export const DownloadQueue = () => {
               return d;
             });
           });
+          
+          // Remove from active downloads set (ensures it doesn't show in active section)
           setActiveDownloads(prev => {
             const next = new Set(prev);
             next.delete(data.downloadId);
@@ -516,8 +531,20 @@ export const DownloadQueue = () => {
       url = `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
-    // Open in new window/tab for download
-    window.open(url, '_blank');
+    // Use iframe method (stays on same page, works with IDM)
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    
+    // Clean up iframe after download starts
+    setTimeout(() => {
+      try {
+        document.body.removeChild(iframe);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }, 1000);
 
     toast.success('Download started!', {
       description: `Downloading ${folderName}.zip`
