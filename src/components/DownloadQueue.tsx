@@ -67,46 +67,29 @@ export const DownloadQueue = () => {
       console.log('📥 [DownloadQueue] Download started:', { downloadId, folderName, totalTracks });
       
       setDownloads(prev => {
-        // Check if this downloadId already exists
+        // Check if this downloadId already exists (instant download scenario - completion arrived before start)
         const existingById = prev.find(d => d.downloadId === downloadId);
         if (existingById) {
-          // If it's already completed (instant download), skip
-          if (existingById.status === 'completed') {
-            console.log(`⚠️ [DownloadQueue] Download ${downloadId} already completed (instant download), skipping duplicate`);
-            return prev;
-          }
-          // If it's queued/downloading, this is a duplicate event - skip
-          console.log(`⚠️ [DownloadQueue] Download ${downloadId} already exists in queue, skipping duplicate`);
+          console.log(`⚠️ [DownloadQueue] Download ${downloadId} already exists (instant download), skipping duplicate`);
           return prev;
         }
         
-        // Normalize folder names for comparison (case-insensitive, trim whitespace)
+        // For re-downloads of the same playlist, add a counter suffix to differentiate
         const normalizedNewFolderName = folderName.toLowerCase().trim();
         
-        // Check if a completed entry with the same folderName already exists (re-download scenario)
-        // ONLY skip if it's completed - allow multiple concurrent downloads of same playlist
-        const existingCompleted = prev.find(d => {
-          const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
-          return normalizedExistingFolderName === normalizedNewFolderName && d.status === 'completed';
+        // Count how many downloads with similar names exist (for numbering)
+        const similarDownloads = prev.filter(d => {
+          const normalizedExisting = d.folderName.toLowerCase().trim();
+          // Match exact name or name with (N) suffix
+          return normalizedExisting === normalizedNewFolderName || 
+                 normalizedExisting.startsWith(normalizedNewFolderName + ' (');
         });
         
-        if (existingCompleted) {
-          console.log(`⚠️ [DownloadQueue] Re-download detected for "${folderName}" - keeping old completed entry, not adding new one`);
-          // Don't add new entry - keep the old completed entry
-          // The download will still happen in the background, but won't show in queue
-          return prev;
-        }
-        
-        // Check for active downloads with same folder name (concurrent downloads of same playlist)
-        const existingActive = prev.find(d => {
-          const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
-          return normalizedExistingFolderName === normalizedNewFolderName && 
-                 (d.status === 'downloading' || d.status === 'queued');
-        });
-        
-        if (existingActive) {
-          console.log(`⚠️ [DownloadQueue] Active download already exists for "${folderName}", skipping duplicate`);
-          return prev;
+        // Add counter suffix if re-downloading same playlist
+        let finalFolderName = folderName;
+        if (similarDownloads.length > 0) {
+          finalFolderName = `${folderName} (${similarDownloads.length})`;
+          console.log(`🔄 [DownloadQueue] Re-download detected, using name: "${finalFolderName}"`);
         }
         
         // Remove if already exists (same downloadId) - but keep completed entries
@@ -119,11 +102,11 @@ export const DownloadQueue = () => {
           return filtered;
         }
         
-        console.log(`✅ [DownloadQueue] Adding new download: ${downloadId} (${folderName})`);
+        console.log(`✅ [DownloadQueue] Adding new download: ${downloadId} (${finalFolderName})`);
         const newDownload: DownloadItem = {
           downloadId,
-          playlistName: folderName,
-          folderName,
+          playlistName: finalFolderName,
+          folderName: finalFolderName,
           status: 'queued',
           progress: 0,
           totalTracks: totalTracks || 1, // Ensure at least 1 for single tracks
@@ -637,32 +620,14 @@ export const DownloadQueue = () => {
   const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
   const completedCount = downloads.filter(d => d.status === 'completed').length;
 
-  // Auto-show active downloads and reset index when downloads change
+  // Reset index when downloads change
   useEffect(() => {
-    if (downloads.length === 0) {
-      setCurrentIndex(0);
-      return;
-    }
-    
-    // If current index is out of bounds, reset to last item
-    if (currentIndex >= downloads.length) {
+    if (currentIndex >= downloads.length && downloads.length > 0) {
       setCurrentIndex(downloads.length - 1);
-      return;
+    } else if (downloads.length === 0) {
+      setCurrentIndex(0);
     }
-    
-    // Auto-switch to show active downloads (queued/downloading)
-    const currentDownload = downloads[currentIndex];
-    const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
-    
-    // If current download is completed but there are active downloads, switch to first active
-    if (currentDownload && currentDownload.status === 'completed' && hasActiveDownloads) {
-      const firstActiveIndex = downloads.findIndex(d => d.status === 'downloading' || d.status === 'queued');
-      if (firstActiveIndex !== -1 && firstActiveIndex !== currentIndex) {
-        console.log(`🎯 [DownloadQueue] Auto-switching from completed to active download at index ${firstActiveIndex}`);
-        setCurrentIndex(firstActiveIndex);
-      }
-    }
-  }, [downloads, currentIndex]);
+  }, [downloads.length, currentIndex]);
 
   // Carousel navigation
   const handlePrevious = () => {
