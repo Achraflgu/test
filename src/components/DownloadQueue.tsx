@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Download, X, CheckCircle2, Loader2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Trash2, RefreshCw, Clock } from "lucide-react";
+import { Download, X, CheckCircle2, Loader2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Trash2, RefreshCw, Clock, ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,7 @@ export const DownloadQueue = () => {
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<Set<string>>(new Set());
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   // Don't load old downloads from localStorage - start fresh on each page load
   // Clear localStorage on mount to remove old downloads
@@ -617,8 +618,31 @@ export const DownloadQueue = () => {
   const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
   const completedCount = downloads.filter(d => d.status === 'completed').length;
 
-  // Always render component (even if empty) to ensure socket listeners are always active
-  // This ensures DownloadQueue receives events even before first download starts
+  // Reset index when downloads change
+  useEffect(() => {
+    if (currentIndex >= downloads.length && downloads.length > 0) {
+      setCurrentIndex(downloads.length - 1);
+    } else if (downloads.length === 0) {
+      setCurrentIndex(0);
+    }
+  }, [downloads.length, currentIndex]);
+
+  // Carousel navigation
+  const handlePrevious = () => {
+    setCurrentIndex(prev => (prev > 0 ? prev - 1 : downloads.length - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex(prev => (prev < downloads.length - 1 ? prev + 1 : 0));
+  };
+
+  // Get current download to display
+  const currentDownload = downloads[currentIndex];
+
+  // Hide queue when empty
+  if (downloads.length === 0) {
+    return null;
+  }
 
   return (
     <Card className="fixed left-2 bottom-24 w-72 z-40 shadow-lg border border-border/40 flex flex-col bg-background/40 backdrop-blur-md rounded-xl hover:bg-background/85 hover:shadow-xl hover:border-border/60 transition-all duration-300 max-h-[450px]">
@@ -652,177 +676,149 @@ export const DownloadQueue = () => {
         </div>
       </CardHeader>
 
-      {!isMinimized && (
-        <CardContent className="flex-1 overflow-y-auto space-y-2.5 p-3">
-          {/* Active Downloads Section */}
-          {activeCount > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5 px-2 py-1">
-                <Clock className="h-3 w-3 text-primary/70" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Active ({activeCount})
-                </span>
-              </div>
-              {downloads
-                .filter(d => d.status === 'downloading' || d.status === 'queued')
-                .map((download) => (
-                  <div
-                    key={download.downloadId}
-                    className="flex items-start gap-2.5 p-2.5 bg-muted/30 rounded-lg border border-border/30 hover:bg-muted/50 hover:border-border/50 transition-all group"
-                  >
-                    <div className="p-1.5 bg-muted/50 rounded flex-shrink-0">
-                      {download.status === 'downloading' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      ) : (
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+      {!isMinimized && currentDownload && (
+        <CardContent className="p-3 space-y-3">
+          {/* Current Download Display */}
+          <div className="transition-all duration-300 ease-in-out">
+            {(currentDownload.status === 'downloading' || currentDownload.status === 'queued') && (
+              <div className="flex items-start gap-2.5 p-3 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20 hover:border-primary/30 transition-all">
+                <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+                  {currentDownload.status === 'downloading' ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <Clock className="h-4 w-4 text-primary" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-sm font-semibold truncate">{currentDownload.folderName}</p>
+                    <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 shrink-0">
+                      {currentDownload.status === 'downloading' ? 'Active' : 'Queued'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="relative overflow-hidden rounded-full h-3">
+                      <Progress 
+                        value={currentDownload.progress} 
+                        className="h-full bg-muted/50" 
+                      />
+                      {currentDownload.status === 'downloading' && currentDownload.progress > 0 && currentDownload.progress < 100 && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer rounded-full" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <p className="text-sm font-medium truncate text-foreground">
-                          {download.folderName}
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                            {download.status === 'downloading' ? 'Active' : 'Queued'}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 hover:bg-destructive/20 opacity-70 hover:opacity-100"
-                            onClick={() => handleRemove(download.downloadId)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="relative overflow-hidden rounded-full">
-                          <Progress 
-                            value={download.progress} 
-                            className="h-2.5 bg-muted/50 transition-all duration-500 ease-out" 
-                          />
-                          {/* Animated gradient overlay for active downloads */}
-                          {download.status === 'downloading' && download.progress > 0 && (
-                            <div 
-                              className="absolute inset-0 bg-gradient-to-r from-primary/30 via-primary/50 to-primary/30 rounded-full transition-all duration-500 ease-out"
-                              style={{ width: `${download.progress}%` }}
-                            />
-                          )}
-                          {/* Shimmer effect during download */}
-                          {download.status === 'downloading' && download.progress > 0 && download.progress < 100 && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent animate-shimmer rounded-full" />
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1.5 text-muted-foreground">
-                            {download.status === 'downloading' && (
-                              <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
-                            )}
-                            <span className="font-medium">
-                              {download.completedTracks}/{download.totalTracks} tracks
-                            </span>
-                          </span>
-                          <span className="font-bold text-primary transition-all duration-300">
-                            {download.progress}%
-                          </span>
-                        </div>
-                      </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground font-medium">
+                        {currentDownload.completedTracks}/{currentDownload.totalTracks} tracks
+                      </span>
+                      <span className="font-bold text-primary">{currentDownload.progress}%</span>
                     </div>
                   </div>
-                ))}
-            </div>
-          )}
-
-          {/* Completed Downloads Section */}
-          {completedCount > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5 px-2 py-1">
-                <CheckCircle2 className="h-3 w-3 text-green-500/70" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Completed ({completedCount})
-                </span>
+                </div>
               </div>
-              {downloads
-                .filter(d => d.status === 'completed')
-                .map((download) => (
-                  <div
-                    key={download.downloadId}
-                    className="flex items-start gap-2.5 p-2.5 bg-muted/20 rounded-lg border border-border/30 hover:bg-muted/30 hover:border-border/50 transition-all"
-                  >
-                    <div className="p-1.5 bg-muted/40 rounded flex-shrink-0">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <p className="text-sm font-medium truncate text-foreground">
-                          {download.folderName}
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 hover:bg-destructive/20 opacity-70 hover:opacity-100"
-                          onClick={() => handleRemove(download.downloadId)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-between mb-2 text-xs text-muted-foreground">
-                        <span>{download.completedTracks}/{download.totalTracks} tracks</span>
-                        {download.completedAt && (
-                          <span>{new Date(download.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        )}
-                      </div>
-                      {download.downloadUrl ? (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="w-full h-6 text-[10px] font-medium bg-green-600 hover:bg-green-700 px-2"
-                          onClick={() => handleDownload(download.downloadUrl!, download.folderName)}
-                        >
-                          <Download className="h-2.5 w-2.5 mr-1" />
-                          Download
-                        </Button>
-                      ) : (
-                        <div className="text-xs text-muted-foreground text-center py-1">
-                          Processing...
-                        </div>
-                      )}
-                    </div>
+            )}
+            
+            {currentDownload.status === 'completed' && (
+              <div className="flex items-start gap-2.5 p-3 bg-gradient-to-br from-green-500/10 to-green-500/5 rounded-lg border border-green-500/20 hover:border-green-500/30 transition-all">
+                <div className="p-2 bg-green-500/10 rounded-lg flex-shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                </div>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold truncate">{currentDownload.folderName}</p>
+                    <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-green-500/30 text-green-600 shrink-0">
+                      Done
+                    </Badge>
                   </div>
-                ))}
-            </div>
-          )}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{currentDownload.completedTracks}/{currentDownload.totalTracks} tracks</span>
+                    {currentDownload.completedAt && (
+                      <span>{new Date(currentDownload.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                  </div>
+                  {currentDownload.downloadUrl ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full h-7 text-[11px] font-medium bg-green-600 hover:bg-green-700"
+                      onClick={() => handleDownload(currentDownload.downloadUrl!, currentDownload.folderName)}
+                    >
+                      <Download className="h-3 w-3 mr-1.5" />
+                      Download ZIP
+                    </Button>
+                  ) : (
+                    <div className="text-xs text-muted-foreground text-center py-1.5">
+                      Processing...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
-          {/* Clear Completed Button */}
-          {completedCount > 0 && (
-            <div className="pt-2 border-t border-border/20 mt-auto">
+          {/* Navigation Controls */}
+          {downloads.length > 1 && (
+            <div className="flex items-center justify-between pt-2 border-t border-border/20">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="w-full text-xs h-7 font-medium"
-                onClick={handleClearCompleted}
+                className="h-7 px-2"
+                onClick={handlePrevious}
               >
-                <Trash2 className="h-3 w-3 mr-1.5" />
-                Clear ({completedCount})
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                <span className="text-xs">Prev</span>
+              </Button>
+              
+              {/* Indicator Dots */}
+              <div className="flex items-center gap-1.5">
+                {downloads.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentIndex(index)}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      index === currentIndex 
+                        ? 'w-6 bg-primary' 
+                        : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                    }`}
+                    aria-label={`Go to download ${index + 1}`}
+                  />
+                ))}
+              </div>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={handleNext}
+              >
+                <span className="text-xs">Next</span>
+                <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
           )}
 
-          {/* Empty State */}
-          {downloads.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="p-3 bg-muted/30 rounded-lg mb-3">
-                <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin-slow" />
-              </div>
-              <p className="text-sm text-foreground font-medium mb-1">
-                No downloads
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Downloads will appear here
-              </p>
-            </div>
-          )}
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 pt-2 border-t border-border/20">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-7 text-xs"
+              onClick={() => handleRemove(currentDownload.downloadId)}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Remove
+            </Button>
+            {completedCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-7 text-xs"
+                onClick={handleClearCompleted}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All ({completedCount})
+              </Button>
+            )}
+          </div>
         </CardContent>
       )}
       
