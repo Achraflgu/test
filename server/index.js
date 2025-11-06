@@ -1430,6 +1430,19 @@ async function generateAndTestCookies(maxAttempts = 100) {
           }
         }
         
+        // 🛡️ SAFETY CHECK: Pause regeneration if downloads become active (and we have enough cookies)
+        const hasActive = hasActiveDownloads();
+        const currentCookies = await getWorkingCookiesFromPool();
+        
+        if (hasActive && currentCookies.length >= 1) {
+          console.log(`\n⏸️ [Cookie Generation PAUSED] Downloads active (${activeDownloads.size}) with ${currentCookies.length} working cookie(s)`);
+          console.log(`  📊 Current progress: ${cookiesFound}/${cookiesNeeded} new cookies generated (${strongCookiesFound} STRONG)`);
+          console.log(`  💡 Will resume after downloads complete (5min auto-check or manual trigger)`);
+          
+          // Exit loop gracefully - we have enough cookies for downloads to proceed
+          break;
+        }
+        
         const phaseLabel = inPhase1 ? 'Phase 1' : 'Phase 2';
         console.log(`\n🔄 ${phaseLabel} - Batch ${batch}/${MAX_BATCHES}: Testing ${PARALLEL_TESTS} cookies in parallel...`);
         
