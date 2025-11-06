@@ -1657,12 +1657,54 @@ let consecutivePoolFillFailures = 0;
 const POOL_FILL_COOLDOWN = 60000; // 1 minute cooldown after failure
 const MAX_CONSECUTIVE_FAILURES = 3; // Circuit breaker threshold
 
+// 🛡️ SAFETY: Check if downloads are active
+function hasActiveDownloads() {
+  return activeDownloads.size > 0;
+}
+
+// 🔄 RESUME REGENERATION: Check if we should resume pool filling when downloads complete
+async function checkAndResumeRegeneration() {
+  try {
+    // Only resume if downloads are idle
+    if (hasActiveDownloads()) {
+      return; // Downloads still active, don't resume
+    }
+    
+    const cookies = await getWorkingCookiesFromPool();
+    
+    // If we have less than 5 cookies and downloads are idle, resume filling
+    if (cookies.length < COOKIE_POOL_SIZE) {
+      console.log(`\n🔄 Downloads completed - resuming pool maintenance: ${cookies.length}/${COOKIE_POOL_SIZE} cookies`);
+      ensurePoolIsFull().catch((err) => {
+        console.log(`  ⚠️ Failed to resume pool fill: ${err.message}`);
+      });
+    }
+  } catch (err) {
+    // Silent fail - don't interrupt download completion
+  }
+}
+
 async function ensurePoolIsFull() {
   try {
     // 🔒 PREVENT OVERLAPPING CALLS - Only one pool fill at a time
     if (isFillingPool) {
       console.log(`  ⏭️ Pool fill already in progress - skipping duplicate call`);
       return false;
+    }
+    
+    // 🛡️ SAFETY: If downloads are active and we have at least 1 working cookie, PAUSE regeneration
+    const cookies = await getWorkingCookiesFromPool();
+    const hasActive = hasActiveDownloads();
+    
+    if (hasActive && cookies.length >= 1) {
+      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${cookies.length} working cookie(s) - pausing regeneration for safety`);
+      return false; // Don't regenerate during active downloads if we have at least 1 cookie
+    }
+    
+    // 🚨 CRITICAL: If downloads are active but we have 0 cookies, we MUST regenerate (emergency)
+    if (hasActive && cookies.length === 0) {
+      console.log(`  🚨 EMERGENCY: Downloads active but 0 cookies available - regenerating immediately`);
+      // Continue to regeneration below
     }
     
     // 🔌 CIRCUIT BREAKER - Stop trying if too many failures
@@ -1681,7 +1723,6 @@ async function ensurePoolIsFull() {
     isFillingPool = true;
     lastPoolFillAttempt = Date.now();
     
-    const cookies = await getWorkingCookiesFromPool();
     const missingCount = COOKIE_POOL_SIZE - cookies.length;
     
     if (missingCount > 0) {
@@ -1740,6 +1781,15 @@ async function ensurePoolIsFull() {
 // 🔄 REGENERATE SINGLE COOKIE SLOT (when one dies during download)
 async function regenerateSingleCookie(slotIndex) {
   try {
+    // 🛡️ SAFETY: If downloads are active and we have at least 1 working cookie, skip regeneration
+    const cookies = await getWorkingCookiesFromPool();
+    const hasActive = hasActiveDownloads();
+    
+    if (hasActive && cookies.length >= 1) {
+      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) with ${cookies.length} working cookie(s) - safe to continue`);
+      return false; // Don't regenerate during active downloads if we have at least 1 cookie
+    }
+    
     console.log(`\n🔄 Regenerating cookie slot ${slotIndex + 1}/${COOKIE_POOL_SIZE} (dead cookie detected)...`);
     
     // 🎯 STEP 1: Check backup pool first (faster than generating!)
@@ -2046,12 +2096,19 @@ async function validateCookiePool() {
       console.log(`  💾 Updated primary cookie from pool`);
     }
     
-    // 🎯 If pool is not full, trigger background fill (non-blocking)
+    // 🎯 If pool is not full, trigger background fill (non-blocking, only if safe)
     if (validCookies.length < COOKIE_POOL_SIZE) {
-      console.log(`  🔄 Pool needs ${COOKIE_POOL_SIZE - validCookies.length} more cookies - starting background fill...`);
-      ensurePoolIsFull().catch((err) => {
-        console.log(`  ⚠️ Background pool fill failed: ${err.message}`);
-      });
+      const hasActive = hasActiveDownloads();
+      
+      // 🛡️ SAFETY: Only fill pool when downloads are idle OR when we have 0 cookies
+      if (hasActive && validCookies.length >= 1) {
+        console.log(`  ⏸️ Pool needs ${COOKIE_POOL_SIZE - validCookies.length} more cookies, but downloads active (${activeDownloads.size}) with ${validCookies.length} working cookie(s) - pausing fill for safety`);
+      } else {
+        console.log(`  🔄 Pool needs ${COOKIE_POOL_SIZE - validCookies.length} more cookies - starting background fill...`);
+        ensurePoolIsFull().catch((err) => {
+          console.log(`  ⚠️ Background pool fill failed: ${err.message}`);
+        });
+      }
     }
     
     return {
@@ -2116,13 +2173,26 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
         recordCookieFailure(cookie.index);
         console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - rotating to next cookie...`);
         
-        // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot
-        console.log(`  🔄 Cookie ${cookie.index + 1} (slot ${cookie.index}) failed - immediately starting background regeneration...`);
+        // 🛡️ SAFETY: Only regenerate if we have 0 working cookies OR downloads are idle
+        const allCookies = await getAllCookiesFromPool();
+        const workingCookies = allCookies.filter(c => c.index !== cookie.index); // Exclude the failed one
+        const hasActive = hasActiveDownloads();
+        
+        if (hasActive && workingCookies.length >= 1) {
+          console.log(`  ⏸️ Skipping regeneration: Downloads active with ${workingCookies.length} working cookie(s) - safe to continue`);
+          // ✅ ROTATE: Continue to next cookie in loop (Cookie 2 → Cookie 3 → Cookie 4, etc.)
+          continue;
+        }
+        
+        // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot (only if safe)
+        console.log(`  🔄 Cookie ${cookie.index + 1} (slot ${cookie.index}) failed - starting background regeneration...`);
         // Regenerate THIS cookie slot in background (don't await) - checks backup pool first, then generates
         regenerateSingleCookie(cookie.index).then(() => {
           console.log(`  ✅ Cookie slot ${cookie.index + 1} regenerated successfully in background`);
-          // After regenerating, ensure pool is full (fills any other missing slots)
-          ensurePoolIsFull().catch(() => {});
+          // After regenerating, ensure pool is full (only if downloads are idle)
+          if (!hasActiveDownloads()) {
+            ensurePoolIsFull().catch(() => {});
+          }
         }).catch((err) => {
           console.log(`  ⚠️ Background regeneration failed for cookie ${cookie.index + 1}: ${err.message}`);
         });
@@ -2264,12 +2334,17 @@ async function initializeAutoCookies() {
     
     if (poolStatus.valid > 0 && poolStatus.valid < COOKIE_POOL_SIZE) {
       console.log(`  ⚠️ Cookie pool has ${poolStatus.valid}/${COOKIE_POOL_SIZE} cookies - filling ${COOKIE_POOL_SIZE - poolStatus.valid} missing slots...`);
-      // Ensure pool is full (fills missing slots in background)
-      ensurePoolIsFull().then(() => {
-        console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE}`);
-      }).catch((err) => {
-        console.log(`  ⚠️ Failed to fill pool completely: ${err.message}`);
-      });
+      // Ensure pool is full (fills missing slots in background, only if safe)
+      const hasActive = hasActiveDownloads();
+      if (hasActive && poolStatus.valid >= 1) {
+        console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${poolStatus.valid} working cookie(s) - will fill pool when downloads complete`);
+      } else {
+        ensurePoolIsFull().then(() => {
+          console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE}`);
+        }).catch((err) => {
+          console.log(`  ⚠️ Failed to fill pool completely: ${err.message}`);
+        });
+      }
       return AUTO_COOKIE_PATH;
     }
     
@@ -2348,10 +2423,18 @@ initializeAutoCookies().then(cookiePath => {
 });
 
 // 🎯 PERIODIC POOL MAINTENANCE - Ensure 5/5 cookies always available
-// Runs every 5 minutes to check and fill missing slots
+// Runs every 5 minutes to check and fill missing slots (only when downloads are idle)
 setInterval(async () => {
   try {
     const cookies = await getWorkingCookiesFromPool();
+    const hasActive = hasActiveDownloads();
+    
+    // 🛡️ SAFETY: Only regenerate when downloads are idle OR when we have 0 cookies
+    if (hasActive && cookies.length >= 1) {
+      console.log(`\n⏸️ [Scheduled Maintenance] Skipped: Downloads active (${activeDownloads.size}) with ${cookies.length} working cookie(s) - safe to continue`);
+      return;
+    }
+    
     if (cookies.length < COOKIE_POOL_SIZE) {
       console.log(`\n🔄 [Scheduled Maintenance] Pool has ${cookies.length}/${COOKIE_POOL_SIZE} cookies - filling missing slots...`);
       await ensurePoolIsFull();
@@ -8364,6 +8447,11 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
                 : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
+          
+          // 🔄 Resume pool regeneration when download completes (after a short delay for cleanup)
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000); // 2s delay to ensure activeDownloads cleanup completes
           
           shouldContinue = false;
           continue;
