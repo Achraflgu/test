@@ -2637,30 +2637,29 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           });
         }
         
-        // Strategy 4: If status is 'completed', find any pending track (last resort for single track downloads)
+        // Strategy 4: DISABLED - Too risky, causes false positives during re-downloads
+        // Only enable this if we're 100% sure there's only ONE track being downloaded
         if (!matchingTrack && data.status === 'completed') {
-          const pendingTracks = prev.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
-          console.log(`🔍 [TrackList] Strategy 4: Found ${pendingTracks.length} pending/downloading tracks`);
-          if (pendingTracks.length === 1) {
+          const selectedTracks = prev.filter(t => t.selected);
+          const pendingTracks = prev.filter(t => t.selected && (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading'));
+          const completedTracks = prev.filter(t => t.selected && t.downloadStatus === 'completed');
+          
+          console.log(`🔍 [TrackList] Strategy 4 check: ${pendingTracks.length} pending, ${completedTracks.length} completed, ${selectedTracks.length} total selected`);
+          
+          // ONLY use this fallback if:
+          // 1. There's exactly ONE pending track
+          // 2. There are NO completed tracks (meaning this is the first/only download)
+          // 3. The trackId doesn't look like it could match any other track
+          if (pendingTracks.length === 1 && completedTracks.length === 0) {
             matchingTrack = pendingTracks[0];
-            console.log(`✅ [TrackList] Strategy 4 (Single Pending) matched: ${matchingTrack.name} (only pending track)`);
-          } else if (pendingTracks.length > 1) {
-            console.log(`⚠️ [TrackList] Strategy 4: Multiple pending tracks found (${pendingTracks.length}), cannot auto-match`);
+            console.log(`✅ [TrackList] Strategy 4 (Single Pending, No Completed) matched: ${matchingTrack.name}`);
+          } else {
+            console.log(`⏭️ [TrackList] Strategy 4 skipped: pendingTracks=${pendingTracks.length}, completedTracks=${completedTracks.length} (too risky for fallback)`);
           }
         }
         
-        // Strategy 5: Last resort - if status is 'completed' and progress is 100, update the most recently set to pending
-        if (!matchingTrack && data.status === 'completed' && data.progress === 100) {
-          // Find tracks that were recently set to pending (within last 30 seconds)
-          const recentPendingTracks = prev.filter(t => 
-            (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading') &&
-            t.selected // Only match selected tracks as a safety measure
-          );
-          if (recentPendingTracks.length === 1) {
-            matchingTrack = recentPendingTracks[0];
-            console.log(`✅ [TrackList] Strategy 5 (Recent Pending) matched: ${matchingTrack.name} (only selected pending track)`);
-          }
-        }
+        // Strategy 5: DISABLED - Last resort is too dangerous, skip it entirely
+        // This strategy was causing false positives when re-downloading tracks
         
         if (!matchingTrack) {
           console.error(`❌ [TrackList] Track ${data.trackId} not found in current tracks!`);
@@ -2774,6 +2773,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           }
           
           // Update only the matched track
+          let trackWasUpdated = false;
           const updatedTracks = prev.map((track) => {
             // Only update if this is the matched track
             if (matchedTrackId && track.id === matchedTrackId) {
@@ -2789,6 +2789,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 const finalProgress = data.status === 'completed' ? 100 : (data.progress || 0);
                 
                 console.log(`✅ [TrackList] Progress: Updating matched track "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
+                trackWasUpdated = true;
                 return {
                   ...track,
                   downloadStatus: finalStatus,
@@ -2801,35 +2802,48 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             return track;
           });
           
-          // Fallback: ONLY if no match was found in first pass AND status is 'completed' AND we have exactly one pending/downloading track
-          // ⚠️ CRITICAL: Only run fallback if matchedTrackId is null to prevent false positives during re-downloads
-          if (!matchedTrackId && data.status === 'completed' && !updatedTracks.some(t => {
-            const trackFullName = `${t.artist} - ${t.name}`;
-            const normalizedTrackName = trackFullName.toLowerCase().trim();
-            const normalizedDataName = (data.trackName || '').toLowerCase().trim();
-            return normalizedDataName && (
-              normalizedDataName === normalizedTrackName ||
-              normalizedDataName.includes(t.name.toLowerCase().trim())
-            );
-          })) {
-            const pendingTracks = updatedTracks.filter(t => t.selected && (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading'));
-            if (pendingTracks.length === 1) {
-              console.log(`🔄 [TrackList] Progress: Fallback - updating single selected pending track: ${pendingTracks[0].name}`);
-              return updatedTracks.map(t => {
-                if (t.id === pendingTracks[0].id) {
-                  return {
-                    ...t,
-                    downloadStatus: 'completed',
-                    downloadProgress: 100
-                  };
-                }
-                return t;
-              });
-            } else if (pendingTracks.length > 1) {
-              console.log(`⏭️ [TrackList] Progress: Fallback skipped - multiple pending tracks (${pendingTracks.length}), cannot determine which one to update`);
+          // Fallback: ONLY if no match was found AND track was NOT updated AND status is 'completed' AND we have exactly one pending/downloading track
+          // ⚠️ CRITICAL: Multiple checks to prevent false positives during re-downloads
+          if (!matchedTrackId && !trackWasUpdated && data.status === 'completed') {
+            console.log(`🔍 [TrackList] Progress: Checking fallback conditions - matchedTrackId: ${matchedTrackId}, trackWasUpdated: ${trackWasUpdated}`);
+            
+            // Double-check that no track in updatedTracks matches the data.trackName
+            const hasMatchInUpdated = updatedTracks.some(t => {
+              const trackFullName = `${t.artist} - ${t.name}`;
+              const normalizedTrackName = trackFullName.toLowerCase().trim();
+              const normalizedDataName = (data.trackName || '').toLowerCase().trim();
+              return normalizedDataName && (
+                normalizedDataName === normalizedTrackName ||
+                normalizedDataName.includes(t.name.toLowerCase().trim())
+              );
+            });
+            
+            if (!hasMatchInUpdated) {
+              const pendingTracks = updatedTracks.filter(t => t.selected && (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading'));
+              console.log(`📋 [TrackList] Progress: Found ${pendingTracks.length} pending/downloading selected track(s)`);
+              
+              if (pendingTracks.length === 1) {
+                console.log(`🔄 [TrackList] Progress: Fallback - updating single selected pending track: ${pendingTracks[0].name}`);
+                return updatedTracks.map(t => {
+                  if (t.id === pendingTracks[0].id) {
+                    return {
+                      ...t,
+                      downloadStatus: 'completed',
+                      downloadProgress: 100
+                    };
+                  }
+                  return t;
+                });
+              } else if (pendingTracks.length > 1) {
+                console.log(`⏭️ [TrackList] Progress: Fallback skipped - multiple pending tracks (${pendingTracks.length}), cannot determine which one to update`);
+              } else {
+                console.log(`⏭️ [TrackList] Progress: Fallback skipped - no pending tracks found`);
+              }
+            } else {
+              console.log(`✅ [TrackList] Progress: Found match in updatedTracks - skipping fallback`);
             }
-          } else if (matchedTrackId) {
-            console.log(`✅ [TrackList] Progress: First-pass match found - skipping fallback logic`);
+          } else if (matchedTrackId || trackWasUpdated) {
+            console.log(`✅ [TrackList] Progress: Track was matched/updated (matchedTrackId: ${!!matchedTrackId}, trackWasUpdated: ${trackWasUpdated}) - skipping fallback logic`);
           }
           
           // Update tab title with progress
