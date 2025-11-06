@@ -23,9 +23,23 @@ interface DownloadItem {
 const STORAGE_KEY = 'downloadQueue';
 
 export const DownloadQueue = () => {
+  console.log('🎨 [DownloadQueue] Component RENDERED');
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<Set<string>>(new Set());
+  
+  // Debug: Log downloads state changes
+  useEffect(() => {
+    console.log('📊 [DownloadQueue] Downloads state changed:', downloads.length, 'downloads');
+    if (downloads.length > 0) {
+      console.log('📊 [DownloadQueue] Current downloads:', downloads.map(d => ({
+        downloadId: d.downloadId,
+        status: d.status,
+        progress: d.progress,
+        folderName: d.folderName
+      })));
+    }
+  }, [downloads]);
 
   // Don't load old downloads from localStorage - start fresh on each page load
   // Clear localStorage on mount to remove old downloads
@@ -122,13 +136,19 @@ export const DownloadQueue = () => {
       
       // Listen for custom queue start event (emitted from TrackList via Socket.IO)
       socket.on('download:queue:start', (data: any) => {
-        console.log('📥 Queue: Received download:queue:start Socket.IO event:', data);
-        handleDownloadStart(
-          data.downloadId,
-          data.folderName || 'Unknown',
-          data.totalTracks || 0
-        );
+        console.log('📥 [DownloadQueue] Received download:queue:start Socket.IO event:', JSON.stringify(data, null, 2));
+        if (data && data.downloadId) {
+          handleDownloadStart(
+            data.downloadId,
+            data.folderName || 'Unknown',
+            data.totalTracks || 0
+          );
+        } else {
+          console.warn('⚠️ [DownloadQueue] download:queue:start event missing data or downloadId');
+        }
       });
+      
+      console.log('✅ [DownloadQueue] All socket listeners attached successfully');
 
       // Also listen for download status updates (which includes start and completion)
       socket.on('download:status', (data: any) => {
