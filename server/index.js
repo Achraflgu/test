@@ -1249,6 +1249,23 @@ function generateRealisticYouTubeCookies(attempt = 0) {
 
 // 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!) + EARLY STOP
 async function generateAndTestCookies(maxAttempts = 100) {
+  // 🛡️ SAFETY CHECK: Pause if downloads are active (check BEFORE starting generation)
+  const hasActive = hasActiveDownloads();
+  const currentCookies = await getWorkingCookiesFromPool();
+  
+  if (hasActive && currentCookies.length >= 1) {
+    console.log(`\n⏸️ [Cookie Generation BLOCKED] Downloads active (${activeDownloads.size}) with ${currentCookies.length} working cookie(s)`);
+    console.log(`  💡 Returning existing cookies - generation will resume after downloads complete`);
+    
+    // Return existing cookies instead of generating new ones
+    return {
+      strongCookies: currentCookies.filter(c => c.quality === 'strong').length,
+      mediumCookies: currentCookies.filter(c => c.quality === 'medium').length,
+      totalCookies: currentCookies.length,
+      cookies: currentCookies
+    };
+  }
+  
   // 🔒 Prevent concurrent cookie generation
   if (isGeneratingCookies && cookieGenerationPromise) {
     console.log('  ⏳ Cookie generation already in progress, waiting for completion...');
