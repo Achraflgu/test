@@ -1732,23 +1732,24 @@ async function ensurePoolIsFull() {
       return false;
     }
     
-    // 🛡️ SAFETY: If downloads are active and we have at least 1 working cookie, PAUSE regeneration
-    const cookies = await getWorkingCookiesFromPool();
+    // 🛡️ SAFETY: If downloads are active and we have at least 1 VALIDATED working cookie, PAUSE regeneration
+    const poolStatus = await validateCookiePool();
+    const validatedCookies = poolStatus.valid;
     const hasActive = hasActiveDownloads();
     
-    if (hasActive && cookies.length >= 1) {
-      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${cookies.length} working cookie(s) - pausing regeneration for safety`);
-      return false; // Don't regenerate during active downloads if we have at least 1 cookie
+    if (hasActive && validatedCookies >= 1) {
+      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${validatedCookies} VALIDATED working cookie(s) - pausing regeneration for safety`);
+      return false; // Don't regenerate during active downloads if we have at least 1 validated cookie
     }
     
-    // 🚨 CRITICAL: If downloads are active but we have 0 cookies, we MUST regenerate (emergency)
-    if (hasActive && cookies.length === 0) {
-      console.log(`  🚨 EMERGENCY: Downloads active but 0 cookies available - regenerating immediately`);
-      // Continue to regeneration below
+    // If downloads are active but 0 validated cookies, we MUST regenerate immediately (emergency mode)
+    if (hasActive && validatedCookies === 0) {
+      console.log(`  🚨 EMERGENCY: Downloads active but 0 validated cookies - regenerating NOW!`);
+      // Continue with regeneration (don't return)
     }
     
-    // 🔌 CIRCUIT BREAKER - Stop trying if too many failures
-    if (consecutivePoolFillFailures >= MAX_CONSECUTIVE_FAILURES) {
+    // 🔌 CIRCUIT BREAKER - Stop trying if too many failures (but skip if emergency mode)
+    if (consecutivePoolFillFailures >= MAX_CONSECUTIVE_FAILURES && !(hasActive && validatedCookies === 0)) {
       const timeSinceLastAttempt = Date.now() - lastPoolFillAttempt;
       if (timeSinceLastAttempt < POOL_FILL_COOLDOWN) {
         console.log(`  🔌 Circuit breaker active: Too many failures (${consecutivePoolFillFailures}), waiting ${Math.ceil((POOL_FILL_COOLDOWN - timeSinceLastAttempt) / 1000)}s before retry`);
@@ -1763,13 +1764,16 @@ async function ensurePoolIsFull() {
     isFillingPool = true;
     lastPoolFillAttempt = Date.now();
     
-    const missingCount = COOKIE_POOL_SIZE - cookies.length;
+    const missingCount = COOKIE_POOL_SIZE - validatedCookies;
     
     if (missingCount > 0) {
-      console.log(`\n🔄 Pool maintenance: ${cookies.length}/${COOKIE_POOL_SIZE} cookies - filling ${missingCount} missing slots...`);
+      console.log(`\n🔄 Pool maintenance: ${validatedCookies}/${COOKIE_POOL_SIZE} validated cookies - filling ${missingCount} missing slots...`);
+      
+      // Get actual cookie files to determine which slots exist
+      const existingCookies = await getWorkingCookiesFromPool();
       
       // Find which slots are missing
-      const existingIndices = cookies.map(c => {
+      const existingIndices = existingCookies.map(c => {
         return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
       });
       
