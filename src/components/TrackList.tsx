@@ -2652,7 +2652,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     });
 
     socket.on('download:progress', (data: any) => {
-      console.log('Download progress:', data);
+      console.log('📊 [TrackList] Download progress:', JSON.stringify(data, null, 2));
       // Accept progress from all downloads (supports concurrent downloads)
         // Dismiss persistent attempt toast when we get actual progress
         toast.dismiss('download-attempt');
@@ -2668,6 +2668,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         }
         
         setTracks(prev => {
+          console.log(`🔍 [TrackList] Progress: Searching for trackName: "${data.trackName}"`);
+          console.log(`📋 [TrackList] Progress: Current tracks (${prev.length}):`, prev.map(t => ({ 
+            name: t.name, 
+            artist: t.artist,
+            downloadStatus: t.downloadStatus,
+            selected: t.selected
+          })));
+          
           const updatedTracks = prev.map((track) => {
             // Match by track name - more reliable than index
             const trackFullName = `${track.artist} - ${track.name}`;
@@ -2694,16 +2702,44 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                                   (track.downloadStatus === 'pending' && data.status !== 'pending');
               
               if (shouldUpdate) {
-                console.log(`📊 Progress update: ${track.name} - ${track.downloadStatus} → ${data.status} (${data.progress}%)`);
+                console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${data.status} (${data.progress}%)`);
                 return {
                   ...track,
                   downloadStatus: data.status,
                   downloadProgress: data.progress || 0
                 };
+              } else {
+                console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
               }
             }
             return track;
           });
+          
+          // Fallback: If status is 'completed' and we have exactly one pending/downloading track, update it
+          if (data.status === 'completed' && !updatedTracks.some(t => {
+            const trackFullName = `${t.artist} - ${t.name}`;
+            const normalizedTrackName = trackFullName.toLowerCase().trim();
+            const normalizedDataName = (data.trackName || '').toLowerCase().trim();
+            return normalizedDataName && (
+              normalizedDataName === normalizedTrackName ||
+              normalizedDataName.includes(t.name.toLowerCase().trim())
+            );
+          })) {
+            const pendingTracks = updatedTracks.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+            if (pendingTracks.length === 1) {
+              console.log(`🔄 [TrackList] Progress: Fallback - updating single pending track: ${pendingTracks[0].name}`);
+              return updatedTracks.map(t => {
+                if (t.id === pendingTracks[0].id) {
+                  return {
+                    ...t,
+                    downloadStatus: 'completed',
+                    downloadProgress: 100
+                  };
+                }
+                return t;
+              });
+            }
+          }
           
           // Update tab title with progress
           const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
