@@ -2403,12 +2403,11 @@ async function generateSingleStrongCookie() {
   
   for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
     // Generate 3 cookies in parallel
-    const generationPromises = [];
+    const cookies = [];
     for (let i = 0; i < PARALLEL_TESTS; i++) {
-      generationPromises.push(generateSmartYouTubeCookies(batch * PARALLEL_TESTS + i));
+      const cookie = generateRealisticYouTubeCookies(batch * PARALLEL_TESTS + i);
+      cookies.push(cookie);
     }
-    
-    const cookies = await Promise.all(generationPromises);
     
     // Test all 3 in parallel
     const testPromises = cookies.map(cookie => testCookies(cookie));
