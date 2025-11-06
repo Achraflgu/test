@@ -6765,8 +6765,17 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             successCount++;
             
             completedCount++;
-            // For TrackList: mark individual track as 'completed' when it finishes
-            // For DownloadQueue: use completed/totalTracks to show overall progress
+            // For TrackList: emit download:track event (matches by trackId)
+            if (track.id) {
+              socket.emit('download:track', {
+                downloadId,
+                trackId: track.id,
+                status: 'completed',
+                progress: 100,
+                message: `✅ ${track.name}`
+              });
+            }
+            // For TrackList and DownloadQueue: emit download:progress event
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
@@ -6795,8 +6804,17 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             successCount++;
             
             completedCount++;
-            // For TrackList: mark individual track as 'completed' when it finishes
-            // For DownloadQueue: use completed/totalTracks to show overall progress
+            // For TrackList: emit download:track event (matches by trackId)
+            if (track.id) {
+              socket.emit('download:track', {
+                downloadId,
+                trackId: track.id,
+                status: 'completed',
+                progress: 100,
+                message: `✅ ${track.name}`
+              });
+            }
+            // For TrackList and DownloadQueue: emit download:progress event
             socket.emit('download:progress', {
               downloadId,
               trackName: track.artist === 'Unknown Artist' ? track.name : `${track.artist} - ${track.name}`,
