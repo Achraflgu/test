@@ -2861,12 +2861,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           // TrackList only shows failed tracks info
           console.log('[TrackList] Download completed with failures - DownloadQueue will handle auto-download');
         } else {
-          // Full success - show success notification
-          const successCount = data.totalSuccess || tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
-          showCompleteNotification(successCount, playlistName);
-          
-          // DownloadQueue now handles auto-download and notifications exclusively
-          console.log('[TrackList] Download completed successfully - DownloadQueue will handle auto-download');
+          // Full success - DownloadQueue now handles auto-download and all notifications exclusively
+          console.log('[TrackList] Download completed successfully - DownloadQueue will handle auto-download and notifications');
       }
     });
 
