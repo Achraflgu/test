@@ -46,8 +46,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const [outputFolder, setOutputFolder] = useState("");
   const [downloadId, setDownloadId] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
-  // Track which downloadId each track belongs to (for concurrent downloads)
-  const trackDownloadIdMap = useRef<Map<string, string>>(new Map());
   const [showPlayDialog, setShowPlayDialog] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [listenMode, setListenMode] = useState<'choose' | 'embed'>('choose');
@@ -2323,12 +2321,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
   const downloadSingleTrack = async (track: Track, forceRedownload = false) => {
     console.log(`🎯 Starting single track download for: ${track.name}`);
     
-    // Generate a temporary downloadId IMMEDIATELY to prevent race conditions
-    // This ensures the track has a downloadId before any events arrive
-    const tempDownloadId = `temp_${Date.now()}_${track.id}`;
-    trackDownloadIdMap.current.set(track.id, tempDownloadId);
-    console.log(`📌 [TrackList] Pre-mapped track ${track.id} to temp downloadId ${tempDownloadId} (will update when real downloadId arrives)`);
-    
     // IMMEDIATELY set ONLY this track to pending, preserve ALL other tracks unchanged
     setTracks(prev => {
       const updated = prev.map(t => {
@@ -2387,10 +2379,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
-      
-      // Update downloadId for this track (replace temp with real downloadId)
-      trackDownloadIdMap.current.set(track.id, response.downloadId);
-      console.log(`📌 [TrackList] Updated track ${track.id} mapping: ${tempDownloadId} → ${response.downloadId}`);
       
       // Emit download start event for queue tracking (single track) - both Socket.IO and custom event
       const socketForSingle = getSocket();
@@ -2592,71 +2580,29 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       // Always accept track updates - match by trackId first, then fallback to name matching
       setTracks(prev => {
-        console.log(`🔍 [TrackList] Searching for track with trackId: "${data.trackId}", downloadId: "${data.downloadId}"`);
+        console.log(`🔍 [TrackList] Searching for track with trackId: "${data.trackId}"`);
         console.log(`📋 [TrackList] Current tracks (${prev.length}):`, prev.map(t => ({ 
           id: t.id, 
           name: t.name, 
           artist: t.artist,
-          downloadStatus: t.downloadStatus,
-          selected: t.selected,
-          mappedDownloadId: trackDownloadIdMap.current.get(t.id)
+          downloadStatus: t.downloadStatus 
         })));
         
         // Try multiple matching strategies
         let matchingTrack = null;
         
-        // Strategy 1: Exact ID match + STRICT downloadId validation (CRITICAL for concurrent downloads)
-        matchingTrack = prev.find(t => {
-          const trackMatchesId = t.id === data.trackId;
-          if (!trackMatchesId) return false;
-          
-          // CRITICAL: STRICT downloadId validation - BOTH must exist and match
-          // If either is missing, don't match (prevents false matches during race conditions)
-          const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-          
-          if (!data.downloadId) {
-            console.log(`⚠️ [TrackList] Strategy 1: Event missing downloadId, skipping match for ${t.name}`);
-            return false;
-          }
-          
-          if (!trackDownloadId) {
-            console.log(`⚠️ [TrackList] Strategy 1: Track ${t.name} has no downloadId mapped, skipping match`);
-            return false;
-          }
-          
-          const downloadIdMatches = trackDownloadId === data.downloadId;
-          
-          if (trackMatchesId && downloadIdMatches) {
-            console.log(`✅ [TrackList] Strategy 1 (Exact ID + downloadId) matched: ${t.name} (downloadId: ${data.downloadId})`);
-            return true;
-          } else if (trackMatchesId && !downloadIdMatches) {
-            console.log(`⚠️ [TrackList] Strategy 1: ID matches but downloadId mismatch - track: ${trackDownloadId}, event: ${data.downloadId}, skipping ${t.name}`);
-            return false;
-          }
-          return false;
-        });
+        // Strategy 1: Exact ID match
+        matchingTrack = prev.find(t => t.id === data.trackId);
+        if (matchingTrack) {
+          console.log(`✅ [TrackList] Strategy 1 (Exact ID) matched: ${matchingTrack.name}`);
+        }
         
-        // Strategy 2: If trackId is in format "artist-name", try to match by name/artist + STRICT downloadId validation
+        // Strategy 2: If trackId is in format "artist-name", try to match by name/artist
         if (!matchingTrack && data.trackId) {
           const trackIdParts = data.trackId.split('-');
           const normalizedTrackId = data.trackId.toLowerCase().trim();
           
           matchingTrack = prev.find(t => {
-            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
-            if (!data.downloadId) {
-              return false; // Skip if event has no downloadId
-            }
-            
-            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-            if (!trackDownloadId) {
-              return false; // Skip if track has no downloadId mapped
-            }
-            
-            const downloadIdMatches = trackDownloadId === data.downloadId;
-            if (!downloadIdMatches) {
-              return false; // Skip if downloadId doesn't match
-            }
-            
             const trackFullName = `${t.artist} - ${t.name}`;
             const normalizedTrackName = trackFullName.toLowerCase().trim();
             const normalizedName = t.name.toLowerCase().trim();
@@ -2671,46 +2617,50 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                    (trackIdParts.length > 1 && normalizedArtist.includes(trackIdParts[0].toLowerCase()) && normalizedName.includes(trackIdParts.slice(1).join('-').toLowerCase()));
             
             if (matches) {
-              console.log(`✅ [TrackList] Strategy 2 (Name/Artist + downloadId) matched: ${t.name} (trackId: "${data.trackId}", downloadId: ${data.downloadId})`);
+              console.log(`✅ [TrackList] Strategy 2 (Name/Artist) matched: ${t.name} (trackId: "${data.trackId}" vs track: "${normalizedTrackName}")`);
             }
             return matches;
           });
         }
         
-        // Strategy 3: Match by message content (if trackId not found) - STRICT: only if track is selected/pending + downloadId validation
+        // Strategy 3: Match by message content (if trackId not found)
         if (!matchingTrack && data.message) {
           const messageLower = data.message.toLowerCase();
           matchingTrack = prev.find(t => {
-            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
-            if (!data.downloadId) {
-              return false; // Skip if event has no downloadId
-            }
-            
-            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-            if (!trackDownloadId) {
-              return false; // Skip if track has no downloadId mapped
-            }
-            
-            const downloadIdMatches = trackDownloadId === data.downloadId;
-            if (!downloadIdMatches) {
-              return false; // Skip if downloadId doesn't match
-            }
-            
-            // Only match if track is selected (part of active download) AND matches message
             const trackNameLower = t.name.toLowerCase();
             const artistLower = t.artist.toLowerCase();
-            const matches = (t.selected || t.downloadStatus === 'pending' || t.downloadStatus === 'downloading') &&
-                           (messageLower.includes(trackNameLower) || messageLower.includes(artistLower));
+            const matches = messageLower.includes(trackNameLower) || messageLower.includes(artistLower);
             if (matches) {
-              console.log(`✅ [TrackList] Strategy 3 (Message + downloadId) matched: ${t.name} (selected/pending, downloadId: ${data.downloadId})`);
+              console.log(`✅ [TrackList] Strategy 3 (Message) matched: ${t.name}`);
             }
             return matches;
           });
         }
         
-        // Strategy 4: REMOVED - Too dangerous, causes false matches when multiple downloads are active
-        // Strategy 5: REMOVED - Too dangerous, causes false matches when multiple downloads are active
-        // Only use exact matching strategies (1, 2, 3) to prevent incorrect updates
+        // Strategy 4: If status is 'completed', find any pending track (last resort for single track downloads)
+        if (!matchingTrack && data.status === 'completed') {
+          const pendingTracks = prev.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+          console.log(`🔍 [TrackList] Strategy 4: Found ${pendingTracks.length} pending/downloading tracks`);
+          if (pendingTracks.length === 1) {
+            matchingTrack = pendingTracks[0];
+            console.log(`✅ [TrackList] Strategy 4 (Single Pending) matched: ${matchingTrack.name} (only pending track)`);
+          } else if (pendingTracks.length > 1) {
+            console.log(`⚠️ [TrackList] Strategy 4: Multiple pending tracks found (${pendingTracks.length}), cannot auto-match`);
+          }
+        }
+        
+        // Strategy 5: Last resort - if status is 'completed' and progress is 100, update the most recently set to pending
+        if (!matchingTrack && data.status === 'completed' && data.progress === 100) {
+          // Find tracks that were recently set to pending (within last 30 seconds)
+          const recentPendingTracks = prev.filter(t => 
+            (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading') &&
+            t.selected // Only match selected tracks as a safety measure
+          );
+          if (recentPendingTracks.length === 1) {
+            matchingTrack = recentPendingTracks[0];
+            console.log(`✅ [TrackList] Strategy 5 (Recent Pending) matched: ${matchingTrack.name} (only selected pending track)`);
+          }
+        }
         
         if (!matchingTrack) {
           console.error(`❌ [TrackList] Track ${data.trackId} not found in current tracks!`);
@@ -2729,27 +2679,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         console.log(`🔄 [TrackList] Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
         
         const updatedTracks = prev.map((track) => {
-          // STRICT matching: Only update if it's the exact track we found
-          // This prevents updating wrong tracks when multiple downloads are active
-          const isMatch = track.id === matchingTrack.id;
+          // Match by id, or by the same track we found
+          const isMatch = track.id === data.trackId || 
+                         track.id === matchingTrack.id ||
+                         (track.artist === matchingTrack.artist && track.name === matchingTrack.name);
           
           if (isMatch) {
-            // ULTRA-STRICT safety: Only update if track is in downloadable state
-            // This prevents updating completed tracks that aren't being re-downloaded
-            const isInDownloadableState = track.selected || 
-                                         track.downloadStatus === 'pending' || 
-                                         track.downloadStatus === 'downloading';
-            
-            if (isInDownloadableState) {
-              console.log(`✅ [TrackList] Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
-              return {
-                ...track,
-                downloadStatus: data.status,
-                downloadProgress: data.progress || 0
-              };
-            } else {
-              console.log(`⏭️ [TrackList] Skipping update for ${track.name} - not in downloadable state (status: ${track.downloadStatus}, selected: ${track.selected})`);
-            }
+            console.log(`✅ [TrackList] Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
+            return {
+              ...track,
+              downloadStatus: data.status,
+              downloadProgress: data.progress || 0
+            };
           }
           return track;
         });
@@ -2796,8 +2737,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             selected: t.selected
           })));
           
-          const updatedTracks = prev.map((track) => {
-            // Match by track name - STRICT matching to avoid false positives
+          // First pass: Find the most specific match to avoid false positives
+          let matchedTrackId: string | null = null;
+          
+          // Try to find exact match first
+          for (const track of prev) {
             const trackFullName = `${track.artist} - ${track.name}`;
             const normalizedTrackName = trackFullName.toLowerCase().trim();
             const normalizedDataName = (data.trackName || '').toLowerCase().trim();
@@ -2809,68 +2753,79 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const dataArtist = dataParts[0] || '';
             const dataTrackName = dataParts.length > 1 ? dataParts.slice(1).join(' - ') : normalizedDataName;
             
-            // ULTRA-STRICT matching - only match if:
-            // 1. Track is in downloadable state (pending/downloading) OR is selected
-            // 2. AND exact full name match OR exact artist+track match
-            // 3. AND downloadId matches (CRITICAL for concurrent downloads)
-            // This prevents matching wrong tracks during concurrent downloads
-            const isInDownloadableState = track.selected || 
-                                         track.downloadStatus === 'pending' || 
-                                         track.downloadStatus === 'downloading';
-            
-            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
-            // If either is missing, don't match (prevents false matches during race conditions)
-            if (!data.downloadId) {
-              return track; // Skip if event has no downloadId
-            }
-            
-            const trackDownloadId = trackDownloadIdMap.current.get(track.id);
-            if (!trackDownloadId) {
-              return track; // Skip if track has no downloadId mapped
-            }
-            
-            const downloadIdMatches = trackDownloadId === data.downloadId;
-            
+            // Check for EXACT matches only
             const isExactMatch = data.trackName && (
-              // Exact full name match
+              // Exact full name match (Artist - Track)
               normalizedDataName === normalizedTrackName ||
-              // Exact artist + track match (when data has "Artist - Track" format)
-              (dataParts.length > 1 && normalizedArtistOnly === dataArtist && normalizedTrackNameOnly === dataTrackName)
+              // Exact artist + exact track match
+              (normalizedArtistOnly === dataArtist && normalizedTrackNameOnly === dataTrackName)
             );
             
-            // Only match if track is in downloadable state AND exact match AND downloadId matches
-            const isMatch = isInDownloadableState && isExactMatch && downloadIdMatches;
-            
-            if (!downloadIdMatches && isInDownloadableState && isExactMatch) {
-              console.log(`⚠️ [TrackList] Progress: Name matches but downloadId mismatch - track: ${trackDownloadId}, event: ${data.downloadId}, skipping ${track.name}`);
+            // If exact match found AND track is currently pending/downloading, prioritize it
+            if (isExactMatch && (track.downloadStatus === 'pending' || track.downloadStatus === 'downloading')) {
+              matchedTrackId = track.id;
+              console.log(`🎯 [TrackList] Progress: Found EXACT match for pending/downloading track: "${track.name}"`);
+              break;
+            } else if (isExactMatch && !matchedTrackId) {
+              // If no pending/downloading track matched yet, remember this exact match
+              matchedTrackId = track.id;
+              console.log(`🎯 [TrackList] Progress: Found EXACT match: "${track.name}"`);
             }
-            
-            if (isMatch) {
-              // Additional safety: Only update if track is actually pending/downloading OR if explicitly completed
-              // This prevents updating completed tracks that aren't being re-downloaded
-              const shouldUpdate = (track.downloadStatus === 'pending' || track.downloadStatus === 'downloading') ||
-                                  (data.status === 'completed' && track.selected);
+          }
+          
+          // Update only the matched track
+          const updatedTracks = prev.map((track) => {
+            // Only update if this is the matched track
+            if (matchedTrackId && track.id === matchedTrackId) {
+              // Always update if status is completed, or if progress is increasing
+              const shouldUpdate = data.status === 'completed' || 
+                                  data.progress > (track.downloadProgress || 0) ||
+                                  (track.downloadStatus === 'pending' && data.status !== 'pending') ||
+                                  (data.status === 'completed' && track.downloadStatus !== 'completed');
             
               if (shouldUpdate) {
                 // If status is completed, force progress to 100
                 const finalStatus = data.status === 'completed' ? 'completed' : data.status;
                 const finalProgress = data.status === 'completed' ? 100 : (data.progress || 0);
                 
-                console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
+                console.log(`✅ [TrackList] Progress: Updating matched track "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
                 return {
                   ...track,
                   downloadStatus: finalStatus,
                   downloadProgress: finalProgress
                 };
               } else {
-                console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (not in downloadable state)`);
+                console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
               }
             }
             return track;
           });
           
-          // REMOVED Fallback - Too dangerous when multiple downloads are active
-          // Only update tracks that explicitly match the trackName from the event
+          // Fallback: If status is 'completed' and we have exactly one pending/downloading track, update it
+          if (data.status === 'completed' && !updatedTracks.some(t => {
+            const trackFullName = `${t.artist} - ${t.name}`;
+            const normalizedTrackName = trackFullName.toLowerCase().trim();
+            const normalizedDataName = (data.trackName || '').toLowerCase().trim();
+            return normalizedDataName && (
+              normalizedDataName === normalizedTrackName ||
+              normalizedDataName.includes(t.name.toLowerCase().trim())
+            );
+          })) {
+            const pendingTracks = updatedTracks.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+            if (pendingTracks.length === 1) {
+              console.log(`🔄 [TrackList] Progress: Fallback - updating single pending track: ${pendingTracks[0].name}`);
+              return updatedTracks.map(t => {
+                if (t.id === pendingTracks[0].id) {
+                  return {
+                    ...t,
+                    downloadStatus: 'completed',
+                    downloadProgress: 100
+                  };
+                }
+                return t;
+              });
+            }
+          }
           
           // Update tab title with progress
           const completedInProgress = updatedTracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
@@ -3145,14 +3100,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setDownloading(true);
     setAttemptCount(0);
     
-    // Generate a temporary downloadId IMMEDIATELY to prevent race conditions
-    // This ensures all tracks have a downloadId before any events arrive
-    const tempDownloadId = `temp_batch_${Date.now()}`;
-    selectedTracks.forEach(track => {
-      trackDownloadIdMap.current.set(track.id, tempDownloadId);
-    });
-    console.log(`📌 [TrackList] Pre-mapped ${selectedTracks.length} tracks to temp downloadId ${tempDownloadId} (will update when real downloadId arrives)`);
-    
     // Reset download status for selected tracks
     setTracks(prev => prev.map(track => ({
       ...track,
@@ -3178,12 +3125,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
-      
-      // Update downloadId for all selected tracks (replace temp with real downloadId)
-      selectedTracks.forEach(track => {
-        trackDownloadIdMap.current.set(track.id, response.downloadId);
-      });
-      console.log(`📌 [TrackList] Updated ${selectedTracks.length} tracks mapping: ${tempDownloadId} → ${response.downloadId}`);
       
       // Emit download start event for queue tracking (both Socket.IO and custom event for immediate UI)
       const socket = getSocket();
