@@ -2636,16 +2636,23 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           return false;
         });
         
-        // Strategy 2: If trackId is in format "artist-name", try to match by name/artist + downloadId validation
+        // Strategy 2: If trackId is in format "artist-name", try to match by name/artist + STRICT downloadId validation
         if (!matchingTrack && data.trackId) {
           const trackIdParts = data.trackId.split('-');
           const normalizedTrackId = data.trackId.toLowerCase().trim();
           
           matchingTrack = prev.find(t => {
-            // CRITICAL: Only match if downloadId matches (prevents cross-download matches)
-            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
-            const downloadIdMatches = !data.downloadId || !trackDownloadId || trackDownloadId === data.downloadId;
+            // CRITICAL: STRICT downloadId validation - BOTH must exist and match
+            if (!data.downloadId) {
+              return false; // Skip if event has no downloadId
+            }
             
+            const trackDownloadId = trackDownloadIdMap.current.get(t.id);
+            if (!trackDownloadId) {
+              return false; // Skip if track has no downloadId mapped
+            }
+            
+            const downloadIdMatches = trackDownloadId === data.downloadId;
             if (!downloadIdMatches) {
               return false; // Skip if downloadId doesn't match
             }
