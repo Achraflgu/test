@@ -1646,9 +1646,38 @@ async function generateAndTestCookies(maxAttempts = 100) {
   return await cookieGenerationPromise;
 }
 
-// 🎯 ENSURE POOL IS ALWAYS FULL (5/5) - Background maintenance
+// 🎯 ENSURE POOL IS ALWAYS FULL (5/5) - Background maintenance with circuit breaker
+// Global state for pool maintenance
+let isFillingPool = false;
+let lastPoolFillAttempt = 0;
+let consecutivePoolFillFailures = 0;
+const POOL_FILL_COOLDOWN = 60000; // 1 minute cooldown after failure
+const MAX_CONSECUTIVE_FAILURES = 3; // Circuit breaker threshold
+
 async function ensurePoolIsFull() {
   try {
+    // 🔒 PREVENT OVERLAPPING CALLS - Only one pool fill at a time
+    if (isFillingPool) {
+      console.log(`  ⏭️ Pool fill already in progress - skipping duplicate call`);
+      return false;
+    }
+    
+    // 🔌 CIRCUIT BREAKER - Stop trying if too many failures
+    if (consecutivePoolFillFailures >= MAX_CONSECUTIVE_FAILURES) {
+      const timeSinceLastAttempt = Date.now() - lastPoolFillAttempt;
+      if (timeSinceLastAttempt < POOL_FILL_COOLDOWN) {
+        console.log(`  🔌 Circuit breaker active: Too many failures (${consecutivePoolFillFailures}), waiting ${Math.ceil((POOL_FILL_COOLDOWN - timeSinceLastAttempt) / 1000)}s before retry`);
+        return false;
+      } else {
+        // Reset after cooldown
+        console.log(`  🔄 Circuit breaker reset - retrying after ${POOL_FILL_COOLDOWN/1000}s cooldown`);
+        consecutivePoolFillFailures = 0;
+      }
+    }
+    
+    isFillingPool = true;
+    lastPoolFillAttempt = Date.now();
+    
     const cookies = await getWorkingCookiesFromPool();
     const missingCount = COOKIE_POOL_SIZE - cookies.length;
     
@@ -1669,11 +1698,11 @@ async function ensurePoolIsFull() {
         }
       }
       
-      // Wait for all slots to be filled (or timeout after 60s)
+      // Wait for all slots to be filled (or timeout after 120s for stricter validation)
       try {
         await Promise.race([
           Promise.all(fillPromises),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 120000))
         ]);
       } catch (err) {
         console.log(`  ⚠️ Some slots took too long to fill, continuing anyway`);
@@ -1681,12 +1710,26 @@ async function ensurePoolIsFull() {
       
       const finalCookies = await getWorkingCookiesFromPool();
       console.log(`  ✅ Pool status: ${finalCookies.length}/${COOKIE_POOL_SIZE} cookies available`);
-      return finalCookies.length >= COOKIE_POOL_SIZE;
+      
+      // Track success/failure
+      if (finalCookies.length >= COOKIE_POOL_SIZE) {
+        consecutivePoolFillFailures = 0; // Reset on success
+        isFillingPool = false;
+        return true;
+      } else {
+        consecutivePoolFillFailures++;
+        console.log(`  ⚠️ Pool fill incomplete (${consecutivePoolFillFailures}/${MAX_CONSECUTIVE_FAILURES} failures)`);
+        isFillingPool = false;
+        return false;
+      }
     }
     
+    isFillingPool = false;
     return true; // Pool is already full
   } catch (err) {
+    consecutivePoolFillFailures++;
     console.log(`  ⚠️ Pool maintenance error: ${err.message}`);
+    isFillingPool = false;
     return false;
   }
 }
@@ -1821,26 +1864,33 @@ async function regenerateSingleCookie(slotIndex) {
   }
 }
 
-// ⚡ IMPROVED COOKIE VALIDATION (5s timeout, stricter criteria)
+// ⚡ ULTRA-STRICT COOKIE VALIDATION - Test actual audio extraction (10s timeout)
+// This ensures cookies work for REAL downloads, not just metadata
 async function quickValidateCookie(cookiePath, index = null) {
   try {
+    // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (not just metadata!)
+    // This is the REAL test - if this fails, the cookie is dead
     const testArgs = [
       '-m', 'yt_dlp',
       `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`,
       '--cookies', cookiePath,
-      '--dump-json',
+      '--print', 'after_move:filepath', // Only print filepath if extraction succeeds
+      '--extract-audio',
+      '--audio-format', 'mp3',
+      '--audio-quality', '128K', // Low quality for fast testing
       '--no-playlist',
       '--quiet',
       '--no-warnings',
-      '--skip-download',
-      '--extractor-args', 'youtube:player_client=android', // Use android client for better cookie testing
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36'
+      '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
+      '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
     
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 5000 // Increased to 5s for more reliable validation
+        timeout: 10000 // 10s timeout for actual extraction
       });
       
       let errorOutput = '';
@@ -1855,7 +1905,7 @@ async function quickValidateCookie(cookiePath, index = null) {
         errorOutput += data.toString();
       });
       
-      testProcess.on('close', (code) => {
+      testProcess.on('close', async (code) => {
         if (resolved) return;
         resolved = true;
         
@@ -1865,13 +1915,31 @@ async function quickValidateCookie(cookiePath, index = null) {
                                      errorOutput.includes('Please sign in to continue') ||
                                      errorOutput.includes("you're not a bot") ||
                                      errorOutput.includes('UNPLAYABLE') ||
-                                     errorOutput.includes('Video unavailable');
+                                     errorOutput.includes('Video unavailable') ||
+                                     errorOutput.includes('This video is unavailable');
         
-        // Check for successful extraction (got video info)
-        const hasVideoInfo = stdoutData.includes('"id"') && stdoutData.includes('"title"');
+        // Check for successful extraction (got file path in stdout)
+        const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
         
-        // Cookie is valid only if: no bot errors AND got video info AND exit code is 0
-        const isValid = !hasBotDetectionError && hasVideoInfo && code === 0;
+        // Cleanup temp file if created
+        if (hasExtractedFile) {
+          const match = stdoutData.match(/\/tmp\/cookie_test_[^\s]+/);
+          if (match) {
+            try {
+              await fs.unlink(match[0]).catch(() => {});
+            } catch {}
+          }
+        }
+        
+        // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
+        const isValid = !hasBotDetectionError && hasExtractedFile && code === 0;
+        
+        if (!isValid) {
+          console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        } else {
+          console.log(`    ✅ Cookie test STRONG PASS (valid JSON with title/id)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        }
+        
         resolve(isValid);
       });
       
@@ -1881,15 +1949,14 @@ async function quickValidateCookie(cookiePath, index = null) {
         resolve(false);
       });
       
-      // CRITICAL FIX: Timeout now REJECTS the cookie (don't assume slow = valid)
+      // STRICT TIMEOUT: 10s for actual extraction test
       setTimeout(() => {
         if (resolved) return;
         resolved = true;
         try { testProcess.kill('SIGKILL'); } catch {}
-        // Timeout = REJECT (likely dead or rate limited)
-        console.log(`    ⚠️ Cookie ${index !== null ? index + 1 : '?'} timed out (5s) - rejecting`);
+        console.log(`    ❌ Cookie test timeout - rejecting` + (index !== null ? ` [slot ${index + 1}]` : ''));
         resolve(false);
-      }, 5000);
+      }, 10000);
     });
   } catch (err) {
     return false;
