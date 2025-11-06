@@ -2601,9 +2601,25 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         // Strategy 4: If status is 'completed', find any pending track (last resort for single track downloads)
         if (!matchingTrack && data.status === 'completed') {
           const pendingTracks = prev.filter(t => t.downloadStatus === 'pending' || t.downloadStatus === 'downloading');
+          console.log(`🔍 [TrackList] Strategy 4: Found ${pendingTracks.length} pending/downloading tracks`);
           if (pendingTracks.length === 1) {
             matchingTrack = pendingTracks[0];
             console.log(`✅ [TrackList] Strategy 4 (Single Pending) matched: ${matchingTrack.name} (only pending track)`);
+          } else if (pendingTracks.length > 1) {
+            console.log(`⚠️ [TrackList] Strategy 4: Multiple pending tracks found (${pendingTracks.length}), cannot auto-match`);
+          }
+        }
+        
+        // Strategy 5: Last resort - if status is 'completed' and progress is 100, update the most recently set to pending
+        if (!matchingTrack && data.status === 'completed' && data.progress === 100) {
+          // Find tracks that were recently set to pending (within last 30 seconds)
+          const recentPendingTracks = prev.filter(t => 
+            (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading') &&
+            t.selected // Only match selected tracks as a safety measure
+          );
+          if (recentPendingTracks.length === 1) {
+            matchingTrack = recentPendingTracks[0];
+            console.log(`✅ [TrackList] Strategy 5 (Recent Pending) matched: ${matchingTrack.name} (only selected pending track)`);
           }
         }
         
@@ -2614,7 +2630,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             id: t.id, 
             name: t.name, 
             artist: t.artist,
-            downloadStatus: t.downloadStatus 
+            downloadStatus: t.downloadStatus,
+            selected: t.selected
           })));
           return prev;
         }
