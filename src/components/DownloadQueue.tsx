@@ -66,16 +66,24 @@ export const DownloadQueue = () => {
       console.log('📥 [DownloadQueue] Download started:', { downloadId, folderName, totalTracks });
       
       setDownloads(prev => {
-        // Remove if already exists (same downloadId) OR if same folderName is already completed (re-download scenario)
         // Normalize folder names for comparison (case-insensitive, trim whitespace)
         const normalizedNewFolderName = folderName.toLowerCase().trim();
         
-        const filtered = prev.filter(d => {
+        // Check if a completed entry with the same folderName already exists (re-download scenario)
+        const existingCompleted = prev.find(d => {
           const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
-          // Keep if: different downloadId AND (different folderName OR not completed)
-          return d.downloadId !== downloadId && 
-                 !(normalizedExistingFolderName === normalizedNewFolderName && d.status === 'completed');
+          return normalizedExistingFolderName === normalizedNewFolderName && d.status === 'completed';
         });
+        
+        if (existingCompleted) {
+          console.log(`⚠️ [DownloadQueue] Re-download detected for "${folderName}" - keeping old completed entry, not adding new one`);
+          // Don't add new entry - keep the old completed entry
+          // The download will still happen in the background, but won't show in queue
+          return prev;
+        }
+        
+        // Remove if already exists (same downloadId) - but keep completed entries
+        const filtered = prev.filter(d => d.downloadId !== downloadId);
         
         // Only add if not already in the list
         const exists = filtered.some(d => d.downloadId === downloadId);
