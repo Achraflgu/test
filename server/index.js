@@ -2118,59 +2118,19 @@ async function validateCookiePool() {
       return { valid: 0, total: 0, needGeneration: true };
     }
     
-    console.log(`  🧪 Validating ${cookies.length} existing cookies in pool (fast test)...`);
+    console.log(`  ✅ Found ${cookies.length} existing cookie(s) in pool - trusting them (skip startup validation)`);
+    console.log(`  💡 Cookies will be validated during actual downloads if needed`);
     
-    // Validate all cookies in parallel (fast 2s test each)
-    const validationPromises = cookies.map(async (cookie) => {
-      // Handle Redis cookies (have index property) or filesystem cookies (parse from path)
-      const index = cookie.index !== undefined ? cookie.index : parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-      
-      // For Redis cookies, create temp file for validation
-      let cookiePath = cookie.path;
-      let isRedisCookie = false;
-      const tempFilesToCleanup = [];
-      
-      if (cookie.index !== undefined && cookie.content) {
-        // This is a Redis cookie - create temp file for validation
-        isRedisCookie = true;
-        cookiePath = path.join(__dirname, `.temp_validate_cookie_${index}_${Date.now()}.txt`);
-        await fs.writeFile(cookiePath, cookie.content, 'utf8');
-        tempFilesToCleanup.push(cookiePath);
-      }
-      
-      const isValid = await quickValidateCookie(cookiePath, index);
-      
-      // Clean up temp files
-      for (const tempFile of tempFilesToCleanup) {
-        await fs.unlink(tempFile).catch(() => {});
-      }
-      
-      return { index, path: cookie.path, content: cookie.content, isValid, isRedisCookie };
-    });
+    // 🔥 CRITICAL FIX: SKIP strict validation during startup!
+    // Cookies that worked recently may timeout during startup validation due to network/server state
+    // Instead, trust cookies from Redis/filesystem and validate them ONLY during actual downloads
+    // If a cookie fails during download, it will be regenerated then - much more reliable!
     
-    const results = await Promise.all(validationPromises);
-    const validCookies = results.filter(r => r.isValid);
-    const invalidCookies = results.filter(r => !r.isValid);
+    // Just return all cookies as "valid" without testing
+    // This prevents deleting working cookies due to startup validation timeouts
+    const validCookies = cookies;
     
-    // Remove invalid cookies
-    for (const invalid of invalidCookies) {
-      try {
-        if (invalid.isRedisCookie && isRedisAvailable()) {
-          // Delete from Redis
-          await deleteCookieFromRedis(invalid.index);
-          console.log(`  ❌ Removed dead cookie from Redis (slot ${invalid.index + 1})`);
-        } else {
-          // Delete from filesystem
-          await fs.unlink(invalid.path);
-          console.log(`  ❌ Removed dead cookie (slot ${invalid.index + 1})`);
-        }
-        cookieStats.delete(invalid.index);
-      } catch {}
-    }
-    
-    await saveCookiePoolMetadata();
-    
-    console.log(`  ✅ Cookie pool validation: ${validCookies.length}/${cookies.length} cookies valid`);
+    console.log(`  ✅ Cookie pool ready: ${validCookies.length}/${cookies.length} cookies available`);
     
     // Update primary cookie if needed
     if (validCookies.length > 0) {
@@ -8678,6 +8638,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
           
+          // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          console.log(`  🧹 Removed ${downloadId} from active downloads`);
+          
           // 🔄 Resume pool regeneration when download completes (after a short delay for cleanup)
           setTimeout(() => {
             checkAndResumeRegeneration().catch(() => {});
@@ -8827,6 +8791,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
           });
           
+          // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          console.log(`  🧹 Removed ${downloadId} from active downloads`);
+          
+          // 🔄 Resume pool regeneration
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000);
+          
           shouldContinue = false;
           continue;
         } else {
@@ -8884,6 +8857,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           downloadUrl: `/api/download/archive/${downloadId}`,
           message: `🎉 All ${musicFiles.length} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
         });
+        
+        // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+        activeDownloads.delete(downloadId);
+        console.log(`  🧹 Removed ${downloadId} from active downloads`);
+        
+        // 🔄 Resume pool regeneration
+        setTimeout(() => {
+          checkAndResumeRegeneration().catch(() => {});
+        }, 2000);
         
         shouldContinue = false;
         continue;
@@ -9394,6 +9376,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               message: `✅ Downloaded ${successfulTracks}/${tracks.length} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${remaining} track(s) could not be downloaded\n📦 Click to download available tracks!`
             });
 
+            // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+            activeDownloads.delete(downloadId);
+            console.log(`  🧹 Removed ${downloadId} from active downloads`);
+            
+            // 🔄 Resume pool regeneration
+            setTimeout(() => {
+              checkAndResumeRegeneration().catch(() => {});
+            }, 2000);
+
             resolve('complete');
             return;
           }
@@ -9529,6 +9520,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             message: `🎉 All ${successfulTracks} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
                   });
                   
+                  // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+                  activeDownloads.delete(downloadId);
+                  console.log(`  🧹 Removed ${downloadId} from active downloads`);
+                  
+                  // 🔄 Resume pool regeneration
+                  setTimeout(() => {
+                    checkAndResumeRegeneration().catch(() => {});
+                  }, 2000);
+                  
                   resolve('complete');
                   return;
                 } else {
@@ -9594,6 +9594,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
             });
 
+            // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+            activeDownloads.delete(downloadId);
+            console.log(`  🧹 Removed ${downloadId} from active downloads`);
+            
+            // 🔄 Resume pool regeneration
+            setTimeout(() => {
+              checkAndResumeRegeneration().catch(() => {});
+            }, 2000);
+
             resolve('complete');
           } else {
             // Check if download was cancelled
@@ -9629,6 +9638,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                 attempts: attempt,
                 message: `${finalMessage}\n⏱️ Completed in ${elapsedTime}`
               });
+              
+              // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+              activeDownloads.delete(downloadId);
+              console.log(`  🧹 Removed ${downloadId} from active downloads`);
+              
+              // 🔄 Resume pool regeneration
+              setTimeout(() => {
+                checkAndResumeRegeneration().catch(() => {});
+              }, 2000);
             }
 
             // Signal to exit the retry loop
@@ -9665,6 +9683,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             downloadUrl: `/api/download/archive/${downloadId}`,
             message: `Download completed! Check ${outputFolder} for your files.\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
           });
+
+          // 🧹 CRITICAL FIX: Clean up activeDownloads to allow regeneration to resume
+          activeDownloads.delete(downloadId);
+          console.log(`  🧹 Removed ${downloadId} from active downloads`);
+          
+          // 🔄 Resume pool regeneration
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000);
 
           resolve('complete');
         }
