@@ -3102,11 +3102,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     setDownloading(true);
     setAttemptCount(0);
     
-    // Reset download status for selected tracks
+    // Reset download status for selected tracks and clear downloadId
     setTracks(prev => prev.map(track => ({
       ...track,
       downloadStatus: track.selected ? 'pending' : track.downloadStatus,
-      downloadProgress: track.selected ? 0 : track.downloadProgress
+      downloadProgress: track.selected ? 0 : track.downloadProgress,
+      downloadId: track.selected ? undefined : track.downloadId // Clear downloadId for new downloads
     })));
     
     // Show clear initial toast
