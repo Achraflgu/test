@@ -2489,13 +2489,21 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
   // Initialize WebSocket connection
   useEffect(() => {
+    console.log('🔌 [TrackList] Initializing socket listeners...');
     const socket = initWebSocket();
+    
+    if (!socket) {
+      console.error('❌ [TrackList] Failed to initialize socket!');
+      return;
+    }
+    
+    console.log('✅ [TrackList] Socket initialized, connected:', socket.connected);
     
     // Initialize Live Listening service
     liveListeningService.init(socket);
 
     socket.on('download:status', (data: any) => {
-      console.log('Download status:', data);
+      console.log('📨 [TrackList] Download status:', data);
       if (data.downloadId === downloadId) {
         // Show status only if it contains important info (progress indicators, retrying, etc)
         if (data.message.includes('📥') || data.message.includes('Retrying') || data.message.includes('fallback')) {
@@ -2531,13 +2539,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     // Handle track-level progress updates (for instant downloads and individual track updates)
     socket.on('download:track', (data: any) => {
-      console.log('📨 [TrackList] Received download:track event:', JSON.stringify({
+      console.log('📨 [TrackList] ========================================');
+      console.log('📨 [TrackList] RECEIVED download:track EVENT');
+      console.log('📨 [TrackList] ========================================');
+      console.log('📨 [TrackList] Event data:', JSON.stringify({
         downloadId: data.downloadId,
         trackId: data.trackId,
         status: data.status,
         progress: data.progress,
         message: data.message
       }, null, 2));
+      console.log('📨 [TrackList] ========================================');
       
       // Always accept track updates - match by trackId first, then fallback to name matching
       setTracks(prev => {
@@ -2669,7 +2681,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     });
 
     socket.on('download:progress', (data: any) => {
-      console.log('📊 [TrackList] Download progress:', JSON.stringify(data, null, 2));
+      console.log('📊 [TrackList] ========================================');
+      console.log('📊 [TrackList] RECEIVED download:progress EVENT');
+      console.log('📊 [TrackList] ========================================');
+      console.log('📊 [TrackList] Event data:', JSON.stringify(data, null, 2));
+      console.log('📊 [TrackList] ========================================');
       // Accept progress from all downloads (supports concurrent downloads)
         // Dismiss persistent attempt toast when we get actual progress
         toast.dismiss('download-attempt');
