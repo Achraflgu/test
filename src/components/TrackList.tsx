@@ -2584,14 +2584,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           const updatedTracks = prev.map((track) => {
             // Match by track name - more reliable than index
             const trackFullName = `${track.artist} - ${track.name}`;
+            const normalizedTrackName = trackFullName.toLowerCase().trim();
+            const normalizedDataName = (data.trackName || '').toLowerCase().trim();
+            
             const isMatch = data.trackName && (
-              data.trackName.includes(track.name) || 
-              data.trackName.includes(track.artist) ||
-              trackFullName.includes(data.trackName) ||
-              data.trackName.toLowerCase().includes(track.name.toLowerCase())
+              normalizedDataName === normalizedTrackName ||
+              normalizedDataName.includes(track.name.toLowerCase()) || 
+              normalizedDataName.includes(track.artist.toLowerCase()) ||
+              normalizedTrackName.includes(normalizedDataName) ||
+              track.name.toLowerCase().includes(normalizedDataName.split(' - ').pop() || '') ||
+              normalizedDataName.split(' - ').pop()?.includes(track.name.toLowerCase())
             );
             
-            if (isMatch && track.selected) {
+            // Update track if matched and selected, OR if status is completed (always update completed tracks)
+            if (isMatch && (track.selected || data.status === 'completed')) {
               return {
                 ...track,
                 downloadStatus: data.status,
