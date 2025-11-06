@@ -2665,14 +2665,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           const isMatch = track.id === matchingTrack.id;
           
           if (isMatch) {
-            // Additional safety: Only update if track is selected/pending/downloading OR if status is completed
-            // This prevents updating tracks that aren't part of the current download
-            const shouldUpdate = track.selected || 
-                                track.downloadStatus === 'pending' || 
-                                track.downloadStatus === 'downloading' ||
-                                data.status === 'completed';
+            // ULTRA-STRICT safety: Only update if track is in downloadable state
+            // This prevents updating completed tracks that aren't being re-downloaded
+            const isInDownloadableState = track.selected || 
+                                         track.downloadStatus === 'pending' || 
+                                         track.downloadStatus === 'downloading';
             
-            if (shouldUpdate) {
+            if (isInDownloadableState) {
               console.log(`✅ [TrackList] Track update applied: ${track.name} status changed from ${track.downloadStatus} to ${data.status}`);
               return {
                 ...track,
@@ -2680,7 +2679,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 downloadProgress: data.progress || 0
               };
             } else {
-              console.log(`⏭️ [TrackList] Skipping update for ${track.name} - not part of active download`);
+              console.log(`⏭️ [TrackList] Skipping update for ${track.name} - not in downloadable state (status: ${track.downloadStatus}, selected: ${track.selected})`);
             }
           }
           return track;
@@ -2741,29 +2740,29 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const dataArtist = dataParts[0] || '';
             const dataTrackName = dataParts.length > 1 ? dataParts.slice(1).join(' - ') : normalizedDataName;
             
-            // STRICT matching - only match if:
-            // 1. Exact full name match
-            // 2. Exact track name match (when data has "Artist - Track" format)
-            // 3. Track is selected AND track name is a significant part of data track name (at least 10 chars)
-            const isMatch = data.trackName && (
+            // ULTRA-STRICT matching - only match if:
+            // 1. Track is in downloadable state (pending/downloading) OR is selected
+            // 2. AND exact full name match OR exact artist+track match
+            // This prevents matching wrong tracks during concurrent downloads
+            const isInDownloadableState = track.selected || 
+                                         track.downloadStatus === 'pending' || 
+                                         track.downloadStatus === 'downloading';
+            
+            const isExactMatch = data.trackName && (
               // Exact full name match
               normalizedDataName === normalizedTrackName ||
-              // Exact track name match (when data has "Artist - Track" format)
-              (dataParts.length > 1 && normalizedTrackNameOnly === dataTrackName) ||
-              // Track name is selected AND track name is significant part of data (at least 10 chars to avoid false matches)
-              (track.selected && normalizedTrackNameOnly.length >= 10 && dataTrackName.includes(normalizedTrackNameOnly)) ||
-              // Exact artist + track match
-              (normalizedArtistOnly === dataArtist && normalizedTrackNameOnly === dataTrackName)
+              // Exact artist + track match (when data has "Artist - Track" format)
+              (dataParts.length > 1 && normalizedArtistOnly === dataArtist && normalizedTrackNameOnly === dataTrackName)
             );
             
-            // ALWAYS update if matched, regardless of selection status (especially for completed tracks)
+            // Only match if track is in downloadable state AND exact match
+            const isMatch = isInDownloadableState && isExactMatch;
+            
             if (isMatch) {
-              // Always update if status is completed, or if progress is increasing
-              // For individual track completion, always update when status is 'completed'
-              const shouldUpdate = data.status === 'completed' || 
-                                  data.progress > (track.downloadProgress || 0) ||
-                                  (track.downloadStatus === 'pending' && data.status !== 'pending') ||
-                                  (data.status === 'completed' && track.downloadStatus !== 'completed');
+              // Additional safety: Only update if track is actually pending/downloading OR if explicitly completed
+              // This prevents updating completed tracks that aren't being re-downloaded
+              const shouldUpdate = (track.downloadStatus === 'pending' || track.downloadStatus === 'downloading') ||
+                                  (data.status === 'completed' && track.selected);
             
               if (shouldUpdate) {
                 // If status is completed, force progress to 100
@@ -2771,13 +2770,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 const finalProgress = data.status === 'completed' ? 100 : (data.progress || 0);
                 
                 console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
-              return {
-                ...track,
+                return {
+                  ...track,
                   downloadStatus: finalStatus,
                   downloadProgress: finalProgress
-              };
+                };
               } else {
-                console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
+                console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (not in downloadable state)`);
               }
             }
             return track;
