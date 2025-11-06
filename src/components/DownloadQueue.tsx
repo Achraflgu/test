@@ -63,14 +63,19 @@ export const DownloadQueue = () => {
 
     // Track download start - listen to download:status or track it manually
     const handleDownloadStart = (downloadId: string, folderName: string, totalTracks: number) => {
-      console.log('📥 Download started:', { downloadId, folderName, totalTracks });
+      console.log('📥 [DownloadQueue] Download started:', { downloadId, folderName, totalTracks });
       
       setDownloads(prev => {
         // Remove if already exists (same downloadId) OR if same folderName is already completed (re-download scenario)
-        const filtered = prev.filter(d => 
-          d.downloadId !== downloadId && 
-          !(d.folderName === folderName && d.status === 'completed')
-        );
+        // Normalize folder names for comparison (case-insensitive, trim whitespace)
+        const normalizedNewFolderName = folderName.toLowerCase().trim();
+        
+        const filtered = prev.filter(d => {
+          const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
+          // Keep if: different downloadId AND (different folderName OR not completed)
+          return d.downloadId !== downloadId && 
+                 !(normalizedExistingFolderName === normalizedNewFolderName && d.status === 'completed');
+        });
         
         // Only add if not already in the list
         const exists = filtered.some(d => d.downloadId === downloadId);
@@ -79,6 +84,7 @@ export const DownloadQueue = () => {
           return filtered;
         }
         
+        console.log(`✅ [DownloadQueue] Adding new download: ${downloadId} (${folderName})`);
         const newDownload: DownloadItem = {
           downloadId,
           playlistName: folderName,
@@ -346,7 +352,8 @@ export const DownloadQueue = () => {
           return next;
         });
 
-        // Auto-trigger download when complete (DownloadQueue handles this)
+        // Auto-trigger download when complete (ONLY DownloadQueue handles this to prevent duplicates)
+        // TrackList will NOT auto-trigger to avoid double downloads
         if (data.downloadUrl) {
           const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
           let fullDownloadUrl = data.downloadUrl;
@@ -381,7 +388,7 @@ export const DownloadQueue = () => {
             duration: 3000,
           });
         } else {
-            console.warn('⚠️ [DownloadQueue] download:complete event received but no downloadUrl provided');
+          console.warn('⚠️ [DownloadQueue] download:complete event received but no downloadUrl provided');
         }
       };
       socket.on('download:complete', handlers.downloadComplete);

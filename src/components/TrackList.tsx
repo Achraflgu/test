@@ -2443,17 +2443,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         if (!trackStillExists) {
           // Current track was removed - stop playback
           console.log('🔄 Current track removed from playlist, stopping playback...');
-          try {
-            if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
-              playerRef.current.destroy();
-            }
-          } catch (e) {
-            console.log('⚠️ Player cleanup error (ignored):', e);
+        try {
+          if (playerRef.current.destroy && typeof playerRef.current.destroy === 'function') {
+            playerRef.current.destroy();
           }
-          playerRef.current = null;
-          setCurrentPlayingTrack(null);
-          setIsPlaying(false);
-          setIsPlayingAll(false);
+        } catch (e) {
+          console.log('⚠️ Player cleanup error (ignored):', e);
+        }
+        playerRef.current = null;
+        setCurrentPlayingTrack(null);
+        setIsPlaying(false);
+        setIsPlayingAll(false);
         } else {
           // Track still exists - keep playing
           console.log('✅ Current track still in playlist, keeping playback');
@@ -2502,7 +2502,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     // Initialize Live Listening service
     liveListeningService.init(socket);
-    
+
     // Set up socket listeners in a function (same pattern as DownloadQueue)
     // Store handlers so we can remove only our own listeners (not other components')
     const handlers: Record<string, (...args: any[]) => void> = {};
@@ -2773,18 +2773,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                                   data.progress > (track.downloadProgress || 0) ||
                                   (track.downloadStatus === 'pending' && data.status !== 'pending') ||
                                   (data.status === 'completed' && track.downloadStatus !== 'completed');
-              
+            
               if (shouldUpdate) {
                 // If status is completed, force progress to 100
                 const finalStatus = data.status === 'completed' ? 'completed' : data.status;
                 const finalProgress = data.status === 'completed' ? 100 : (data.progress || 0);
                 
                 console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
-                return {
-                  ...track,
+              return {
+                ...track,
                   downloadStatus: finalStatus,
                   downloadProgress: finalProgress
-                };
+              };
               } else {
                 console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
               }
@@ -2898,6 +2898,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           console.log('❌ Failed tracks:', data.failedTracks);
           
           // Show warning notification with download option
+          // NOTE: Do NOT auto-trigger download here - DownloadQueue handles it to prevent duplicates
           if (data.downloadUrl) {
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
@@ -2906,10 +2907,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const folderName = getFolderName(data.outputFolder);
             const downloadFilename = `${folderName}.zip`;
             
-            // Auto-start download (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl, downloadFilename);
-            
-            // Add to tray
+            // Add to tray (but don't auto-trigger - DownloadQueue will handle it)
             setRecentDownloads(prev => [{ 
               id: data.downloadId, 
               name: folderName, 
@@ -2922,21 +2920,23 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             const emoji = successPercent >= 70 ? '✅' : successPercent >= 40 ? '⚠️' : '❌';
             
             toast.warning(`${emoji} Download Complete - ${data.totalSuccess}/${data.totalSuccess + data.totalFailed} tracks (${successPercent}%)`, {
-              description: `📦 ZIP ready • ${data.totalFailed} track${data.totalFailed > 1 ? 's' : ''} could not be downloaded due to YouTube blocking`,
+              description: `📦 ZIP ready • ${data.totalFailed} track${data.totalFailed > 1 ? 's' : ''} could not be downloaded. Check DownloadQueue to download.`,
               duration: 15000,
               action: {
-                label: 'View Failed',
+                label: 'Download ZIP',
                 onClick: () => {
-                  if (data.failedTracks && data.failedTracks.length > 0) {
-                    const failedList = data.failedTracks.slice(0, 8).join('\n• ');
-                    const more = data.failedTracks.length > 8 ? `\n• ...and ${data.failedTracks.length - 8} more` : '';
-                    toast.error(`Failed to download:\n\n• ${failedList}${more}`, {
-                      duration: 20000,
-                      description: 'Tip: Try downloading these individually or wait and try again later',
-                    });
-                  } else {
-                    setShowFailedTracksDialog(true);
-                  }
+                  // Use iframe method (stays on page, works with IDM)
+                  const iframe = document.createElement('iframe');
+                  iframe.style.display = 'none';
+                  iframe.src = fullDownloadUrl;
+                  document.body.appendChild(iframe);
+                  setTimeout(() => {
+                    try {
+                      document.body.removeChild(iframe);
+                    } catch (e) {
+                      // Ignore cleanup errors
+                    }
+                  }, 1000);
                 },
               },
             });
@@ -2952,6 +2952,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           showCompleteNotification(successCount, playlistName);
           
           // Show toast with download button if downloadUrl is provided
+          // NOTE: Do NOT auto-trigger download here - DownloadQueue handles it to prevent duplicates
           if (data.downloadUrl) {
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
@@ -2962,10 +2963,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               ? `${tracks.find(t => t.downloadStatus === 'completed')?.name || 'track'}.mp3`
               : `${folderName}.zip`;
             
-            // Auto-start download immediately (works with IDM and regular browsers)
-            triggerSmartDownload(fullDownloadUrl, downloadFilename);
-            
-            // Add to tray
+            // Add to tray (but don't auto-trigger - DownloadQueue will handle it)
             setRecentDownloads(prev => [{ 
               id: data.downloadId, 
               name: folderName, 
@@ -2973,22 +2971,35 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               time: Date.now() 
             }, ...prev].slice(0, 5));
             
-            // Persistent richer toast with retry/open actions
+            // Persistent richer toast with retry/open actions (uses iframe, stays on page)
             const fileType = data.totalSuccess === 1 ? 'MP3' : 'ZIP';
             toast.success(`🎉 ${folderName} is ready!`, {
-              description: `All ${successCount} tracks downloaded successfully. Your ${fileType} is downloading...`,
+              description: `All ${successCount} tracks downloaded successfully. Check DownloadQueue to download.`,
               duration: 10000,
               action: {
-                label: `Open ${fileType} Again`,
-                onClick: () => triggerSmartDownload(fullDownloadUrl, downloadFilename),
+                label: `Download ${fileType}`,
+                onClick: () => {
+                  // Use iframe method (stays on page, works with IDM)
+                  const iframe = document.createElement('iframe');
+                  iframe.style.display = 'none';
+                  iframe.src = fullDownloadUrl;
+                  document.body.appendChild(iframe);
+                  setTimeout(() => {
+                    try {
+                      document.body.removeChild(iframe);
+                    } catch (e) {
+                      // Ignore cleanup errors
+                    }
+                  }, 1000);
+                },
               },
             });
           } else {
             toast.success(data.message, {
               duration: 5000,
             });
+          }
         }
-      }
     };
     socket.on('download:complete', handlers.downloadComplete);
 
