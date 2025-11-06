@@ -2539,18 +2539,39 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         message: data.message
       });
       
-      // Always accept track updates - match by trackId only (supports concurrent downloads)
+      // Always accept track updates - match by trackId first, then fallback to name matching
       setTracks(prev => {
-        const matchingTrack = prev.find(t => t.id === data.trackId);
+        // Try to find by trackId first
+        let matchingTrack = prev.find(t => t.id === data.trackId);
+        
+        // Fallback: if trackId doesn't match, try matching by name/artist
+        if (!matchingTrack && data.trackId) {
+          // trackId might be in format "artist-name", try to match by name
+          const trackIdParts = data.trackId.split('-');
+          matchingTrack = prev.find(t => {
+            const trackFullName = `${t.artist} - ${t.name}`;
+            const normalizedTrackId = data.trackId.toLowerCase();
+            const normalizedTrackName = trackFullName.toLowerCase();
+            return normalizedTrackId.includes(t.name.toLowerCase()) || 
+                   normalizedTrackName.includes(normalizedTrackId) ||
+                   (trackIdParts.length > 1 && t.name.toLowerCase().includes(trackIdParts[trackIdParts.length - 1].toLowerCase()));
+          });
+        }
+        
         if (!matchingTrack) {
-          console.warn(`⚠️ Track ${data.trackId} not found in current tracks`);
+          console.warn(`⚠️ Track ${data.trackId} not found in current tracks. Available tracks:`, prev.map(t => ({ id: t.id, name: t.name })));
           return prev;
         }
         
-        console.log(`✅ Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId})`);
+        console.log(`✅ Updating track "${matchingTrack.name}": ${matchingTrack.downloadStatus} → ${data.status} (downloadId: ${data.downloadId}, trackId: ${data.trackId})`);
         
         const updatedTracks = prev.map((track) => {
-          if (track.id === data.trackId) {
+          // Match by id if available, otherwise match by the same logic used to find matchingTrack
+          const isMatch = track.id === data.trackId || 
+                         (track.id === matchingTrack.id) ||
+                         (track.artist === matchingTrack.artist && track.name === matchingTrack.name);
+          
+          if (isMatch) {
             console.log(`🔄 Track update applied: ${track.name} status changed to ${data.status}`);
             return {
               ...track,

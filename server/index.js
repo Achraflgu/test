@@ -6766,15 +6766,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             
             completedCount++;
             // For TrackList: emit download:track event (matches by trackId)
-            if (track.id) {
-              socket.emit('download:track', {
-                downloadId,
-                trackId: track.id,
-                status: 'completed',
-                progress: 100,
-                message: `✅ ${track.name}`
-              });
-            }
+            // Always emit, even if track.id is missing (fallback to track name matching)
+            socket.emit('download:track', {
+              downloadId,
+              trackId: track.id || `${track.artist}-${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ ${track.name}`
+            });
+            console.log(`📤 Emitted download:track for track: ${track.name} (id: ${track.id || 'generated'})`);
             // For TrackList and DownloadQueue: emit download:progress event
             socket.emit('download:progress', {
               downloadId,
@@ -6805,15 +6805,15 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
             
             completedCount++;
             // For TrackList: emit download:track event (matches by trackId)
-            if (track.id) {
-              socket.emit('download:track', {
-                downloadId,
-                trackId: track.id,
-                status: 'completed',
-                progress: 100,
-                message: `✅ ${track.name}`
-              });
-            }
+            // Always emit, even if track.id is missing (fallback to track name matching)
+            socket.emit('download:track', {
+              downloadId,
+              trackId: track.id || `${track.artist}-${track.name}`,
+              status: 'completed',
+              progress: 100,
+              message: `✅ ${track.name}`
+            });
+            console.log(`📤 Emitted download:track for track: ${track.name} (id: ${track.id || 'generated'})`);
             // For TrackList and DownloadQueue: emit download:progress event
             socket.emit('download:progress', {
               downloadId,
