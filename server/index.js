@@ -1831,14 +1831,14 @@ async function regenerateSingleCookie(slotIndex) {
       return false;
     }
     
-    // 🛡️ SAFETY: If downloads are active and we have at least 1 VALIDATED working cookie, skip regeneration
-    const poolStatus = await validateCookiePool();
-    const validatedCookies = poolStatus.valid;
+    // 🛡️ SAFETY: If downloads are active and we have at least 1 working cookie, skip regeneration
+    // ⚠️ CRITICAL: Don't call validateCookiePool() here to avoid cascade loops - just check file count
     const hasActive = hasActiveDownloads();
+    const existingCookies = await getWorkingCookiesFromPool();
     
-    if (hasActive && validatedCookies >= 1) {
-      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) with ${validatedCookies} validated working cookie(s) - safe to continue`);
-      return false; // Don't regenerate during active downloads if we have at least 1 validated cookie
+    if (hasActive && existingCookies.length >= 1) {
+      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) with ${existingCookies.length} cookie(s) in pool - safe to continue`);
+      return false; // Don't regenerate during active downloads if we have at least 1 cookie file
     }
     
     // Mark this slot as being regenerated
@@ -2157,7 +2157,8 @@ async function validateCookiePool() {
     }
     
     // 🎯 If pool is not full, trigger background fill (non-blocking, only if safe)
-    if (validCookies.length < COOKIE_POOL_SIZE) {
+    // ⚠️ CRITICAL: Check if pool fill is already in progress to prevent cascade loops
+    if (validCookies.length < COOKIE_POOL_SIZE && !isFillingPool) {
       const hasActive = hasActiveDownloads();
       
       // 🛡️ SAFETY: Only fill pool when downloads are idle OR when we have 0 cookies
@@ -2169,6 +2170,8 @@ async function validateCookiePool() {
           console.log(`  ⚠️ Background pool fill failed: ${err.message}`);
         });
       }
+    } else if (isFillingPool) {
+      console.log(`  ⏭️ Pool validation: Fill already in progress - skipping duplicate call`);
     }
     
     return {
