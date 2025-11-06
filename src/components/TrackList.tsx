@@ -3130,6 +3130,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       setDownloadId(response.downloadId);
       setOutputFolder(response.outputFolder);
       
+      // Store downloadId for all selected tracks (for concurrent download tracking)
+      selectedTracks.forEach(track => {
+        trackDownloadIdMap.current.set(track.id, response.downloadId);
+      });
+      console.log(`📌 [TrackList] Mapped ${selectedTracks.length} tracks to downloadId ${response.downloadId}`);
+      
       // Emit download start event for queue tracking (both Socket.IO and custom event for immediate UI)
       const socket = getSocket();
       const queueData = {
