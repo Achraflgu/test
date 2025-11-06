@@ -2637,8 +2637,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           });
         }
         
-        // Strategy 4: DISABLED - Too risky, causes false positives during re-downloads
-        // Only enable this if we're 100% sure there's only ONE track being downloaded
+        // Strategy 4: COMPLETELY DISABLED - causes false positives during re-downloads
+        // This strategy is now completely disabled to prevent ANY pending tracks from being marked as completed during re-downloads
         if (!matchingTrack && data.status === 'completed') {
           const selectedTracks = prev.filter(t => t.selected);
           const pendingTracks = prev.filter(t => t.selected && (t.downloadStatus === 'pending' || t.downloadStatus === 'downloading'));
@@ -2646,15 +2646,15 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           
           console.log(`🔍 [TrackList] Strategy 4 check: ${pendingTracks.length} pending, ${completedTracks.length} completed, ${selectedTracks.length} total selected`);
           
-          // ONLY use this fallback if:
-          // 1. There's exactly ONE pending track
-          // 2. There are NO completed tracks (meaning this is the first/only download)
-          // 3. The trackId doesn't look like it could match any other track
-          if (pendingTracks.length === 1 && completedTracks.length === 0) {
+          // 🚫 BLOCKED: If ANY completed tracks exist, this is a re-download scenario - DO NOT use fallback
+          if (completedTracks.length > 0) {
+            console.log(`🚫 [TrackList] Strategy 4 BLOCKED: ${completedTracks.length} completed track(s) exist - re-download scenario, will NOT auto-update pending tracks`);
+          } else if (pendingTracks.length === 1) {
+            // ONLY use this fallback if there are NO completed tracks (first download only)
             matchingTrack = pendingTracks[0];
             console.log(`✅ [TrackList] Strategy 4 (Single Pending, No Completed) matched: ${matchingTrack.name}`);
           } else {
-            console.log(`⏭️ [TrackList] Strategy 4 skipped: pendingTracks=${pendingTracks.length}, completedTracks=${completedTracks.length} (too risky for fallback)`);
+            console.log(`⏭️ [TrackList] Strategy 4 skipped: pendingTracks=${pendingTracks.length} (need exactly 1)`);
           }
         }
         
@@ -2803,9 +2803,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           });
           
           // Fallback: ONLY if no match was found AND track was NOT updated AND status is 'completed' AND we have exactly one pending/downloading track
-          // ⚠️ CRITICAL: Multiple checks to prevent false positives during re-downloads
-          if (!matchedTrackId && !trackWasUpdated && data.status === 'completed') {
-            console.log(`🔍 [TrackList] Progress: Checking fallback conditions - matchedTrackId: ${matchedTrackId}, trackWasUpdated: ${trackWasUpdated}`);
+          // ⚠️ CRITICAL: COMPLETELY DISABLE if ANY completed tracks exist (re-download scenario)
+          const hasAnyCompletedTracks = updatedTracks.some(t => t.selected && t.downloadStatus === 'completed');
+          
+          if (!matchedTrackId && !trackWasUpdated && data.status === 'completed' && !hasAnyCompletedTracks) {
+            console.log(`🔍 [TrackList] Progress: Checking fallback conditions - matchedTrackId: ${matchedTrackId}, trackWasUpdated: ${trackWasUpdated}, hasCompletedTracks: ${hasAnyCompletedTracks}`);
             
             // Double-check that no track in updatedTracks matches the data.trackName
             const hasMatchInUpdated = updatedTracks.some(t => {
@@ -2842,6 +2844,8 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             } else {
               console.log(`✅ [TrackList] Progress: Found match in updatedTracks - skipping fallback`);
             }
+          } else if (hasAnyCompletedTracks) {
+            console.log(`🚫 [TrackList] Progress: Fallback BLOCKED - completed tracks exist (re-download scenario), will NOT auto-update pending tracks`);
           } else if (matchedTrackId || trackWasUpdated) {
             console.log(`✅ [TrackList] Progress: Track was matched/updated (matchedTrackId: ${!!matchedTrackId}, trackWasUpdated: ${trackWasUpdated}) - skipping fallback logic`);
           }
