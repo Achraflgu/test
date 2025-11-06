@@ -2751,16 +2751,22 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             // ALWAYS update if matched, regardless of selection status (especially for completed tracks)
             if (isMatch) {
               // Always update if status is completed, or if progress is increasing
+              // For individual track completion, always update when status is 'completed'
               const shouldUpdate = data.status === 'completed' || 
                                   data.progress > (track.downloadProgress || 0) ||
-                                  (track.downloadStatus === 'pending' && data.status !== 'pending');
+                                  (track.downloadStatus === 'pending' && data.status !== 'pending') ||
+                                  (data.status === 'completed' && track.downloadStatus !== 'completed');
               
               if (shouldUpdate) {
-                console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${data.status} (${data.progress}%)`);
+                // If status is completed, force progress to 100
+                const finalStatus = data.status === 'completed' ? 'completed' : data.status;
+                const finalProgress = data.status === 'completed' ? 100 : (data.progress || 0);
+                
+                console.log(`✅ [TrackList] Progress: Matched "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
                 return {
                   ...track,
-                  downloadStatus: data.status,
-                  downloadProgress: data.progress || 0
+                  downloadStatus: finalStatus,
+                  downloadProgress: finalProgress
                 };
               } else {
                 console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
@@ -2830,7 +2836,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     });
 
     socket.on('download:complete', (data: any) => {
-      console.log('Download complete:', data);
+      console.log('📦 [TrackList] Download complete:', JSON.stringify(data, null, 2));
       // Always accept completion events - server is source of truth (supports concurrent downloads)
         setDownloading(false);
       setDownloadId(data.downloadId);
@@ -2839,6 +2845,20 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         
         // Dismiss persistent attempt toast
         toast.dismiss('download-attempt');
+        
+        // Mark all selected tracks as completed if they're not already failed
+        // This ensures all tracks show as completed when the download finishes
+        setTracks(prev => prev.map(track => {
+          if (track.selected && track.downloadStatus !== 'failed' && track.downloadStatus !== 'completed') {
+            console.log(`✅ [TrackList] Marking track "${track.name}" as completed from download:complete event`);
+            return {
+              ...track,
+              downloadStatus: 'completed' as const,
+              downloadProgress: 100
+            };
+          }
+          return track;
+        }));
         
         // Collect failed tracks
         const currentFailedTracks = tracks.filter(t => t.selected && t.downloadStatus === 'failed');
@@ -2857,12 +2877,97 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           
           console.log('❌ Failed tracks:', data.failedTracks);
           
-          // DownloadQueue now handles auto-download and main notification
-          // TrackList only shows failed tracks info
-          console.log('[TrackList] Download completed with failures - DownloadQueue will handle auto-download');
+          // Show warning notification with download option
+          if (data.downloadUrl) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
+            
+            // Generate descriptive filename for IDM detection
+            const folderName = getFolderName(data.outputFolder);
+            const downloadFilename = `${folderName}.zip`;
+            
+            // Auto-start download (works with IDM and regular browsers)
+            triggerSmartDownload(fullDownloadUrl, downloadFilename);
+            
+            // Add to tray
+            setRecentDownloads(prev => [{ 
+              id: data.downloadId, 
+              name: folderName, 
+              url: fullDownloadUrl, 
+              time: Date.now() 
+            }, ...prev].slice(0, 5));
+            
+            // Show detailed toast with success rate
+            const successPercent = Math.round((data.totalSuccess / (data.totalSuccess + data.totalFailed)) * 100);
+            const emoji = successPercent >= 70 ? '✅' : successPercent >= 40 ? '⚠️' : '❌';
+            
+            toast.warning(`${emoji} Download Complete - ${data.totalSuccess}/${data.totalSuccess + data.totalFailed} tracks (${successPercent}%)`, {
+              description: `📦 ZIP ready • ${data.totalFailed} track${data.totalFailed > 1 ? 's' : ''} could not be downloaded due to YouTube blocking`,
+              duration: 15000,
+              action: {
+                label: 'View Failed',
+                onClick: () => {
+                  if (data.failedTracks && data.failedTracks.length > 0) {
+                    const failedList = data.failedTracks.slice(0, 8).join('\n• ');
+                    const more = data.failedTracks.length > 8 ? `\n• ...and ${data.failedTracks.length - 8} more` : '';
+                    toast.error(`Failed to download:\n\n• ${failedList}${more}`, {
+                      duration: 20000,
+                      description: 'Tip: Try downloading these individually or wait and try again later',
+                    });
+                  } else {
+                    setShowFailedTracksDialog(true);
+                  }
+                },
+              },
+            });
+          } else {
+            toast.warning(data.message, {
+              duration: 10000,
+              description: `${Math.round(successRate)}% success rate`,
+            });
+          }
         } else {
-          // Full success - DownloadQueue now handles auto-download and all notifications exclusively
-          console.log('[TrackList] Download completed successfully - DownloadQueue will handle auto-download and notifications');
+          // Full success - show success notification
+          const successCount = data.totalSuccess || tracks.filter(t => t.selected && t.downloadStatus === 'completed').length;
+          showCompleteNotification(successCount, playlistName);
+          
+          // Show toast with download button if downloadUrl is provided
+          if (data.downloadUrl) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const fullDownloadUrl = `${apiUrl}${data.downloadUrl}`;
+            
+            // Generate descriptive filename for IDM detection
+            const folderName = getFolderName(data.outputFolder);
+            const downloadFilename = data.totalSuccess === 1 
+              ? `${tracks.find(t => t.downloadStatus === 'completed')?.name || 'track'}.mp3`
+              : `${folderName}.zip`;
+            
+            // Auto-start download immediately (works with IDM and regular browsers)
+            triggerSmartDownload(fullDownloadUrl, downloadFilename);
+            
+            // Add to tray
+            setRecentDownloads(prev => [{ 
+              id: data.downloadId, 
+              name: folderName, 
+              url: fullDownloadUrl, 
+              time: Date.now() 
+            }, ...prev].slice(0, 5));
+            
+            // Persistent richer toast with retry/open actions
+            const fileType = data.totalSuccess === 1 ? 'MP3' : 'ZIP';
+            toast.success(`🎉 ${folderName} is ready!`, {
+              description: `All ${successCount} tracks downloaded successfully. Your ${fileType} is downloading...`,
+              duration: 10000,
+              action: {
+                label: `Open ${fileType} Again`,
+                onClick: () => triggerSmartDownload(fullDownloadUrl, downloadFilename),
+              },
+            });
+          } else {
+            toast.success(data.message, {
+              duration: 5000,
+            });
+        }
       }
     });
 

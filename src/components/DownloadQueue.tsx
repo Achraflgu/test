@@ -256,16 +256,16 @@ export const DownloadQueue = () => {
 
       // Track download completion
       socket.on('download:complete', (data: any) => {
-        console.log('✅ Download completed:', data);
+        console.log('✅ [DownloadQueue] Download completed:', JSON.stringify(data, null, 2));
         if (!data.downloadId) {
-          console.warn('⚠️ Complete event missing downloadId:', data);
+          console.warn('⚠️ [DownloadQueue] Complete event missing downloadId:', data);
           return;
         }
         
         setDownloads(prev => {
           const found = prev.find(d => d.downloadId === data.downloadId);
           if (!found) {
-            console.warn('⚠️ Complete event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
+            console.warn('⚠️ [DownloadQueue] Complete event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
             return prev;
           }
           
@@ -279,11 +279,13 @@ export const DownloadQueue = () => {
                 downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
               }
               
-              // For single track downloads, ensure we have at least 1 completed track
-              const completedTracks = data.totalSuccess || d.completedTracks || 1;
-              const totalTracks = data.totalSuccess ? (data.totalSuccess + (data.totalFailed || 0)) : (d.totalTracks || 1);
+              // Calculate completed tracks from backend data
+              const totalSuccess = data.totalSuccess || 0;
+              const totalFailed = data.totalFailed || 0;
+              const completedTracks = totalSuccess > 0 ? totalSuccess : (d.completedTracks || 1);
+              const totalTracks = (totalSuccess + totalFailed) > 0 ? (totalSuccess + totalFailed) : (d.totalTracks || 1);
               
-              console.log(`✅ Marking download ${data.downloadId} as completed: ${completedTracks}/${totalTracks} tracks, URL: ${downloadUrl || 'none'}`);
+              console.log(`✅ [DownloadQueue] Marking download ${data.downloadId} as completed: ${completedTracks}/${totalTracks} tracks, URL: ${downloadUrl || 'none'}`);
               
               return {
                 ...d,
@@ -298,13 +300,15 @@ export const DownloadQueue = () => {
             return d;
           });
         });
+        
         setActiveDownloads(prev => {
           const next = new Set(prev);
           next.delete(data.downloadId);
+          console.log(`✅ [DownloadQueue] Removed ${data.downloadId} from active downloads`);
           return next;
         });
 
-        // Auto-trigger download when complete (like TrackList does)
+        // Auto-trigger download when complete (DownloadQueue handles this)
         if (data.downloadUrl) {
           const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
           let fullDownloadUrl = data.downloadUrl;
@@ -317,7 +321,7 @@ export const DownloadQueue = () => {
           const downloadFilename = `${folderName}.zip`;
           
           // Auto-start download using iframe method (works with IDM and regular browsers)
-          console.log('📥 Auto-triggering download:', fullDownloadUrl, downloadFilename);
+          console.log('📥 [DownloadQueue] Auto-triggering download:', fullDownloadUrl, downloadFilename);
           
           // Create hidden iframe for download (IDM-compatible)
           const iframe = document.createElement('iframe');
@@ -327,13 +331,19 @@ export const DownloadQueue = () => {
           
           // Clean up iframe after download starts
           setTimeout(() => {
-            document.body.removeChild(iframe);
+            try {
+              document.body.removeChild(iframe);
+            } catch (e) {
+              // Ignore cleanup errors
+            }
           }, 1000);
           
-          toast.success('Download Complete!', {
+          toast.success('📦 Download Complete!', {
             description: `Your files are downloading automatically...`,
             duration: 3000,
           });
+        } else {
+          console.warn('⚠️ [DownloadQueue] download:complete event received but no downloadUrl provided');
         }
       });
 
