@@ -67,10 +67,16 @@ export const DownloadQueue = () => {
       console.log('📥 [DownloadQueue] Download started:', { downloadId, folderName, totalTracks });
       
       setDownloads(prev => {
-        // Check if this downloadId already exists (instant download scenario - completion arrived before start)
+        // Check if this downloadId already exists
         const existingById = prev.find(d => d.downloadId === downloadId);
         if (existingById) {
-          console.log(`⚠️ [DownloadQueue] Download ${downloadId} already exists (instant download), skipping duplicate`);
+          // If it's already completed (instant download), skip
+          if (existingById.status === 'completed') {
+            console.log(`⚠️ [DownloadQueue] Download ${downloadId} already completed (instant download), skipping duplicate`);
+            return prev;
+          }
+          // If it's queued/downloading, this is a duplicate event - skip
+          console.log(`⚠️ [DownloadQueue] Download ${downloadId} already exists in queue, skipping duplicate`);
           return prev;
         }
         
@@ -78,6 +84,7 @@ export const DownloadQueue = () => {
         const normalizedNewFolderName = folderName.toLowerCase().trim();
         
         // Check if a completed entry with the same folderName already exists (re-download scenario)
+        // ONLY skip if it's completed - allow multiple concurrent downloads of same playlist
         const existingCompleted = prev.find(d => {
           const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
           return normalizedExistingFolderName === normalizedNewFolderName && d.status === 'completed';
@@ -87,6 +94,18 @@ export const DownloadQueue = () => {
           console.log(`⚠️ [DownloadQueue] Re-download detected for "${folderName}" - keeping old completed entry, not adding new one`);
           // Don't add new entry - keep the old completed entry
           // The download will still happen in the background, but won't show in queue
+          return prev;
+        }
+        
+        // Check for active downloads with same folder name (concurrent downloads of same playlist)
+        const existingActive = prev.find(d => {
+          const normalizedExistingFolderName = d.folderName.toLowerCase().trim();
+          return normalizedExistingFolderName === normalizedNewFolderName && 
+                 (d.status === 'downloading' || d.status === 'queued');
+        });
+        
+        if (existingActive) {
+          console.log(`⚠️ [DownloadQueue] Active download already exists for "${folderName}", skipping duplicate`);
           return prev;
         }
         
@@ -618,14 +637,32 @@ export const DownloadQueue = () => {
   const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
   const completedCount = downloads.filter(d => d.status === 'completed').length;
 
-  // Reset index when downloads change
+  // Auto-show active downloads and reset index when downloads change
   useEffect(() => {
-    if (currentIndex >= downloads.length && downloads.length > 0) {
-      setCurrentIndex(downloads.length - 1);
-    } else if (downloads.length === 0) {
+    if (downloads.length === 0) {
       setCurrentIndex(0);
+      return;
     }
-  }, [downloads.length, currentIndex]);
+    
+    // If current index is out of bounds, reset to last item
+    if (currentIndex >= downloads.length) {
+      setCurrentIndex(downloads.length - 1);
+      return;
+    }
+    
+    // Auto-switch to show active downloads (queued/downloading)
+    const currentDownload = downloads[currentIndex];
+    const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
+    
+    // If current download is completed but there are active downloads, switch to first active
+    if (currentDownload && currentDownload.status === 'completed' && hasActiveDownloads) {
+      const firstActiveIndex = downloads.findIndex(d => d.status === 'downloading' || d.status === 'queued');
+      if (firstActiveIndex !== -1 && firstActiveIndex !== currentIndex) {
+        console.log(`🎯 [DownloadQueue] Auto-switching from completed to active download at index ${firstActiveIndex}`);
+        setCurrentIndex(firstActiveIndex);
+      }
+    }
+  }, [downloads, currentIndex]);
 
   // Carousel navigation
   const handlePrevious = () => {
