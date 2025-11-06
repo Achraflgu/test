@@ -1646,6 +1646,51 @@ async function generateAndTestCookies(maxAttempts = 100) {
   return await cookieGenerationPromise;
 }
 
+// 🎯 ENSURE POOL IS ALWAYS FULL (5/5) - Background maintenance
+async function ensurePoolIsFull() {
+  try {
+    const cookies = await getWorkingCookiesFromPool();
+    const missingCount = COOKIE_POOL_SIZE - cookies.length;
+    
+    if (missingCount > 0) {
+      console.log(`\n🔄 Pool maintenance: ${cookies.length}/${COOKIE_POOL_SIZE} cookies - filling ${missingCount} missing slots...`);
+      
+      // Find which slots are missing
+      const existingIndices = cookies.map(c => {
+        return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      });
+      
+      // Fill each missing slot (don't wait - do in background)
+      const fillPromises = [];
+      for (let i = 0; i < COOKIE_POOL_SIZE; i++) {
+        if (!existingIndices.includes(i)) {
+          console.log(`  📍 Filling empty slot ${i + 1}...`);
+          fillPromises.push(regenerateSingleCookie(i));
+        }
+      }
+      
+      // Wait for all slots to be filled (or timeout after 60s)
+      try {
+        await Promise.race([
+          Promise.all(fillPromises),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000))
+        ]);
+      } catch (err) {
+        console.log(`  ⚠️ Some slots took too long to fill, continuing anyway`);
+      }
+      
+      const finalCookies = await getWorkingCookiesFromPool();
+      console.log(`  ✅ Pool status: ${finalCookies.length}/${COOKIE_POOL_SIZE} cookies available`);
+      return finalCookies.length >= COOKIE_POOL_SIZE;
+    }
+    
+    return true; // Pool is already full
+  } catch (err) {
+    console.log(`  ⚠️ Pool maintenance error: ${err.message}`);
+    return false;
+  }
+}
+
 // 🔄 REGENERATE SINGLE COOKIE SLOT (when one dies during download)
 async function regenerateSingleCookie(slotIndex) {
   try {
@@ -1931,6 +1976,14 @@ async function validateCookiePool() {
       console.log(`  💾 Updated primary cookie from pool`);
     }
     
+    // 🎯 If pool is not full, trigger background fill (non-blocking)
+    if (validCookies.length < COOKIE_POOL_SIZE) {
+      console.log(`  🔄 Pool needs ${COOKIE_POOL_SIZE - validCookies.length} more cookies - starting background fill...`);
+      ensurePoolIsFull().catch((err) => {
+        console.log(`  ⚠️ Background pool fill failed: ${err.message}`);
+      });
+    }
+    
     return {
       valid: validCookies.length,
       total: cookies.length,
@@ -1996,7 +2049,11 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
         // 🔥 IMMEDIATE REGENERATION: Trigger on FIRST failure for THIS cookie slot
         console.log(`  🔄 Cookie ${cookie.index + 1} (slot ${cookie.index}) failed - immediately starting background regeneration...`);
         // Regenerate THIS cookie slot in background (don't await) - checks backup pool first, then generates
-        regenerateSingleCookie(cookie.index).catch((err) => {
+        regenerateSingleCookie(cookie.index).then(() => {
+          console.log(`  ✅ Cookie slot ${cookie.index + 1} regenerated successfully in background`);
+          // After regenerating, ensure pool is full (fills any other missing slots)
+          ensurePoolIsFull().catch(() => {});
+        }).catch((err) => {
           console.log(`  ⚠️ Background regeneration failed for cookie ${cookie.index + 1}: ${err.message}`);
         });
         
@@ -2135,28 +2192,20 @@ async function initializeAutoCookies() {
       return AUTO_COOKIE_PATH;
     }
     
-    if (poolStatus.valid > 0) {
+    if (poolStatus.valid > 0 && poolStatus.valid < COOKIE_POOL_SIZE) {
       console.log(`  ⚠️ Cookie pool has ${poolStatus.valid}/${COOKIE_POOL_SIZE} cookies - filling ${COOKIE_POOL_SIZE - poolStatus.valid} missing slots...`);
-      // Only generate missing cookies (not all 5)
-      const missingSlots = COOKIE_POOL_SIZE - poolStatus.valid;
-      const existingCookies = await getWorkingCookiesFromPool();
-      const existingIndices = existingCookies.map(c => {
-        // Handle Redis cookies (have index property) or filesystem cookies (parse from path)
-        return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+      // Ensure pool is full (fills missing slots in background)
+      ensurePoolIsFull().then(() => {
+        console.log(`  ✅ Cookie pool filled to ${COOKIE_POOL_SIZE}/${COOKIE_POOL_SIZE}`);
+      }).catch((err) => {
+        console.log(`  ⚠️ Failed to fill pool completely: ${err.message}`);
       });
-      
-      // Find first available slot
-      let nextSlot = 0;
-      for (let i = 0; i < COOKIE_POOL_SIZE; i++) {
-        if (!existingIndices.includes(i)) {
-          nextSlot = i;
-          break;
-        }
-      }
-      
-      // Generate only missing cookies
-      console.log(`  🔄 Generating ${missingSlots} missing cookies to fill pool...`);
-      const newCookies = await generateAndTestCookies(100); // Will fill remaining slots
+      return AUTO_COOKIE_PATH;
+    }
+    
+    if (poolStatus.valid === 0) {
+      console.log(`  📝 Cookie pool is empty - generating ${COOKIE_POOL_SIZE} new cookies...`);
+      const newCookies = await generateAndTestCookies(100); // Generate all 5
       if (newCookies) {
         return AUTO_COOKIE_PATH;
       }
@@ -2227,6 +2276,22 @@ initializeAutoCookies().then(cookiePath => {
     // Already logged in initializeAutoCookies()
   }
 });
+
+// 🎯 PERIODIC POOL MAINTENANCE - Ensure 5/5 cookies always available
+// Runs every 5 minutes to check and fill missing slots
+setInterval(async () => {
+  try {
+    const cookies = await getWorkingCookiesFromPool();
+    if (cookies.length < COOKIE_POOL_SIZE) {
+      console.log(`\n🔄 [Scheduled Maintenance] Pool has ${cookies.length}/${COOKIE_POOL_SIZE} cookies - filling missing slots...`);
+      await ensurePoolIsFull();
+    } else {
+      console.log(`\n✅ [Scheduled Maintenance] Pool is full: ${cookies.length}/${COOKIE_POOL_SIZE} cookies`);
+    }
+  } catch (err) {
+    console.log(`\n⚠️ [Scheduled Maintenance] Error: ${err.message}`);
+  }
+}, 5 * 60 * 1000); // Every 5 minutes
 
 // Monitor cookie health during downloads
 async function markCookiesAsWorking() {
