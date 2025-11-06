@@ -2504,6 +2504,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     liveListeningService.init(socket);
     
     // Set up socket listeners in a function (same pattern as DownloadQueue)
+    // Store handlers so we can remove only our own listeners (not other components')
+    const handlers: Record<string, (...args: any[]) => void> = {};
+    
     const setupSocketListeners = () => {
       if (!socket) {
         console.warn('⚠️ [TrackList] Socket not available for setting up listeners');
@@ -2512,18 +2515,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       
       console.log('🔧 [TrackList] Setting up socket event listeners...');
       
-      // Remove existing listeners to prevent duplicates
-      socket.off('download:status');
-      socket.off('download:attempt');
-      socket.off('download:track');
-      socket.off('download:progress');
-      socket.off('download:complete');
-      socket.off('download:error');
-      socket.off('download:timeout');
-      socket.off('download:cancelled');
-      socket.off('download:skipped');
+      // Remove only our own listeners (using stored handlers)
+      if (handlers.downloadStatus) socket.off('download:status', handlers.downloadStatus);
+      if (handlers.downloadAttempt) socket.off('download:attempt', handlers.downloadAttempt);
+      if (handlers.downloadTrack) socket.off('download:track', handlers.downloadTrack);
+      if (handlers.downloadProgress) socket.off('download:progress', handlers.downloadProgress);
+      if (handlers.downloadComplete) socket.off('download:complete', handlers.downloadComplete);
+      if (handlers.downloadError) socket.off('download:error', handlers.downloadError);
+      if (handlers.downloadRetry) socket.off('download:retry', handlers.downloadRetry);
+      if (handlers.downloadTimeout) socket.off('download:timeout', handlers.downloadTimeout);
+      if (handlers.downloadCancelled) socket.off('download:cancelled', handlers.downloadCancelled);
+      if (handlers.downloadSkipped) socket.off('download:skipped', handlers.downloadSkipped);
 
-    socket.on('download:status', (data: any) => {
+      handlers.downloadStatus = (data: any) => {
       console.log('📨 [TrackList] Download status:', data);
       if (data.downloadId === downloadId) {
         // Show status only if it contains important info (progress indicators, retrying, etc)
@@ -2534,9 +2538,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           });
         }
       }
-    });
+    };
+    socket.on('download:status', handlers.downloadStatus);
 
-    socket.on('download:attempt', (data: any) => {
+    handlers.downloadAttempt = (data: any) => {
       console.log('Download attempt:', data);
       if (data.downloadId === downloadId) {
         setAttemptCount(data.attempt);
@@ -2556,10 +2561,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           description: `${completed}/${total} tracks completed${completed > 0 ? ` (${Math.round((completed / total) * 100)}%)` : ''} • Trying different download strategies...`,
         });
       }
-    });
+    };
+    socket.on('download:attempt', handlers.downloadAttempt);
 
     // Handle track-level progress updates (for instant downloads and individual track updates)
-    socket.on('download:track', (data: any) => {
+    handlers.downloadTrack = (data: any) => {
       console.log('📨 [TrackList] ========================================');
       console.log('📨 [TrackList] RECEIVED download:track EVENT');
       console.log('📨 [TrackList] ========================================');
@@ -2699,9 +2705,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         
         return updatedTracks;
       });
-    });
+    };
+    socket.on('download:track', handlers.downloadTrack);
 
-    socket.on('download:progress', (data: any) => {
+    handlers.downloadProgress = (data: any) => {
       console.log('📊 [TrackList] ========================================');
       console.log('📊 [TrackList] RECEIVED download:progress EVENT');
       console.log('📊 [TrackList] ========================================');
@@ -2820,9 +2827,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           
           return updatedTracks;
         });
-    });
+    };
+    socket.on('download:progress', handlers.downloadProgress);
 
-    socket.on('download:error', (data: any) => {
+    handlers.downloadError = (data: any) => {
       console.error('Download error:', data);
       // Accept errors from all downloads (supports concurrent downloads)
       if (data.trackName) {
@@ -2835,17 +2843,19 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         }
         // Don't show tab notification for individual errors, only on complete
       }
-    });
+    };
+    socket.on('download:error', handlers.downloadError);
 
-    socket.on('download:retry', (data: any) => {
+    handlers.downloadRetry = (data: any) => {
       console.log('Download retry:', data);
       // Accept retries from all downloads (supports concurrent downloads)
       if (data.message) {
         toast.warning(data.message);
       }
-    });
+    };
+    socket.on('download:retry', handlers.downloadRetry);
 
-    socket.on('download:complete', (data: any) => {
+    handlers.downloadComplete = (data: any) => {
       console.log('📦 [TrackList] Download complete:', JSON.stringify(data, null, 2));
       // Always accept completion events - server is source of truth (supports concurrent downloads)
         setDownloading(false);
@@ -2979,9 +2989,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
             });
         }
       }
-    });
+    };
+    socket.on('download:complete', handlers.downloadComplete);
 
-    socket.on('download:timeout', (data: any) => {
+    handlers.downloadTimeout = (data: any) => {
       console.log('Download timeout:', data);
       if (data.downloadId === downloadId) {
         toast.warning(data.message, {
@@ -2989,9 +3000,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
           icon: '⏱️',
         });
       }
-    });
+    };
+    socket.on('download:timeout', handlers.downloadTimeout);
 
-    socket.on('download:cancelled', (data: any) => {
+    handlers.downloadCancelled = (data: any) => {
       console.log('Download cancelled:', data);
       if (data.downloadId === downloadId) {
         setDownloading(false);
@@ -3000,16 +3012,18 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
         });
         resetTabTitle();
       }
-    });
+    };
+    socket.on('download:cancelled', handlers.downloadCancelled);
 
-    socket.on('download:skipped', (data: any) => {
+    handlers.downloadSkipped = (data: any) => {
       console.log('Download skipped:', data);
       if (data.downloadId === downloadId) {
         toast.info(data.message, {
           duration: 5000,
         });
       }
-    });
+    };
+    socket.on('download:skipped', handlers.downloadSkipped);
     };
     
     // Set up listeners immediately if socket is connected, otherwise wait for connection
@@ -3027,16 +3041,17 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
 
     return () => {
       if (socket) {
-        socket.off('download:status');
-        socket.off('download:attempt');
-        socket.off('download:track');
-        socket.off('download:progress');
-        socket.off('download:error');
-        socket.off('download:retry');
-        socket.off('download:complete');
-        socket.off('download:timeout');
-        socket.off('download:cancelled');
-        socket.off('download:skipped');
+        // Remove only our own listeners (using stored handlers)
+        if (handlers.downloadStatus) socket.off('download:status', handlers.downloadStatus);
+        if (handlers.downloadAttempt) socket.off('download:attempt', handlers.downloadAttempt);
+        if (handlers.downloadTrack) socket.off('download:track', handlers.downloadTrack);
+        if (handlers.downloadProgress) socket.off('download:progress', handlers.downloadProgress);
+        if (handlers.downloadError) socket.off('download:error', handlers.downloadError);
+        if (handlers.downloadRetry) socket.off('download:retry', handlers.downloadRetry);
+        if (handlers.downloadComplete) socket.off('download:complete', handlers.downloadComplete);
+        if (handlers.downloadTimeout) socket.off('download:timeout', handlers.downloadTimeout);
+        if (handlers.downloadCancelled) socket.off('download:cancelled', handlers.downloadCancelled);
+        if (handlers.downloadSkipped) socket.off('download:skipped', handlers.downloadSkipped);
         socket.off('connect');
       }
     };

@@ -101,6 +101,9 @@ export const DownloadQueue = () => {
     window.addEventListener('download:queue:start', handleQueueStart);
 
     // Set up socket listeners
+    // Store handlers so we can remove only our own listeners (not other components')
+    const handlers: Record<string, (...args: any[]) => void> = {};
+    
     const setupSocketListeners = () => {
       console.log('🔧 [DownloadQueue] setupSocketListeners() called');
       if (!socket) {
@@ -108,32 +111,33 @@ export const DownloadQueue = () => {
         return;
       }
       
-      console.log('🔧 [DownloadQueue] Removing old listeners and adding new ones...');
+      console.log('🔧 [DownloadQueue] Removing old DownloadQueue listeners and adding new ones...');
       
-      // Remove existing listeners to prevent duplicates
-      socket.off('download:queue:start');
-      socket.off('download:status');
-      socket.off('download:progress');
-      socket.off('download:complete');
-      socket.off('download:error');
-      socket.off('download:track');
+      // Remove only our own listeners (using stored handlers)
+      if (handlers.downloadQueueStart) socket.off('download:queue:start', handlers.downloadQueueStart);
+      if (handlers.downloadStatus) socket.off('download:status', handlers.downloadStatus);
+      if (handlers.downloadProgress) socket.off('download:progress', handlers.downloadProgress);
+      if (handlers.downloadComplete) socket.off('download:complete', handlers.downloadComplete);
+      if (handlers.downloadError) socket.off('download:error', handlers.downloadError);
+      if (handlers.downloadTrack) socket.off('download:track', handlers.downloadTrack);
       
-      console.log('✅ [DownloadQueue] Old listeners removed, adding new listeners...');
+      console.log('✅ [DownloadQueue] Old DownloadQueue listeners removed, adding new listeners...');
       console.log('🔧 [DownloadQueue] Socket state - connected:', socket.connected, 'id:', socket.id);
       
       // Listen for custom queue start event (emitted from TrackList via Socket.IO)
-      socket.on('download:queue:start', (data: any) => {
+      handlers.downloadQueueStart = (data: any) => {
         console.log('📥 [DownloadQueue] Received download:queue:start Socket.IO event:', data);
         handleDownloadStart(
           data.downloadId,
           data.folderName || 'Unknown',
           data.totalTracks || 0
         );
-      });
+      };
+      socket.on('download:queue:start', handlers.downloadQueueStart);
       console.log('✅ [DownloadQueue] Listener attached: download:queue:start');
 
       // Also listen for download status updates (which includes start and completion)
-      socket.on('download:status', (data: any) => {
+      handlers.downloadStatus = (data: any) => {
         if (data.status === 'started' || data.status === 'processing') {
           handleDownloadStart(
             data.downloadId,
@@ -162,10 +166,11 @@ export const DownloadQueue = () => {
             return next;
           });
         }
-      });
+      };
+      socket.on('download:status', handlers.downloadStatus);
 
       // Track download progress
-      socket.on('download:progress', (data: any) => {
+      handlers.downloadProgress = (data: any) => {
         console.log('📊 [DownloadQueue] ========================================');
         console.log('📊 [DownloadQueue] RECEIVED download:progress EVENT');
         console.log('📊 [DownloadQueue] ========================================');
@@ -268,10 +273,11 @@ export const DownloadQueue = () => {
             return next;
           });
         }
-      });
+      };
+      socket.on('download:progress', handlers.downloadProgress);
 
       // Track download completion
-      socket.on('download:complete', (data: any) => {
+      handlers.downloadComplete = (data: any) => {
         console.log('✅ [DownloadQueue] ========================================');
         console.log('✅ [DownloadQueue] RECEIVED download:complete EVENT');
         console.log('✅ [DownloadQueue] ========================================');
@@ -363,12 +369,13 @@ export const DownloadQueue = () => {
             duration: 3000,
           });
         } else {
-          console.warn('⚠️ [DownloadQueue] download:complete event received but no downloadUrl provided');
+            console.warn('⚠️ [DownloadQueue] download:complete event received but no downloadUrl provided');
         }
-      });
+      };
+      socket.on('download:complete', handlers.downloadComplete);
 
       // Track download failure
-      socket.on('download:error', (data: any) => {
+      handlers.downloadError = (data: any) => {
         console.log('❌ Download error:', data);
         setDownloads(prev => prev.map(d => {
           if (d.downloadId === data.downloadId) {
@@ -385,10 +392,11 @@ export const DownloadQueue = () => {
           next.delete(data.downloadId);
           return next;
         });
-      });
+      };
+      socket.on('download:error', handlers.downloadError);
 
       // Track individual track completion (for single track downloads)
-      socket.on('download:track', (data: any) => {
+      handlers.downloadTrack = (data: any) => {
         console.log('📨 [DownloadQueue] ========================================');
         console.log('📨 [DownloadQueue] RECEIVED download:track EVENT');
         console.log('📨 [DownloadQueue] ========================================');
@@ -430,7 +438,8 @@ export const DownloadQueue = () => {
             return next;
           });
         }
-      });
+      };
+      socket.on('download:track', handlers.downloadTrack);
       
       console.log('✅ [DownloadQueue] ALL socket listeners attached successfully!');
       console.log('✅ [DownloadQueue] Listening for: download:queue:start, download:status, download:progress, download:complete, download:error, download:track');
@@ -480,12 +489,13 @@ export const DownloadQueue = () => {
 
     return () => {
       if (socket) {
-        socket.off('download:queue:start');
-        socket.off('download:status');
-        socket.off('download:progress');
-        socket.off('download:complete');
-        socket.off('download:error');
-        socket.off('download:track');
+        // Remove only our own listeners (using stored handlers)
+        if (handlers.downloadQueueStart) socket.off('download:queue:start', handlers.downloadQueueStart);
+        if (handlers.downloadStatus) socket.off('download:status', handlers.downloadStatus);
+        if (handlers.downloadProgress) socket.off('download:progress', handlers.downloadProgress);
+        if (handlers.downloadComplete) socket.off('download:complete', handlers.downloadComplete);
+        if (handlers.downloadError) socket.off('download:error', handlers.downloadError);
+        if (handlers.downloadTrack) socket.off('download:track', handlers.downloadTrack);
         socket.off('connect');
       }
       window.removeEventListener('download:queue:start', handleQueueStart);
