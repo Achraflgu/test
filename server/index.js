@@ -1693,26 +1693,26 @@ async function waitForWorkingCookie(maxWaitTime = 300000, checkInterval = 5000) 
   let lastStatus = '';
   
   while (Date.now() - startTime < maxWaitTime) {
-    // Use validateCookiePool to get only VALIDATED cookies
-    const poolStatus = await validateCookiePool();
-    const validatedCookies = poolStatus.valid;
+    // Just check if cookies EXIST (don't validate - too expensive!)
+    await initCookiePool();
+    const existingCookies = await getWorkingCookiesFromPool();
     
-    if (validatedCookies >= 1) {
+    if (existingCookies.length >= 1) {
       if (lastStatus) {
-        console.log(`  ✅ Cookie available! (${validatedCookies} validated working) - resuming download`);
+        console.log(`  ✅ Cookies available! (${existingCookies.length}/5 in pool) - resuming download`);
       }
-      return true; // At least 1 validated cookie available
+      return true; // At least 1 cookie file exists
     }
     
     // Log status every 10 seconds
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     if (elapsed % 10 === 0 && elapsed > 0 && lastStatus !== `waiting-${elapsed}`) {
-      console.log(`  ⏳ Waiting for working cookie... (${elapsed}s elapsed, regenerating...)`);
+      console.log(`  ⏳ Waiting for cookies to be generated... (${elapsed}s elapsed)`);
       lastStatus = `waiting-${elapsed}`;
     }
     
-    // Trigger regeneration if not already in progress (only if downloads are idle OR we have 0 cookies)
-    if (!isFillingPool && !hasActiveDownloads()) {
+    // Trigger regeneration if not already in progress
+    if (!isFillingPool) {
       ensurePoolIsFull().catch(() => {});
     }
     
@@ -1732,10 +1732,11 @@ async function ensurePoolIsFull() {
       return false;
     }
     
-    // 🛡️ SAFETY: If downloads are active and we have at least 1 VALIDATED working cookie, PAUSE regeneration
-    const poolStatus = await validateCookiePool();
-    const validatedCookies = poolStatus.valid;
+    // 🛡️ SAFETY: If downloads are active and we have at least 1 cookie, PAUSE regeneration
+    // Don't validate (too expensive) - just check existence
     const hasActive = hasActiveDownloads();
+    const existingCookies = await getWorkingCookiesFromPool();
+    const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
     
     if (hasActive && validatedCookies >= 1) {
       console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${validatedCookies} VALIDATED working cookie(s) - pausing regeneration for safety`);
@@ -2236,13 +2237,13 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
         recordCookieFailure(cookie.index);
         console.log(`  ⚠️ Cookie ${cookie.index + 1} failed (bot detection) - rotating to next cookie...`);
         
-        // 🛡️ SAFETY: Only regenerate if we have 0 VALIDATED working cookies OR downloads are idle
-        const poolStatus = await validateCookiePool();
-        const validatedCookies = poolStatus.valid;
-        // Exclude the failed cookie from count (if it was validated, subtract 1)
-        const remainingValidatedCookies = validatedCookies > 0 && cookies.some(c => c.index === cookie.index) 
-          ? validatedCookies - 1 
-          : validatedCookies;
+        // 🛡️ SAFETY: Only regenerate if we have 0 cookies OR downloads are idle
+        // Don't validate (too expensive) - just check existence
+        const existingCookies = await getWorkingCookiesFromPool();
+        // Exclude the failed cookie from count
+        const remainingValidatedCookies = existingCookies.length > 0 && cookies.some(c => c.index === cookie.index) 
+          ? existingCookies.length - 1 
+          : existingCookies.length;
         const hasActive = hasActiveDownloads();
         
         if (hasActive && remainingValidatedCookies >= 1) {
@@ -2277,10 +2278,11 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
   console.log(`\n🚨 CRITICAL: All ${cookies.length} cookies in pool failed with bot detection!`);
   console.log(`📊 Bot detection failures: ${botDetectionCount}/${cookies.length}`);
   
-  // 🛡️ SAFETY: If downloads are active and we have 0 VALIDATED cookies, PAUSE and WAIT for regeneration
-  const poolStatus = await validateCookiePool();
-  const validatedCookies = poolStatus.valid;
+  // 🛡️ SAFETY: If downloads are active and we have 0 cookies, PAUSE and WAIT for regeneration
+  // Don't validate (too expensive) - just check existence
   const hasActive = hasActiveDownloads();
+  const existingCookies = await getWorkingCookiesFromPool();
+  const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
   
   if (hasActive && validatedCookies === 0) {
     console.log(`\n⏸️ Download paused: All cookies failed, 0 working cookies remaining - waiting for regeneration...`);
@@ -8384,39 +8386,42 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     console.log(`⚠️  No socket ID found, broadcasting to all clients`);
   }
 
-  // 🛡️ SAFETY: Check if we have at least 1 VALIDATED working cookie before starting
-  // Use validateCookiePool to get only VALIDATED cookies (not just existing files)
-  const poolStatus = await validateCookiePool();
-  const validatedCookies = poolStatus.valid;
+  // 🛡️ OPTIMIZED: Just check if cookies EXIST (don't validate - saves 10s+ per download)
+  // Validation is expensive and cookies die fast anyway - better to try and regenerate on failure
+  await initCookiePool(); // Ensure pool is loaded from Redis
+  const existingCookies = await getWorkingCookiesFromPool();
   
-  if (validatedCookies === 0) {
-    console.log(`\n⏸️ Download paused: 0 VALIDATED working cookies - waiting for regeneration...`);
+  if (existingCookies.length === 0) {
+    console.log(`\n⏸️ Download paused: 0 cookies in pool - waiting for generation...`);
     socket.emit('download:status', {
       downloadId,
       status: 'waiting',
-      message: '⏳ Waiting for cookies to be generated... (this may take 30-60s)'
+      message: '⏳ Generating cookies... (this may take 30-60s)'
     });
     
-    // Wait for at least 1 working cookie (max 5 minutes)
+    // Trigger emergency cookie generation
+    ensurePoolIsFull().catch(err => console.log(`  ⚠️ Pool fill error: ${err.message}`));
+    
+    // Wait for at least 1 cookie to appear (max 5 minutes)
     const hasCookie = await waitForWorkingCookie(300000, 5000);
     
     if (!hasCookie) {
-      console.log(`  ⚠️ No cookies available after waiting - proceeding with cookie-less methods`);
+      console.log(`  ⚠️ No cookies available after waiting - proceeding anyway`);
       socket.emit('download:status', {
         downloadId,
         status: 'downloading',
         message: '⚠️ Proceeding without cookies (may have lower success rate)'
       });
     } else {
-      console.log(`  ✅ Cookie available - resuming download`);
+      console.log(`  ✅ Cookies available (${(await getWorkingCookiesFromPool()).length}/5) - starting download`);
       socket.emit('download:status', {
         downloadId,
         status: 'downloading',
-        message: '✅ Cookies ready - starting download...'
+        message: '✅ Starting download...'
       });
     }
   } else {
-    console.log(`  ✅ Found ${validatedCookies} validated working cookie(s) - proceeding with download`);
+    console.log(`  ✅ Pool status: ${existingCookies.length}/5 cookies available - starting download immediately`);
   }
 
   // Start download timer
