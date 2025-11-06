@@ -66,6 +66,13 @@ export const DownloadQueue = () => {
       console.log('📥 [DownloadQueue] Download started:', { downloadId, folderName, totalTracks });
       
       setDownloads(prev => {
+        // Check if this downloadId already exists (instant download scenario - completion arrived before start)
+        const existingById = prev.find(d => d.downloadId === downloadId);
+        if (existingById) {
+          console.log(`⚠️ [DownloadQueue] Download ${downloadId} already exists (instant download), skipping duplicate`);
+          return prev;
+        }
+        
         // Normalize folder names for comparison (case-insensitive, trim whitespace)
         const normalizedNewFolderName = folderName.toLowerCase().trim();
         
@@ -317,8 +324,39 @@ export const DownloadQueue = () => {
         setDownloads(prev => {
           const found = prev.find(d => d.downloadId === data.downloadId);
           if (!found) {
-            console.warn('⚠️ [DownloadQueue] Complete event for unknown downloadId:', data.downloadId, 'Available:', prev.map(d => d.downloadId));
-            return prev;
+            // For instant downloads (file already exists), the completion event arrives BEFORE queue:start
+            // In this case, create a completed entry directly
+            console.log('📦 [DownloadQueue] Instant download detected - creating completed entry:', data.downloadId);
+            
+            const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+            let downloadUrl = data.downloadUrl;
+            if (downloadUrl && !downloadUrl.startsWith('http')) {
+              downloadUrl = `${API_URL}${downloadUrl.startsWith('/') ? '' : '/'}${downloadUrl}`;
+            }
+            
+            const totalSuccess = data.totalSuccess || 0;
+            const totalFailed = data.totalFailed || 0;
+            const completedTracks = totalSuccess > 0 ? totalSuccess : 1;
+            const totalTracks = (totalSuccess + totalFailed) > 0 ? (totalSuccess + totalFailed) : 1;
+            
+            // Extract folder name from outputFolder or use downloadId
+            const folderName = data.outputFolder ? data.outputFolder.split(/[/\\]/).pop() || 'Download' : 'Download';
+            
+            const newCompletedDownload: DownloadItem = {
+              downloadId: data.downloadId,
+              playlistName: folderName,
+              folderName: folderName,
+              status: 'completed',
+              progress: 100,
+              totalTracks: totalTracks,
+              completedTracks: completedTracks,
+              downloadUrl: downloadUrl,
+              startedAt: new Date().toISOString(),
+              completedAt: new Date().toISOString()
+            };
+            
+            console.log('✅ [DownloadQueue] Created instant download entry:', newCompletedDownload);
+            return [newCompletedDownload, ...prev];
           }
           
           return prev.map(d => {
