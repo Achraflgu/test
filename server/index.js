@@ -1118,12 +1118,30 @@ async function testCookies(cookiePath) {
         // Timeout or process error = fail
         // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
         const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
-        const isProxyIssue = errorOutput.toLowerCase().includes('proxy') || 
-                            errorOutput.toLowerCase().includes('connection') ||
-                            errorOutput.toLowerCase().includes('timeout');
-        const isCookieIssue = errorOutput.toLowerCase().includes('sign in') ||
-                             errorOutput.toLowerCase().includes('bot') ||
-                             errorOutput.toLowerCase().includes('login_required');
+        const normalizedError = errorOutput.toLowerCase();
+        const isProxyIssue = normalizedError.includes('proxy') || 
+                            normalizedError.includes('connection') ||
+                            normalizedError.includes('timeout');
+        const isCookieIssue = normalizedError.includes('sign in') ||
+                             normalizedError.includes('bot') ||
+                             normalizedError.includes('login_required');
+        
+        // 🛡️ DETECT YOUTUBE-SPECIFIC ERRORS: Mark proxy as dead if it fails with YouTube errors
+        const isYouTubeError = normalizedError.includes('failed to extract any player response') ||
+                              normalizedError.includes('no video formats found') ||
+                              normalizedError.includes('unable to download api page');
+        
+        // If proxy is being used and we get YouTube-specific errors, mark proxy as dead
+        if (proxy && isYouTubeError && !isCookieIssue) {
+          // Extract proxy IP:PORT from proxy string (format: http://IP:PORT)
+          const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            // Mark proxy as failed (will remove from YouTube-validated list)
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (YouTube error): ${proxyHost.substring(0, 20)}...`);
+          }
+        }
         
         if (code === null) {
           console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
@@ -1440,7 +1458,7 @@ async function generateRealisticYouTubeCookies(attempt = 0) {
 
 // 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!) + EARLY STOP
 async function generateAndTestCookies(maxAttempts = 100) {
-  // 🛡️ SAFETY CHECK: Pause if downloads are active OR cookie-less attempt in progress
+  // 🛡️ SAFETY CHECK: Pause if downloads are active (regardless of cookie count)
   const hasActive = hasActiveDownloads();
   const currentCookies = await getWorkingCookiesFromPool();
   
@@ -1453,12 +1471,21 @@ async function generateAndTestCookies(maxAttempts = 100) {
     }
   }
   
-  // 🛡️ PAUSE if: (1) Active downloads with cookies, OR (2) Cookie-less attempt in progress
-  if ((hasActive && currentCookies.length >= 1) || cookieLessInProgress) {
+  // 🛡️ PAUSE if: (1) ANY active downloads (regardless of cookie count), OR (2) Cookie-less attempt in progress
+  // EXCEPTION: Only allow regeneration when explicitly waiting for strong cookie (needed for download to proceed)
+  let waitingForStrongCookie = false;
+  for (const [id, info] of activeDownloads.entries()) {
+    if (info.waitingForStrongCookie === true && info.status === 'waiting') {
+      waitingForStrongCookie = true;
+      break;
+    }
+  }
+  
+  if (hasActive && !waitingForStrongCookie) {
     if (cookieLessInProgress) {
       console.log(`\n⏸️ [Cookie Generation BLOCKED] Cookie-less download attempt in progress - pausing regeneration`);
     } else {
-      console.log(`\n⏸️ [Cookie Generation BLOCKED] Downloads active (${activeDownloads.size}) with ${currentCookies.length} working cookie(s)`);
+      console.log(`\n⏸️ [Cookie Generation BLOCKED] Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
     }
     console.log(`  💡 Returning existing cookies - generation will resume after download completes`);
     
@@ -1561,17 +1588,27 @@ async function generateAndTestCookies(maxAttempts = 100) {
       // 🎯 PHASE 1: Get 2-3 STRONG cookies quickly (blocking, up to 90s)
       // 🎯 PHASE 2: Fill remaining slots in background (non-blocking after Phase 1)
       while (cookiesFound < cookiesNeeded) {
-        // 🛡️ CHECK: Pause if cookie-less download attempt is in progress
+        // 🛡️ CHECK: Pause if ANY active downloads (not just cookie-less attempts)
+        const hasActiveNow = hasActiveDownloads();
         let cookieLessInProgress = false;
+        let waitingForStrongCookie = false;
+        
         for (const [id, info] of activeDownloads.entries()) {
           if (info.cookieLessAttemptInProgress === true) {
             cookieLessInProgress = true;
-            break;
+          }
+          if (info.waitingForStrongCookie === true && info.status === 'waiting') {
+            waitingForStrongCookie = true;
           }
         }
         
-        if (cookieLessInProgress) {
-          console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+        // 🛡️ PAUSE if downloads are active (unless waiting for strong cookie)
+        if (hasActiveNow && !waitingForStrongCookie) {
+          if (cookieLessInProgress) {
+            console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+          } else {
+            console.log(`  ⏸️ Pausing cookie generation: Downloads active (${activeDownloads.size})`);
+          }
           break; // Exit loop to pause generation
         }
         
@@ -2738,17 +2775,27 @@ async function generateSingleStrongCookie() {
   const PARALLEL_TESTS = 3;
   
   for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
-    // 🛡️ CHECK: Pause if cookie-less download attempt is in progress
+    // 🛡️ CHECK: Pause if ANY active downloads (not just cookie-less attempts)
+    const hasActiveNow = hasActiveDownloads();
     let cookieLessInProgress = false;
+    let waitingForStrongCookie = false;
+    
     for (const [id, info] of activeDownloads.entries()) {
       if (info.cookieLessAttemptInProgress === true) {
         cookieLessInProgress = true;
-        break;
+      }
+      if (info.waitingForStrongCookie === true && info.status === 'waiting') {
+        waitingForStrongCookie = true;
       }
     }
     
-    if (cookieLessInProgress) {
-      console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+    // 🛡️ PAUSE if downloads are active (unless waiting for strong cookie)
+    if (hasActiveNow && !waitingForStrongCookie) {
+      if (cookieLessInProgress) {
+        console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+      } else {
+        console.log(`  ⏸️ Pausing cookie generation: Downloads active (${activeDownloads.size})`);
+      }
       return false; // Pause generation
     }
     

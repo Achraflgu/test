@@ -306,6 +306,13 @@ class ProxyManager {
     if (workingIndex > -1) {
       this.workingProxies.splice(workingIndex, 1);
     }
+    
+    // 🛡️ Also remove from YouTube-validated proxies if it's there
+    const youtubeIndex = this.youtubeWorkingProxies.indexOf(proxy);
+    if (youtubeIndex > -1) {
+      this.youtubeWorkingProxies.splice(youtubeIndex, 1);
+      console.log(`  🗑️ Removed dead proxy from YouTube-validated list: ${proxy.substring(0, 20)}...`);
+    }
   }
 
   // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs-YouTube > YouTube-Validated > Validated > Free)
