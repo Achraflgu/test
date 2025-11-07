@@ -15,7 +15,14 @@ class ProxyManager {
     
     // 🆕 UPDATED 2025 - Public proxy sources (verified working)
     this.sources = [
-      // 🔥 ProxyScrape V4 API (BEST - 500+ proxies, fast, reliable)
+      // 🌟 ProxyGather - PRE-VALIDATED WORKING PROXIES (Updated every 30 min via GitHub Actions)
+      // These are already checked and working - HIGHEST PRIORITY
+      'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-all.txt',
+      'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-http.txt',
+      'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-socks4.txt',
+      'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-socks5.txt',
+      
+      // 🔥 ProxyScrape V4 API (GOOD - 500+ proxies, fast, reliable)
       'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=20000',
       'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=us',
       'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=ca,gb,de,fr',
