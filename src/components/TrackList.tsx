@@ -400,6 +400,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                   // Enhanced restoration with better timing and stability
                   const setupPlayer = () => {
                     try {
+                      if (!event.target || typeof event.target.getDuration !== 'function') {
+                        console.warn('⚠️ Player not ready yet, deferring setup');
+                        return;
+                      }
+                      
                       const duration = event.target.getDuration();
                       
                       if (duration && duration > 0) {
@@ -416,7 +421,7 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       }
                       
                       // Seek to saved position with stability check
-                      if (savedTime > 0 && savedTime < duration) {
+                      if (savedTime > 0 && savedTime < duration && typeof event.target.seekTo === 'function') {
                         event.target.seekTo(savedTime, true);
                         console.log('⏩ Seeking to:', savedTime + 's');
                       }
@@ -464,6 +469,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     if (attempts > 15) { // Increased attempts for better reliability
                       console.warn('⚠️ Metadata timeout, proceeding anyway');
                       setupPlayer();
+                      return;
+                    }
+                    
+                    if (!event.target || typeof event.target.getDuration !== 'function') {
+                      console.log(`⏳ Player not ready yet... attempt ${attempts + 1}/15`);
+                      setTimeout(() => waitForMetadata(attempts + 1), 300);
                       return;
                     }
                     
@@ -577,26 +588,36 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     setIsRestoringPlayer(false);
                     setPlayerLoadProgress(100);
                     
-                    const duration = event.target.getDuration();
-                    if (duration && duration > 0 && duration !== Infinity) {
-                      setDuration(duration);
+                    if (event.target && typeof event.target.getDuration === 'function') {
+                      const duration = event.target.getDuration();
+                      if (duration && duration > 0 && duration !== Infinity) {
+                        setDuration(duration);
+                      }
                     }
-                    event.target.setVolume(volumeRef.current);
-                    if (isMutedRef.current) {
+                    if (event.target && typeof event.target.setVolume === 'function') {
+                      event.target.setVolume(volumeRef.current);
+                    }
+                    if (isMutedRef.current && event.target && typeof event.target.mute === 'function') {
                       event.target.mute();
-                    } else {
+                    } else if (event.target && typeof event.target.unMute === 'function') {
                       event.target.unMute();
                     }
                   } else if (playerState === (window as any).YT.PlayerState.PAUSED) {
                     setIsPlaying(false);
                   }
                   
-                  // Get duration when state changes
+                  // Get duration when state changes (with safety check)
                   if (playerState === (window as any).YT.PlayerState.PLAYING || 
                       playerState === (window as any).YT.PlayerState.PAUSED) {
-                    const duration = event.target.getDuration();
-                    if (duration && duration > 0 && duration !== Infinity) {
-                      setDuration(duration);
+                    try {
+                      if (event.target && typeof event.target.getDuration === 'function') {
+                        const duration = event.target.getDuration();
+                        if (duration && duration > 0 && duration !== Infinity) {
+                          setDuration(duration);
+                        }
+                      }
+                    } catch (err) {
+                      console.warn('⚠️ getDuration failed:', err);
                     }
                   }
                 },
@@ -1019,10 +1040,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     
     // If same track, toggle play/pause
     if (currentPlayingTrack?.id === track.id && playerRef.current && isPlayerReady) {
-      if (isPlaying) {
+      if (isPlaying && typeof playerRef.current.pauseVideo === 'function') {
         playerRef.current.pauseVideo();
         setIsPlaying(false);
-      } else {
+      } else if (!isPlaying && typeof playerRef.current.playVideo === 'function') {
         playerRef.current.playVideo();
         setIsPlaying(true);
       }
@@ -1404,12 +1425,16 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               setIsRestoringPlayer(false);
               setPlayerLoadProgress(100);
               
-              setDuration(event.target.getDuration());
+              if (event.target && typeof event.target.getDuration === 'function') {
+                setDuration(event.target.getDuration());
+              }
               // Ensure volume is correctly set when playback starts
-              event.target.setVolume(volumeRef.current);
-              if (isMutedRef.current) {
+              if (event.target && typeof event.target.setVolume === 'function') {
+                event.target.setVolume(volumeRef.current);
+              }
+              if (isMutedRef.current && event.target && typeof event.target.mute === 'function') {
                 event.target.mute();
-              } else {
+              } else if (event.target && typeof event.target.unMute === 'function') {
                 event.target.unMute();
               }
             } else if (event.data === (window as any).YT.PlayerState.PAUSED) {
@@ -1590,10 +1615,10 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
     }
     
     try {
-    if (isPlaying) {
+    if (isPlaying && typeof playerRef.current.pauseVideo === 'function') {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
-    } else {
+    } else if (!isPlaying && typeof playerRef.current.playVideo === 'function') {
       playerRef.current.playVideo();
       setIsPlaying(true);
       }
