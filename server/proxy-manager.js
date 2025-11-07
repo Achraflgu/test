@@ -16,6 +16,10 @@ class ProxyManager {
     this.isValidating = false;
     this.isValidatingYouTube = false;
     
+    // 🛡️ Track YouTube failures per proxy (to avoid killing good proxies on first failure)
+    this.proxyYouTubeFailures = new Map(); // Map<proxy, failureCount>
+    this.MAX_YOUTUBE_FAILURES = 3; // Mark proxy as dead after 3 YouTube errors
+    
     // 🌟 OXYLABS Premium Proxy Configuration
     this.oxylabsConfig = null;
     this.oxylabsWorking = false;
@@ -295,6 +299,30 @@ class ProxyManager {
     }
   }
 
+  // Track YouTube failure for a proxy (don't mark dead immediately - wait for multiple failures)
+  trackYouTubeFailure(proxy) {
+    if (!proxy) return false; // No proxy, nothing to track
+    
+    // Extract proxy IP:PORT from proxy string (format: http://IP:PORT or IP:PORT)
+    const proxyMatch = proxy.match(/http:\/\/([^\/]+)/) || [null, proxy];
+    const proxyHost = proxyMatch[1] || proxy;
+    
+    const currentFailures = this.proxyYouTubeFailures.get(proxyHost) || 0;
+    const newFailures = currentFailures + 1;
+    this.proxyYouTubeFailures.set(proxyHost, newFailures);
+    
+    // Only mark as dead after multiple failures (proxy might not work with YouTube)
+    if (newFailures >= this.MAX_YOUTUBE_FAILURES) {
+      console.log(`  🗑️ Proxy failed ${newFailures} times with YouTube errors - marking as dead: ${proxyHost.substring(0, 20)}...`);
+      this.markFailed(proxyHost);
+      this.proxyYouTubeFailures.delete(proxyHost); // Clean up tracking
+      return true; // Proxy was marked as dead
+    } else {
+      console.log(`  ⚠️  Proxy YouTube failure ${newFailures}/${this.MAX_YOUTUBE_FAILURES} (not marking dead yet): ${proxyHost.substring(0, 20)}...`);
+      return false; // Proxy not marked as dead yet
+    }
+  }
+
   // Mark a proxy as failed
   markFailed(proxy) {
     const index = this.proxies.indexOf(proxy);
@@ -313,6 +341,9 @@ class ProxyManager {
       this.youtubeWorkingProxies.splice(youtubeIndex, 1);
       console.log(`  🗑️ Removed dead proxy from YouTube-validated list: ${proxy.substring(0, 20)}...`);
     }
+    
+    // Clean up failure tracking
+    this.proxyYouTubeFailures.delete(proxy);
   }
 
   // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs-YouTube > YouTube-Validated > Validated > Free)
