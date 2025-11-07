@@ -2078,8 +2078,11 @@ async function regenerateSingleCookie(slotIndex) {
     const recentFailures = global['cookie_regeneration_failures'] || 0;
     const PARALLEL_GENERATION = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : 3); // Adaptive: 3→2→1
     let attempts = 0;
-    const maxAttempts = 30; // Reduced from 50 to avoid long loops
+    const maxAttempts = Infinity; // 🔥 INFINITE REGENERATION - Keep trying until we get a STRONG cookie!
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
+    
+    console.log(`  🔄 Starting INFINITE regeneration loop (will keep trying until STRONG cookie found)...`);
+    console.log(`  🌟 Using Oxylabs premium proxy for all attempts`);
     
     while (attempts < maxAttempts) {
       attempts += PARALLEL_GENERATION;
@@ -2168,16 +2171,16 @@ async function regenerateSingleCookie(slotIndex) {
         return true;
       }
       
-      // Show progress every 10 attempts
-      if (attempts % 10 === 0) {
-        console.log(`  ⏳ Regeneration attempt ${attempts}/${maxAttempts}... (looking for STRONG cookies)`);
+      // Show progress every 10 attempts (but not for infinite loop)
+      if (attempts % 10 === 0 && attempts > 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        console.log(`  ⏳ Regeneration attempt ${attempts}... (${elapsed}s elapsed, still trying for STRONG cookie)`);
+        console.log(`  🌟 Oxylabs proxy active - continuing until success...`);
       }
     }
     
-    // 🔥 TRACK FAILURES: If regeneration failed, increment counter
-    global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + 1;
-    console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${attempts} attempts (no STRONG cookies found)`);
-    console.log(`  💡 Tip: Consider using real browser cookies if all generated cookies fail`);
+    // This should never be reached with Infinity, but just in case:
+    console.log(`⚠️ Regeneration loop ended unexpectedly for slot ${slotIndex + 1} after ${attempts} attempts`);
     // Release lock
     activeRegenerations.delete(slotIndex);
     return false;
@@ -2622,10 +2625,15 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
 
 // 🚀 GENERATE SINGLE STRONG COOKIE (for fast startup)
 async function generateSingleStrongCookie() {
-  const MAX_ATTEMPTS = 30;
+  const MAX_ATTEMPTS = Infinity; // 🔥 INFINITE - Keep trying until we get a STRONG cookie!
   const PARALLEL_TESTS = 3;
+  const startTime = Date.now();
   
-  for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
+  console.log(`  🔄 Starting INFINITE generation loop (will keep trying until STRONG cookie found)...`);
+  console.log(`  🌟 Using Oxylabs premium proxy for all attempts`);
+  
+  let batch = 1;
+  while (true) { // Infinite loop - will break when STRONG cookie found
     // Generate 3 cookies in parallel
     const cookiePromises = [];
     for (let i = 0; i < PARALLEL_TESTS; i++) {
@@ -2656,17 +2664,26 @@ async function generateSingleStrongCookie() {
           quality: 'strong',
           visitorData: results[i].cookieData.visitorData
         });
-        console.log(`    ✅ Generated STRONG cookie (batch ${batch}/${MAX_ATTEMPTS / PARALLEL_TESTS})`);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        console.log(`    ✅ Generated STRONG cookie (batch ${batch}, ${elapsed}s elapsed)`);
         return true;
       }
     }
     
     // All failed, wait before retry
-    if (batch < MAX_ATTEMPTS / PARALLEL_TESTS) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Show progress every 10 batches
+    if (batch % 10 === 0) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      console.log(`  ⏳ Generation attempt batch ${batch}... (${elapsed}s elapsed, still trying for STRONG cookie)`);
+      console.log(`  🌟 Oxylabs proxy active - continuing until success...`);
     }
+    
+    batch++;
   }
   
+  // This should never be reached, but just in case:
   return false;
 }
 
