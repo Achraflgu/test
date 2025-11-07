@@ -315,10 +315,8 @@ class ProxyManager {
     if (this.oxylabsConfig && this.oxylabsWorksWithYouTube) {
       console.log('   🌟 Using Oxylabs premium proxy (residential) - verified working with YouTube');
       return this.oxylabsConfig.residential;
-    } else if (this.oxylabsConfig && !this.oxylabsWorksWithYouTube) {
-      // Oxylabs configured but doesn't work with YouTube - skip it
-      console.log('   ⏭️  Skipping Oxylabs (doesn\'t work with YouTube) - using YouTube-validated proxies');
     }
+    // Note: If Oxylabs doesn't work with YouTube, silently skip it (no spam)
     
     // 🎯 PRIORITY 2: YouTube-validated proxies (BEST for YouTube - tested specifically!)
     if (this.youtubeWorkingProxies.length > 0) {

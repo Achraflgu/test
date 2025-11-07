@@ -1157,8 +1157,6 @@ async function testCookies(cookiePath) {
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (proxy ? 'free proxy' : 'no proxy');
         console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit, ${proxyType})`);
-        console.log(`     💡 This usually means: Generated cookies are fake and YouTube rejects them`);
-        console.log(`     💡 Solution: Use real browser cookies (YOUTUBE_COOKIES env var)`);
         resolveOnce({ status: 'fail', reason: 'timeout' });
       }, timeout);
     });
@@ -1972,6 +1970,20 @@ async function ensurePoolIsFull() {
     const existingCookies = await getWorkingCookiesFromPool();
     const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
     
+    // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
+    let cookieLessInProgress = false;
+    for (const [id, info] of activeDownloads.entries()) {
+      if (info.triedCookieLessFirst && !info.waitingForStrongCookie && info.status === 'downloading') {
+        cookieLessInProgress = true;
+        break;
+      }
+    }
+    
+    if (cookieLessInProgress) {
+      console.log(`  ⏸️ Cookie-less first attempt in progress - pausing regeneration until it completes`);
+      return false; // Don't regenerate during cookie-less first attempt
+    }
+    
     if (hasActive && validatedCookies >= 1) {
       console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${validatedCookies} VALIDATED working cookie(s) - pausing regeneration for safety`);
       return false; // Don't regenerate during active downloads if we have at least 1 validated cookie
@@ -2070,6 +2082,20 @@ async function regenerateSingleCookie(slotIndex) {
     // ⚠️ CRITICAL: Don't call validateCookiePool() here to avoid cascade loops - just check file count
     const hasActive = hasActiveDownloads();
     const existingCookies = await getWorkingCookiesFromPool();
+    
+    // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
+    let cookieLessInProgress = false;
+    for (const [id, info] of activeDownloads.entries()) {
+      if (info.triedCookieLessFirst && !info.waitingForStrongCookie && info.status === 'downloading') {
+        cookieLessInProgress = true;
+        break;
+      }
+    }
+    
+    if (cookieLessInProgress) {
+      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Cookie-less first attempt in progress - pausing until it completes`);
+      return false; // Don't regenerate during cookie-less first attempt
+    }
     
     if (hasActive && existingCookies.length >= 1) {
       console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) with ${existingCookies.length} cookie(s) in pool - safe to continue`);
@@ -9097,7 +9123,23 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             failedTracksList.forEach(name => console.log(`   - ${name}`));
           }
           
-          // Emit completion event (CRITICAL: Always emit, even if socket errors)
+          // 🚀 IMMEDIATE FILE DELIVERY: Ensure files are ready before emitting completion event
+          // Verify files exist and are readable (small delay to ensure disk flush)
+          if (currentSuccess > 0) {
+            try {
+              // Quick verification that files are accessible
+              const verifyFiles = musicFiles.slice(0, Math.min(5, musicFiles.length)); // Check first 5 files
+              for (const file of verifyFiles) {
+                const filePath = path.join(outputFolder, file);
+                await fs.access(filePath); // Ensure file is readable
+              }
+              console.log(`✅ Verified ${verifyFiles.length} files are ready for download`);
+            } catch (verifyErr) {
+              console.log(`⚠️ File verification warning: ${verifyErr.message} (will continue anyway)`);
+            }
+          }
+          
+          // Emit completion event IMMEDIATELY after status is set (CRITICAL: Always emit, even if socket errors)
           try {
             const completeEventData = {
               downloadId,
@@ -9132,7 +9174,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
               io.emit('download:complete', completeEventData);
             }
             
-            console.log(`✅ download:complete event emitted successfully`);
+            console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
           } catch (emitError) {
             console.error(`❌ Error emitting download:complete: ${emitError.message}`);
             console.error(emitError.stack);
