@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import archiver from 'archiver';
 import { proxyManager } from './proxy-manager.js';
 import youtubedl from 'youtube-dl-exec';
-import { Innertube, UniversalCache } from 'youtubei.js';
+// PO Token system removed - not functional and slowed down cookie generation
 import { 
   isRedisAvailable,
   saveCookieToRedis,
@@ -528,30 +528,7 @@ const COOKIE_POOL_SIZE = 5;
 let cookiePoolIndex = 0; // Round-robin rotation
 const COOKIE_POOL_METADATA_PATH = path.join(__dirname, '.cookie_pool_metadata.json');
 
-/**
- * Inject PO token into yt-dlp extractor args
- * @param {string} baseArgs - Base extractor args (e.g., 'youtube:player_client=android')
- * @param {string} poToken - PO token to inject
- * @param {string} visitorData - Visitor data to inject
- * @returns {string} - Enhanced extractor args with PO token
- */
-function injectPOToken(baseArgs, poToken, visitorData) {
-  if (!poToken || !visitorData) {
-    return baseArgs;
-  }
-  
-  // YouTube extractor args format: youtube:key1=value1;key2=value2
-  // Add po_token and visitor_data parameters
-  const tokenParams = `po_token=${poToken};visitor_data=${visitorData}`;
-  
-  if (baseArgs.includes('youtube:')) {
-    // Add to existing youtube: args
-    return `${baseArgs};${tokenParams}`;
-  } else {
-    // Create new youtube: args
-    return `youtube:${tokenParams}`;
-  }
-}
+// PO Token injection removed - system was non-functional
 
 // 🎯 CLIENT PROFILES FOR YOUTUBE DL EXEC
 const COOKIE_CLIENT_PROFILES = [
@@ -1126,175 +1103,34 @@ async function testCookies(cookiePath) {
 }
 
 // ====================================
-// 🔐 PO TOKEN GENERATION SYSTEM
+// 🍪 SMART COOKIE GENERATION SYSTEM
 // ====================================
-// PO (Proof of Origin) tokens are required by YouTube for authentication
-// This system generates and caches tokens to bypass bot detection
+// Generates realistic YouTube cookies with proper randomization
+// Note: PO Token system removed (was non-functional and slowed generation)
 
-// Token cache storage
-let poTokenCache = {
-  token: null,
-  visitorData: null,
-  expiresAt: 0,
-  innertubeInstance: null
-};
-
-// Token generation lock
-let isGeneratingToken = false;
-let tokenGenerationPromise = null;
-
-/**
- * Generate PO Token using Innertube
- * This creates a real YouTube session and extracts authentication tokens
- */
-async function generatePOToken() {
-  // Return cached token if still valid
-  if (poTokenCache.token && poTokenCache.expiresAt > Date.now()) {
-    const ttl = Math.floor((poTokenCache.expiresAt - Date.now()) / 1000);
-    console.log(`  ✅ Using cached PO token (expires in ${ttl}s)`);
-    return {
-      token: poTokenCache.token,
-      visitorData: poTokenCache.visitorData
-    };
-  }
-
-  // Prevent concurrent token generation
-  if (isGeneratingToken && tokenGenerationPromise) {
-    console.log(`  ⏳ PO token generation already in progress, waiting...`);
-    return await tokenGenerationPromise;
-  }
-
-  // Set lock and create promise
-  isGeneratingToken = true;
-  tokenGenerationPromise = (async () => {
-    try {
-      console.log(`  🔐 Generating new PO token...`);
-      
-      // Create Innertube instance with universal cache
-      const youtube = await Innertube.create({
-        cache: new UniversalCache(false), // Disable persistent cache
-        generate_session_locally: true
-      });
-
-      // Extract PO token and visitor data from session
-      const poToken = youtube.session.po_token;
-      const visitorData = youtube.session.context.client.visitorData;
-
-      if (!poToken) {
-        throw new Error('Failed to generate PO token from Innertube session');
-      }
-
-      // Cache the token (valid for 2 hours)
-      poTokenCache = {
-        token: poToken,
-        visitorData: visitorData,
-        expiresAt: Date.now() + (2 * 60 * 60 * 1000), // 2 hours
-        innertubeInstance: youtube
-      };
-
-      console.log(`  ✅ PO token generated successfully`);
-      console.log(`  📊 Token: ${poToken.substring(0, 20)}...`);
-      console.log(`  📊 Visitor Data: ${visitorData}`);
-
-      return {
-        token: poToken,
-        visitorData: visitorData
-      };
-
-    } catch (err) {
-      console.log(`  ❌ PO token generation failed: ${err.message}`);
-      // Clear cache on failure
-      poTokenCache = {
-        token: null,
-        visitorData: null,
-        expiresAt: 0,
-        innertubeInstance: null
-      };
-      return null;
-    } finally {
-      isGeneratingToken = false;
-      tokenGenerationPromise = null;
-    }
-  })();
-
-  return await tokenGenerationPromise;
-}
-
-/**
- * Get current PO token or generate new one
- */
-async function getPOToken() {
-  try {
-    const result = await generatePOToken();
-    return result;
-  } catch (err) {
-    console.log(`  ⚠️ Failed to get PO token: ${err.message}`);
-    return null;
-  }
-}
-
-/**
- * Refresh PO token if expired or about to expire
- */
-async function refreshPOTokenIfNeeded() {
-  const timeUntilExpiry = poTokenCache.expiresAt - Date.now();
-  const shouldRefresh = timeUntilExpiry < (30 * 60 * 1000); // Refresh if < 30 min remaining
-
-  if (shouldRefresh) {
-    console.log(`  🔄 PO token expiring soon (${Math.floor(timeUntilExpiry / 1000)}s left), refreshing...`);
-    return await generatePOToken();
-  }
-
-  return {
-    token: poTokenCache.token,
-    visitorData: poTokenCache.visitorData
-  };
-}
-
-// Generate professional YouTube cookies
-// 🎯 PERSISTENT VALUES - Like a real browser (don't regenerate randomly)
-let persistentVisitorId = null;
-let persistentDeviceId = null;
-let persistentNID = null;
-
-// 🚀 SMART COOKIE GENERATION with realistic patterns + PO Token integration
-async function generateRealisticYouTubeCookies(attempt = 0, withPOToken = true) {
+// 🚀 SMART COOKIE GENERATION with realistic patterns and proper randomization
+async function generateRealisticYouTubeCookies(attempt = 0) {
   try {
     console.log(`  🤖 Generating smart YouTube cookies (attempt ${attempt + 1})...`);
-    
-    // 🔐 Generate PO token if enabled
-    let poTokenData = null;
-    if (withPOToken) {
-      try {
-        poTokenData = await getPOToken();
-        if (poTokenData) {
-          console.log(`  🔐 PO token integrated with cookies`);
-        }
-      } catch (err) {
-        console.log(`  ⚠️ Failed to integrate PO token: ${err.message}`);
-      }
-    }
     
     // Realistic timestamps and expiry (more authentic patterns)
     const timestamp = Date.now();
     const now = Math.floor(timestamp / 1000);
     const shortExpiry = now + (7 * 24 * 60 * 60);      // 7 days (session)
-    const mediumExpiry = now + (180 * 24 * 60 * 60);   // 180 days (visitor) - increased from 90
-    const longExpiry = now + (365 * 24 * 60 * 60);     // 365 days (persistent) - reduced from 400
+    const mediumExpiry = now + (180 * 24 * 60 * 60);   // 180 days (visitor)
+    const longExpiry = now + (365 * 24 * 60 * 60);     // 365 days (persistent)
     
-    // 🎯 PERSISTENT VISITOR ID (prefer from PO token, fallback to random)
-    if (poTokenData && poTokenData.visitorData) {
-      persistentVisitorId = poTokenData.visitorData;
-      console.log(`  🔐 Using visitor ID from PO token`);
-    } else if (!persistentVisitorId || attempt % 20 === 0) {
-      // Regenerate every 20 attempts to get fresh patterns
+    // 🎯 UNIQUE VISITOR ID (CRITICAL FIX: Generate unique per cookie!)
+    const generateVisitorInfo = () => {
       const start = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-      persistentVisitorId = start.charAt(Math.floor(Math.random() * start.length));
+      let result = start.charAt(Math.floor(Math.random() * start.length));
       for (let i = 0; i < 10; i++) {
-        persistentVisitorId += chars.charAt(Math.floor(Math.random() * chars.length));
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
-    }
+      return result;
+    };
+    const visitorInfo = generateVisitorInfo();
     
     // Generate realistic YSC (12 chars, varies per session)
     const generateYSC = () => {
@@ -1307,8 +1143,8 @@ async function generateRealisticYouTubeCookies(attempt = 0, withPOToken = true) 
     };
     
     // More realistic PREF value (YouTube preferences) with language support
-    const timezones = ['America/New_York', 'America/Los_Angeles', 'America/Chicago', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney'];
-    const languages = ['en', 'en-US', 'en-GB', 'fr', 'de', 'es', 'ja', 'zh'];
+    const timezones = ['America/New_York', 'America/Los_Angeles', 'America/Chicago', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney', 'America/Toronto', 'Europe/Madrid', 'Asia/Seoul'];
+    const languages = ['en', 'en-US', 'en-GB', 'fr', 'de', 'es', 'ja', 'zh', 'ko', 'pt', 'it', 'ru'];
     const lang = languages[Math.floor(Math.random() * languages.length)];
     const tz = timezones[Math.floor(Math.random() * timezones.length)];
     const f4Value = Math.floor(Math.random() * 100000000);
@@ -1323,15 +1159,16 @@ async function generateRealisticYouTubeCookies(attempt = 0, withPOToken = true) 
     const consentId = Math.floor(100 + Math.random() * 900);
     const consentValue = `YES+cb.${year}${month}${day}-${consentId}-p.m.F+FsF`;
     
-    // 🎯 PERSISTENT NID (Google Network ID - regenerate occasionally for freshness)
-    if (!persistentNID || attempt % 15 === 0) {
+    // 🎯 UNIQUE NID per cookie (CRITICAL FIX: Was causing bot detection!)
+    const generateNID = () => {
       const nidChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-      let nid = `${Math.floor(100 + Math.random() * 900)}=`;
-      for (let i = 0; i < 70; i++) { // Increased length for realism
+      let nid = `${Math.floor(500 + Math.random() * 100)}=`; // Version 500-599
+      for (let i = 0; i < 70; i++) {
         nid += nidChars.charAt(Math.floor(Math.random() * nidChars.length));
       }
-      persistentNID = nid;
-    }
+      return nid;
+    };
+    const nidValue = generateNID();
     
     // Generate realistic session IDs
     const generateSessionId = (length) => {
@@ -1353,32 +1190,36 @@ async function generateRealisticYouTubeCookies(attempt = 0, withPOToken = true) 
       return result;
     };
     
-    // Generate realistic device info and privacy metadata (varies by region)
-    const privacyValues = ['CgJVUxIA', 'CgJFVRIA', 'CgJHQhIA', 'CgJDQRIA', 'CgJBVRIA', 'CgJERRIA'];
+    // Generate realistic device info and privacy metadata (MORE VARIANTS!)
+    const privacyValues = ['CgJVUxIA', 'CgJFVRIA', 'CgJHQhIA', 'CgJDQRIA', 'CgJBVRIA', 'CgJERRIA', 'CgJGUhIA', 'CgJKUBIA', 'CgJLUhIA', 'CgJJVBIA'];
     const privacyMetadata = privacyValues[Math.floor(Math.random() * privacyValues.length)];
     const deviceInfoValues = [
       'ChxOT0IfYXZhaWxhYmxlGAE%3D',
       'ChROT0lfYXZhaWxhYmxlGAE%3D',
       'ChxOT0lfYXZhaWxhYmxlGAI%3D',
-      'ChROT0IfYXZhaWxhYmxlGAI%3D'
+      'ChROT0IfYXZhaWxhYmxlGAI%3D',
+      'ChxOT0lfYXZhaWxhYmxlGAA%3D',
+      'ChROT0lfYXZhaWxhYmxlGAA%3D',
+      'ChxOT0lfYXZhaWxhYmxlGAM%3D',
+      'ChROT0IfYXZhaWxhYmxlGAM%3D'
     ];
     const deviceInfo = deviceInfoValues[Math.floor(Math.random() * deviceInfoValues.length)];
     
-    // 🚀 ENHANCED COOKIE SET with more realistic values and patterns
+    // 🚀 ENHANCED COOKIE SET with unique values per cookie
     const cookieContent = `# Netscape HTTP Cookie File
 # This is a generated file. Do not edit.
 # Smart-generated by TrackM Backend - ${new Date().toISOString()}
 # Generation attempt: ${attempt + 1}
 
-# ⭐ Core YouTube Authentication (PERSISTENT - like real browser)
-.youtube.com	TRUE	/	TRUE	${mediumExpiry}	VISITOR_INFO1_LIVE	${persistentVisitorId}
+# ⭐ Core YouTube Authentication (UNIQUE per cookie)
+.youtube.com	TRUE	/	TRUE	${mediumExpiry}	VISITOR_INFO1_LIVE	${visitorInfo}
 .youtube.com	TRUE	/	FALSE	${shortExpiry}	YSC	${generateYSC()}
 .youtube.com	TRUE	/	TRUE	${longExpiry}	PREF	${prefValue}
 .youtube.com	TRUE	/	TRUE	${longExpiry}	CONSENT	${consentValue}
 .youtube.com	TRUE	/	FALSE	${shortExpiry}	GPS	1
 
-# ⭐ Critical Google Auth Cookies (REQUIRED for authentication - enhanced patterns)
-.google.com	TRUE	/	TRUE	${longExpiry}	NID	${persistentNID}
+# ⭐ Critical Google Auth Cookies (UNIQUE NID per cookie - CRITICAL!)
+.google.com	TRUE	/	TRUE	${longExpiry}	NID	${nidValue}
 .google.com	TRUE	/	TRUE	${longExpiry}	SID	${generateHexSession(16)}
 .google.com	TRUE	/	TRUE	${longExpiry}	HSID	A${generateHexSession(15)}
 .google.com	TRUE	/	TRUE	${longExpiry}	SSID	A${generateHexSession(15)}
@@ -1407,11 +1248,10 @@ async function generateRealisticYouTubeCookies(attempt = 0, withPOToken = true) 
 .google.com	TRUE	/	FALSE	${shortExpiry}	SIDCC	AQhGp9s${generateSessionId(30)}
 `;
     
-    // Return both cookie content and PO token data
+    // Return cookie content (removed PO token references)
     return {
       cookieContent,
-      poToken: poTokenData?.token || null,
-      visitorData: poTokenData?.visitorData || persistentVisitorId
+      visitorData: visitorInfo
     };
   } catch (err) {
     console.log(`  ⚠️ Cookie generation failed: ${err.message}`);
@@ -1650,19 +1490,13 @@ async function generateAndTestCookies(maxAttempts = 100) {
           
           const testPromise = (async () => {
             try {
-              // Generate cookies with PO token
-              const cookieData = await generateRealisticYouTubeCookies(attempt, true);
+              // Generate cookies
+              const cookieData = await generateRealisticYouTubeCookies(attempt);
               if (!cookieData || !cookieData.cookieContent) return { success: false, attempt };
               
               // Save to temp file
               const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}_${i}.txt`);
               await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
-              
-              // Store PO token with the cookie for later use
-              const poTokenData = {
-                poToken: cookieData.poToken,
-                visitorData: cookieData.visitorData
-              };
               
               // Test cookies (5s timeout)
               const testResult = await testCookies(tempCookiePath);
@@ -1676,7 +1510,6 @@ async function generateAndTestCookies(maxAttempts = 100) {
                 quality: testResult?.status || 'fail',
                 attempt, 
                 cookieContent: cookieData.cookieContent,
-                poToken: cookieData.poToken,
                 visitorData: cookieData.visitorData,
                 tempPath: tempCookiePath
               };
@@ -2118,7 +1951,6 @@ async function regenerateSingleCookie(slotIndex) {
               return { 
                 content: cookieData.cookieContent, 
                 quality: 'strong',
-                poToken: cookieData.poToken,
                 visitorData: cookieData.visitorData
               };
             }
@@ -2641,10 +2473,10 @@ async function generateSingleStrongCookie() {
   const PARALLEL_TESTS = 3;
   
   for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
-    // Generate 3 cookies in parallel with PO tokens
+    // Generate 3 cookies in parallel
     const cookiePromises = [];
     for (let i = 0; i < PARALLEL_TESTS; i++) {
-      cookiePromises.push(generateRealisticYouTubeCookies(batch * PARALLEL_TESTS + i, true));
+      cookiePromises.push(generateRealisticYouTubeCookies(batch * PARALLEL_TESTS + i));
     }
     
     const cookieDataArray = await Promise.all(cookiePromises);
@@ -2666,13 +2498,12 @@ async function generateSingleStrongCookie() {
     // Find first STRONG cookie
     for (let i = 0; i < results.length; i++) {
       if (results[i] && results[i].result && results[i].result.status === 'strong') {
-        // Save it to slot 0 with PO token metadata
+        // Save it to slot 0
         await saveCookieToPool(results[i].cookieData.cookieContent, 0, { 
           quality: 'strong',
-          poToken: results[i].cookieData.poToken,
           visitorData: results[i].cookieData.visitorData
         });
-        console.log(`    ✅ Generated STRONG cookie with PO token (batch ${batch}/${MAX_ATTEMPTS / PARALLEL_TESTS})`);
+        console.log(`    ✅ Generated STRONG cookie (batch ${batch}/${MAX_ATTEMPTS / PARALLEL_TESTS})`);
         return true;
       }
     }
@@ -6838,23 +6669,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const profileList = cookiePath ? COOKIE_CLIENT_PROFILES : COOKIELESS_CLIENT_PROFILES;
     const profile = profileList[clientAttempt % profileList.length];
     
-    // 🔐 Get PO token and inject into profile
-    const poTokenData = await refreshPOTokenIfNeeded();
-    if (poTokenData && poTokenData.token) {
-      console.log(`  🔐 Injecting PO token into download request`);
-      // Clone profile to avoid modifying the original
-      const enhancedProfile = { ...profile };
-      enhancedProfile.extractorArgs = injectPOToken(
-        profile.extractorArgs, 
-        poTokenData.token, 
-        poTokenData.visitorData
-      );
-      applyClientProfileToOptions(downloadOptions, enhancedProfile);
-      console.log(`  🤖 Client profile: ${profile.name} with PO token (attempt ${clientAttempt + 1})`);
-    } else {
-      applyClientProfileToOptions(downloadOptions, profile);
-      console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
-    }
+    // Apply client profile (PO token system removed - was non-functional)
+    applyClientProfileToOptions(downloadOptions, profile);
+    console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
     
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
