@@ -2305,6 +2305,7 @@ async function regenerateSingleCookie(slotIndex) {
       
       if (hasActiveNow && !waitingForStrongCookie) {
         console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
+        activeRegenerations.delete(slotIndex); // 🔧 FIX: Release lock so regeneration can resume later
         return false; // Pause regeneration
       }
       
