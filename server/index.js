@@ -1016,7 +1016,21 @@ async function testCookies(cookiePath) {
 
     // 🌐 ADD PROXY SUPPORT (bypass IP ban during cookie testing)
     // Use proxy manager which automatically handles Oxylabs > Free proxies priority
-    const proxy = proxyManager.getProxyForYtdlp();
+    let proxy = null;
+    
+    // Try to get proxy (with retry if proxy manager not ready yet)
+    for (let retry = 0; retry < 3; retry++) {
+      proxy = proxyManager.getProxyForYtdlp();
+      if (proxy) break;
+      
+      // If no proxy and we have Oxylabs credentials, wait a bit for initialization
+      if (process.env.OXYLABS_USERNAME && process.env.OXYLABS_PASSWORD && retry < 2) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s
+        continue;
+      }
+      break;
+    }
+    
     if (proxy) {
       testArgs.push('--proxy', proxy);
       // Show which type of proxy is being used
@@ -1032,7 +1046,7 @@ async function testCookies(cookiePath) {
       testArgs.push('--proxy', scraperProxy);
       console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
     } else {
-      console.log(`  ⚠️  No proxy available for cookie testing`);
+      console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
     }
 
     return await new Promise((resolve) => {
@@ -1110,12 +1124,16 @@ async function testCookies(cookiePath) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
+      // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
+      const isOxylabs = proxy && proxy.includes('oxylabs.io');
+      const timeout = isOxylabs ? 30000 : 12000; // 30s for Oxylabs, 12s for free proxies
+      
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
-        console.log('  ❌ Cookie test timeout - rejecting');
+        console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit)`);
         resolveOnce({ status: 'fail', reason: 'timeout' });
-      }, 12000);
+      }, timeout);
     });
   } catch (err) {
     console.log(`  ❌ Cookie test failed: ${err.message}`);
@@ -2785,11 +2803,8 @@ async function initializeAutoCookies() {
 }
 
 // Initialize auto-cookies on server startup
-initializeAutoCookies().then(cookiePath => {
-  if (cookiePath) {
-    // Already logged in initializeAutoCookies()
-  }
-});
+// ⚠️ MOVED TO STARTUP SEQUENCE - Must wait for proxy system to initialize first!
+// initializeAutoCookies() is now called AFTER proxy system is ready (see startupSequence)
 
 // 🎯 PERIODIC POOL MAINTENANCE - Ensure 5/5 cookies always available
 // Runs every 5 minutes to check and fill missing slots (only when downloads are idle)
@@ -10723,6 +10738,19 @@ startupSequence().then(async () => {
     console.log('   ❌ YouTube downloads will fail 100% - configure Oxylabs or free proxies');
   }
   console.log('');
+  
+  // 🍪 NOW initialize cookies AFTER proxies are ready!
+  console.log('🍪 Initializing cookie system (proxies ready)...');
+  initializeAutoCookies().then(cookiePath => {
+    if (cookiePath) {
+      console.log('✅ Cookie system initialized');
+    } else {
+      console.log('⚠️  Cookie initialization in progress (will retry on first download)');
+    }
+  }).catch(err => {
+    console.log('⚠️  Cookie initialization error:', err.message);
+    console.log('   Will retry on first download request');
+  });
   
   httpServer.listen(PORT, () => {
     console.log(`
