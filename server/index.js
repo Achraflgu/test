@@ -1317,8 +1317,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
       const MAX_TIME = 180000; // Safety limit: 3 minutes max
       const PHASE1_TIME = 90000; // Phase 1: Get 2-3 STRONG cookies quickly (90s max)
       
-      // 🎯 HYBRID ADAPTIVE STRATEGY
-      const MIN_STRONG_FOR_OPERATION = 2; // System can work with 2 strong cookies
+      // 🎯 HYBRID ADAPTIVE STRATEGY - AGGRESSIVE: Start downloads ASAP!
+      const MIN_STRONG_FOR_OPERATION = 1; // System can work with just 1 strong cookie (changed from 2)
       const TARGET_STRONG_COOKIES = 3; // Ideal: 3 strong cookies
       const TARGET_TOTAL_COOKIES = 5; // Final goal: 5 total
       
@@ -1330,8 +1330,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       console.log(`🔄 Starting HYBRID ADAPTIVE cookie generation with ${PARALLEL_TESTS} parallel tests...`);
-      console.log(`🎯 Strategy: Phase 1 (${PHASE1_TIME/1000}s): Get ${MIN_STRONG_FOR_OPERATION}-${TARGET_STRONG_COOKIES} STRONG cookies`);
-      console.log(`🎯 Strategy: Phase 2 (background): Fill remaining slots to ${TARGET_TOTAL_COOKIES} total`);
+      console.log(`🎯 Strategy: Phase 1 (${PHASE1_TIME/1000}s): Get ${MIN_STRONG_FOR_OPERATION}+ STRONG cookie (downloads resume ASAP!)`);
+      console.log(`🎯 Strategy: Phase 2 (background after downloads): Fill remaining slots to ${TARGET_TOTAL_COOKIES} total`);
       console.log(`📊 Target: ${cookiesNeeded} new cookies (${existingIndices.length}/${COOKIE_POOL_SIZE} already exist)`);
       console.log(`🛡️ Safety limits: ${MAX_BATCHES} batches max, ${MAX_TIME/1000}s timeout`);
       
@@ -1410,18 +1410,18 @@ async function generateAndTestCookies(maxAttempts = 100) {
         if (elapsed > PHASE1_TIME && !phase1Complete) {
           phase1Complete = true;
           if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
-            console.log(`\n✅ Phase 1 complete: ${strongCookiesFound} STRONG cookies (${elapsed/1000}s)`);
-            console.log(`🔄 Phase 2: Continuing in background to fill remaining slots...`);
-            // Don't break - continue to Phase 2
+            console.log(`\n✅ Phase 1 complete: ${strongCookiesFound} STRONG cookie(s) (${elapsed/1000}s) - DOWNLOADS CAN START!`);
+            console.log(`🔄 Phase 2: Will resume filling remaining slots to 5/5 AFTER downloads complete`);
+            // Don't break - but downloads can now proceed
           } else {
-            console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION})`);
+            console.log(`\n⚠️ Phase 1 timeout: Only ${strongCookiesFound} STRONG (need ${MIN_STRONG_FOR_OPERATION} minimum)`);
             // If we've tried many batches with no success, give up faster
             if (batch >= 10 && strongCookiesFound === 0) {
               console.log(`❌ No cookies found after ${batch} batches - YouTube bot detection is too aggressive`);
               console.log(`💡 System will proceed without cookies using cookie-less methods`);
               break; // Stop trying earlier if completely failing
             }
-            console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookies...`);
+            console.log(`🔄 Continuing to find ${MIN_STRONG_FOR_OPERATION - strongCookiesFound} more STRONG cookie(s)...`);
             // Continue trying (don't break)
           }
         }
@@ -1608,11 +1608,12 @@ async function generateAndTestCookies(maxAttempts = 100) {
             
             cookiesFound++;
             
-            // 🎯 Early exit: If we have 2+ STRONG in Phase 1, we can continue in background
+            // 🎯 Early exit: If we have 1+ STRONG cookie, downloads can start IMMEDIATELY!
             if (inPhase1 && strongCookiesFound >= MIN_STRONG_FOR_OPERATION && !phase1Complete) {
               phase1Complete = true;
-              console.log(`  ✅ Phase 1 complete: ${strongCookiesFound} STRONG cookies (system ready)`);
-              console.log(`  🔄 Phase 2: Continuing in background to reach ${TARGET_TOTAL_COOKIES} total...`);
+              console.log(`\n🎉 Phase 1 complete: ${strongCookiesFound} STRONG cookie(s) - DOWNLOADS CAN START IMMEDIATELY!`);
+              console.log(`🔄 Phase 2: Will resume filling to ${TARGET_TOTAL_COOKIES}/5 AFTER all downloads complete`);
+              // Downloads can now proceed - generation will pause when downloads start
             }
           }
           
@@ -1648,10 +1649,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
         console.log(`\n🎉 SUCCESS! Cookie pool FULL: ${totalCookies}/${TARGET_TOTAL_COOKIES} working cookies after ${elapsed}s`);
         console.log(`📊 Final: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM`);
       } else if (strongCookiesFound >= MIN_STRONG_FOR_OPERATION) {
-        console.log(`\n✅ OPERATIONAL: System ready with ${strongCookiesFound} STRONG cookies (${elapsed}s)`);
-        console.log(`📊 Current: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${totalCookies} total`);
+        console.log(`\n✅ OPERATIONAL: System ready with ${strongCookiesFound} STRONG cookie(s) - DOWNLOADS CAN START! (${elapsed}s)`);
+        console.log(`📊 Current: ${strongCookiesFound} STRONG / ${mediumCookiesFound} MEDIUM / ${totalCookies}/${TARGET_TOTAL_COOKIES} total`);
         if (totalCookies < TARGET_TOTAL_COOKIES) {
-          console.log(`🔄 Background: Continuing to fill remaining ${TARGET_TOTAL_COOKIES - totalCookies} slots...`);
+          console.log(`🔄 Phase 2: Will resume filling remaining ${TARGET_TOTAL_COOKIES - totalCookies} slots AFTER downloads complete`);
         }
       } else if (totalCookies > 0) {
         console.log(`\n⚠️ PARTIAL: Cookie pool has ${totalCookies} cookies (${strongCookiesFound} STRONG) after ${elapsed}s`);
@@ -3574,7 +3575,7 @@ async function checkAndUpdateVersions() {
   // Auto-update Python tools (with error handling to prevent crashes)
   console.log('🔄 Updating Python tools (yt-dlp, spotdl)...');
   try {
-    await updateDependencies();
+  await updateDependencies();
   } catch (error) {
     console.log('⚠️ Python tools update failed:', error.message);
     console.log('   Server will continue with existing installations');
@@ -5703,6 +5704,11 @@ app.post('/api/download/start', async (req, res) => {
       });
       
       console.log(`✅ Events emitted successfully for downloadId: ${downloadId}`);
+      
+      // 🔄 Check if we should resume regeneration after instant download
+      setTimeout(() => {
+        checkAndResumeRegeneration().catch(() => {});
+      }, 2000);
       
       return;
     } catch (error) {
@@ -8507,6 +8513,39 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       return;
     }
     
+    // 🛡️ AGGRESSIVE COOKIE CHECK: Pause download if cookies drop to 0 DURING download
+    const currentCookies = await getWorkingCookiesFromPool();
+    if (currentCookies.length === 0 && attempt > 1) {
+      console.log(`\n⏸️ DOWNLOAD PAUSED: All cookies died during download - emergency regeneration!`);
+      socket.emit('download:status', {
+        downloadId,
+        status: 'waiting',
+        message: '🚨 Cookies expired - regenerating... (may take 30-60s)'
+      });
+      
+      // Emergency regeneration
+      ensurePoolIsFull().catch(err => console.log(`  ⚠️ Emergency pool fill error: ${err.message}`));
+      
+      // Wait for at least 1 cookie
+      const hasCookie = await waitForWorkingCookie(300000, 5000);
+      
+      if (!hasCookie) {
+        console.log(`  ⚠️ Emergency regeneration failed - proceeding with cookie-less methods`);
+        socket.emit('download:status', {
+          downloadId,
+          status: 'downloading',
+          message: '⚠️ Proceeding without cookies (may have lower success rate)'
+        });
+      } else {
+        console.log(`  ✅ Emergency regeneration successful - resuming download`);
+        socket.emit('download:status', {
+          downloadId,
+          status: 'downloading',
+          message: '✅ Cookies regenerated - resuming download'
+        });
+      }
+    }
+    
     attempt++;
     
     console.log(`\n=== DOWNLOAD ATTEMPT ${attempt}/${maxAttempts} ===`);
@@ -8719,19 +8758,19 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             // Try broadcasting to all clients as fallback
             try {
               io.emit('download:complete', {
-                downloadId,
-                outputFolder,
-                totalSuccess: currentSuccess,
-                totalFailed: totalTracks - currentSuccess,
-                attempts: attempt,
-                downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
-                failedTracks: failedTracksList,
-                message: currentSuccess >= totalTracks
-                  ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
-                  : currentSuccess > 0
-                    ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
-                    : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
-              });
+            downloadId,
+            outputFolder,
+            totalSuccess: currentSuccess,
+            totalFailed: totalTracks - currentSuccess,
+            attempts: attempt,
+            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+            failedTracks: failedTracksList,
+            message: currentSuccess >= totalTracks
+              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+              : currentSuccess > 0
+                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+          });
               console.log(`✅ Fallback broadcast successful`);
             } catch (broadcastError) {
               console.error(`❌ Fallback broadcast also failed: ${broadcastError.message}`);
@@ -8913,18 +8952,18 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             // Try broadcasting to all clients as fallback
             try {
               io.emit('download:complete', {
-                downloadId,
-                outputFolder,
-                totalSuccess: currentSuccess,
-                totalFailed: totalTracks - currentSuccess,
-                attempts: attempt,
-                downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
-                message: currentSuccess >= totalTracks
-                  ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
-                  : currentSuccess > 0
-                    ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
-                    : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
-              });
+            downloadId,
+            outputFolder,
+            totalSuccess: currentSuccess,
+            totalFailed: totalTracks - currentSuccess,
+            attempts: attempt,
+            downloadUrl: currentSuccess > 0 ? `/api/download/archive/${downloadId}` : null,
+            message: currentSuccess >= totalTracks
+              ? `🎉 All ${totalTracks} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+              : currentSuccess > 0
+                ? `✅ Downloaded ${currentSuccess}/${totalTracks} tracks (${Math.round(successRate * 100)}%)\n⏱️ Completed in ${elapsedTime}\n❌ ${totalTracks - currentSuccess} track(s) failed\n📦 Click to download available tracks!`
+                : `❌ Download failed - no tracks could be downloaded\nPlease try again or check the track URLs`
+          });
               console.log(`✅ Fallback broadcast successful`);
             } catch (broadcastError) {
               console.error(`❌ Fallback broadcast also failed: ${broadcastError.message}`);
@@ -10427,8 +10466,8 @@ async function startupSequence() {
       console.log('⚠️ Failed to install dependencies:', error.message);
       console.log('   Server will continue - some features may be limited');
     }
+    }
   }
-}
 
 // Start the sequence
 startupSequence().then(async () => {

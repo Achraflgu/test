@@ -2790,11 +2790,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                 
                 console.log(`✅ [TrackList] Progress: Updating matched track "${track.name}" - ${track.downloadStatus} → ${finalStatus} (${track.downloadProgress || 0}% → ${finalProgress}%)`);
                 trackWasUpdated = true;
-                return {
-                  ...track,
+              return {
+                ...track,
                   downloadStatus: finalStatus,
                   downloadProgress: finalProgress
-                };
+              };
               } else {
                 console.log(`⏭️ [TrackList] Progress: Matched "${track.name}" but skipping update (shouldUpdate=false)`);
               }
