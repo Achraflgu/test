@@ -1031,24 +1031,20 @@ async function testCookies(cookiePath) {
       break;
     }
     
-    // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
-    const isOxylabs = proxy && proxy.includes('oxylabs.io');
-    const timeout = isOxylabs ? 60000 : 20000; // 60s for Oxylabs (increased!), 20s for free proxies
-    
     if (proxy) {
       testArgs.push('--proxy', proxy);
       // Show which type of proxy is being used
       if (proxy.includes('oxylabs.io')) {
-        console.log(`  🌟 Testing cookie via Oxylabs premium proxy (${timeout/1000}s timeout)`);
+        console.log(`  🌟 Testing cookie via Oxylabs premium proxy`);
       } else {
         const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
-        console.log(`  🌐 Testing cookie via proxy: ${shortProxy} (${timeout/1000}s timeout)`);
+        console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
       }
     } else if (process.env.SCRAPERAPI_KEY) {
       // Fallback to ScraperAPI if proxy manager has nothing
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
-      console.log(`  🌐 Testing cookie via ScraperAPI proxy (${timeout/1000}s timeout)`);
+      console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
     } else {
       console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
     }
@@ -1064,11 +1060,9 @@ async function testCookies(cookiePath) {
         resolve(value);
       };
 
-      // 🔥 CRITICAL FIX: Spawn timeout must match our custom timeout!
-      // Previously: spawn timeout (12s) was killing process before custom timeout (30s) could trigger
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: timeout + 5000 // Spawn timeout = custom timeout + 5s buffer (prevents premature kill)
+        timeout: 12000 // 12s timeout for actual extraction
       });
 
       testProcess.stdout.on('data', (data) => {
@@ -1130,7 +1124,10 @@ async function testCookies(cookiePath) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
-      // 🎯 Custom timeout handler (spawn timeout already set above, this is backup)
+      // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
+      const isOxylabs = proxy && proxy.includes('oxylabs.io');
+      const timeout = isOxylabs ? 30000 : 12000; // 30s for Oxylabs, 12s for free proxies
+      
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
@@ -2081,11 +2078,8 @@ async function regenerateSingleCookie(slotIndex) {
     const recentFailures = global['cookie_regeneration_failures'] || 0;
     const PARALLEL_GENERATION = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : 3); // Adaptive: 3→2→1
     let attempts = 0;
-    const maxAttempts = Infinity; // 🔥 INFINITE REGENERATION - Keep trying until we get a STRONG cookie!
+    const maxAttempts = 30; // Reduced from 50 to avoid long loops
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
-    
-    console.log(`  🔄 Starting INFINITE regeneration loop (will keep trying until STRONG cookie found)...`);
-    console.log(`  🌟 Using Oxylabs premium proxy for all attempts`);
     
     while (attempts < maxAttempts) {
       attempts += PARALLEL_GENERATION;
@@ -2174,16 +2168,16 @@ async function regenerateSingleCookie(slotIndex) {
         return true;
       }
       
-      // Show progress every 10 attempts (but not for infinite loop)
-      if (attempts % 10 === 0 && attempts > 0) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-        console.log(`  ⏳ Regeneration attempt ${attempts}... (${elapsed}s elapsed, still trying for STRONG cookie)`);
-        console.log(`  🌟 Oxylabs proxy active - continuing until success...`);
+      // Show progress every 10 attempts
+      if (attempts % 10 === 0) {
+        console.log(`  ⏳ Regeneration attempt ${attempts}/${maxAttempts}... (looking for STRONG cookies)`);
       }
     }
     
-    // This should never be reached with Infinity, but just in case:
-    console.log(`⚠️ Regeneration loop ended unexpectedly for slot ${slotIndex + 1} after ${attempts} attempts`);
+    // 🔥 TRACK FAILURES: If regeneration failed, increment counter
+    global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + 1;
+    console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${attempts} attempts (no STRONG cookies found)`);
+    console.log(`  💡 Tip: Consider using real browser cookies if all generated cookies fail`);
     // Release lock
     activeRegenerations.delete(slotIndex);
     return false;
@@ -2628,15 +2622,10 @@ async function smartRetryWithCookies(operation, maxRetries = 5) {
 
 // 🚀 GENERATE SINGLE STRONG COOKIE (for fast startup)
 async function generateSingleStrongCookie() {
-  const MAX_ATTEMPTS = Infinity; // 🔥 INFINITE - Keep trying until we get a STRONG cookie!
+  const MAX_ATTEMPTS = 30;
   const PARALLEL_TESTS = 3;
-  const startTime = Date.now();
   
-  console.log(`  🔄 Starting INFINITE generation loop (will keep trying until STRONG cookie found)...`);
-  console.log(`  🌟 Using Oxylabs premium proxy for all attempts`);
-  
-  let batch = 1;
-  while (true) { // Infinite loop - will break when STRONG cookie found
+  for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
     // Generate 3 cookies in parallel
     const cookiePromises = [];
     for (let i = 0; i < PARALLEL_TESTS; i++) {
@@ -2667,26 +2656,17 @@ async function generateSingleStrongCookie() {
           quality: 'strong',
           visitorData: results[i].cookieData.visitorData
         });
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-        console.log(`    ✅ Generated STRONG cookie (batch ${batch}, ${elapsed}s elapsed)`);
+        console.log(`    ✅ Generated STRONG cookie (batch ${batch}/${MAX_ATTEMPTS / PARALLEL_TESTS})`);
         return true;
       }
     }
     
     // All failed, wait before retry
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Show progress every 10 batches
-    if (batch % 10 === 0) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      console.log(`  ⏳ Generation attempt batch ${batch}... (${elapsed}s elapsed, still trying for STRONG cookie)`);
-      console.log(`  🌟 Oxylabs proxy active - continuing until success...`);
+    if (batch < MAX_ATTEMPTS / PARALLEL_TESTS) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
-    
-    batch++;
   }
   
-  // This should never be reached, but just in case:
   return false;
 }
 
@@ -10726,10 +10706,25 @@ startupSequence().then(async () => {
       const validatedStats = proxyManager.getStats();
       console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
       
+      // 🎯 Step 2.5: Filter working proxies for YouTube compatibility
+      if (validatedStats.working > 0) {
+        console.log('\n🎯 Filtering proxies for YouTube compatibility...');
+        await proxyManager.validateProxiesForYouTube(null, 20, 50); // Test 50 working proxies, 20 at a time
+        const youtubeStats = proxyManager.getStats();
+        console.log(`✅ YouTube-validated proxies: ${youtubeStats.youtubeWorking}/${youtubeStats.working} working with YouTube (${youtubeStats.youtubeValidationRate} success rate)`);
+      }
+      
       // Step 3: Start background validation task (re-validate every 5 minutes)
       setInterval(async () => {
         console.log('\n🔄 Background proxy validation starting...');
         await proxyManager.ensureValidatedProxies();
+        
+        // Also re-validate YouTube proxies if we have working proxies
+        const stats = proxyManager.getStats();
+        if (stats.working > 0) {
+          console.log('🎯 Re-validating YouTube proxies...');
+          await proxyManager.validateProxiesForYouTube(null, 20, 30); // Test 30 proxies, 20 at a time
+        }
       }, 5 * 60 * 1000); // Every 5 minutes
       
     } catch (error) {

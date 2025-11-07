@@ -6,12 +6,15 @@ class ProxyManager {
   constructor() {
     this.proxies = [];
     this.workingProxies = [];
+    this.youtubeWorkingProxies = []; // 🎯 Proxies that work specifically with YouTube
     this.currentIndex = 0;
     this.lastFetch = 0;
     this.lastValidation = 0;
+    this.lastYouTubeValidation = 0;
     this.FETCH_INTERVAL = 10 * 60 * 1000; // Refresh every 10 minutes
     this.VALIDATION_INTERVAL = 5 * 60 * 1000; // Re-validate every 5 minutes
     this.isValidating = false;
+    this.isValidatingYouTube = false;
     
     // 🌟 OXYLABS Premium Proxy Configuration
     this.oxylabsConfig = null;
@@ -289,7 +292,7 @@ class ProxyManager {
     }
   }
 
-  // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs > Validated > Free)
+  // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs > YouTube-Validated > Validated > Free)
   getProxyForYtdlp() {
     // 🌟 PRIORITY 1: Oxylabs premium proxy (BEST - 99% success rate)
     // Use Oxylabs if configured, even if test failed (test might be too strict)
@@ -298,7 +301,16 @@ class ProxyManager {
       return this.oxylabsConfig.residential;
     }
     
-    // 🎯 PRIORITY 2: Validated free proxies (GOOD - tested and working)
+    // 🎯 PRIORITY 2: YouTube-validated proxies (BEST for YouTube - tested specifically!)
+    if (this.youtubeWorkingProxies.length > 0) {
+      const randomIndex = Math.floor(Math.random() * this.youtubeWorkingProxies.length);
+      const proxy = this.youtubeWorkingProxies[randomIndex];
+      const shortProxy = proxy.length > 20 ? proxy.substring(0, 17) + '...' : proxy;
+      console.log(`   🎯 Using YouTube-validated proxy: ${shortProxy}`);
+      return `http://${proxy}`;
+    }
+    
+    // ✅ PRIORITY 3: Validated free proxies (GOOD - tested and working)
     if (this.workingProxies.length > 0) {
       const randomIndex = Math.floor(Math.random() * this.workingProxies.length);
       const proxy = this.workingProxies[randomIndex];
@@ -307,7 +319,7 @@ class ProxyManager {
       return `http://${proxy}`;
     }
     
-    // ⚠️ PRIORITY 3: Untested free proxies (RISKY - may not work)
+    // ⚠️ PRIORITY 4: Untested free proxies (RISKY - may not work)
     const proxy = this.getRandomProxy();
     if (!proxy) {
       console.log('   ❌ No proxies available');
@@ -355,6 +367,43 @@ class ProxyManager {
       return false;
     } catch (err) {
       // Proxy failed (timeout, connection error, etc.)
+      return false;
+    }
+  }
+
+  // 🎯 Test if proxy works specifically with YouTube
+  async testProxyForYouTube(proxy, timeout = 15000) {
+    try {
+      const proxyUrl = `http://${proxy}`;
+      const agent = new HttpsProxyAgent(proxyUrl);
+      
+      // Test with YouTube homepage (must return 200 OK)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      const response = await fetch('https://www.youtube.com/', {
+        agent,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Proxy works with YouTube if we get 200 OK
+      if (response.ok) {
+        return true;
+      }
+      
+      return false;
+    } catch (err) {
+      // Proxy failed (timeout, connection error, blocked by YouTube, etc.)
       return false;
     }
   }
@@ -435,6 +484,83 @@ class ProxyManager {
     }
   }
 
+  // 🎯 Validate proxies specifically for YouTube (filters working proxies)
+  async validateProxiesForYouTube(proxiesToTest = null, maxConcurrent = 20, maxToValidate = 50) {
+    if (this.isValidatingYouTube) {
+      console.log('⏭️  YouTube proxy validation already in progress - skipping');
+      return this.youtubeWorkingProxies;
+    }
+    
+    this.isValidatingYouTube = true;
+    
+    try {
+      // Use already-validated working proxies, or provided list
+      const proxies = proxiesToTest || this.workingProxies;
+      
+      if (proxies.length === 0) {
+        console.log('⚠️  No proxies to validate for YouTube');
+        this.isValidatingYouTube = false;
+        return [];
+      }
+      
+      // Limit validation to save time (test first N proxies)
+      const toTest = proxies.slice(0, maxToValidate);
+      console.log(`🎯 Testing ${toTest.length} proxies specifically for YouTube (${maxConcurrent} concurrent tests)...`);
+      
+      let validated = 0;
+      let failed = 0;
+      const newYouTubeProxies = [];
+      
+      // Process in batches for controlled concurrency
+      for (let i = 0; i < toTest.length; i += maxConcurrent) {
+        const batch = toTest.slice(i, i + maxConcurrent);
+        
+        const results = await Promise.allSettled(
+          batch.map(async (proxy) => {
+            const works = await this.testProxyForYouTube(proxy, 15000);
+            return { proxy, works };
+          })
+        );
+        
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value.works) {
+            validated++;
+            newYouTubeProxies.push(result.value.proxy);
+            
+            // Show progress every 5 validated proxies
+            if (validated % 5 === 0) {
+              console.log(`  ✅ Found ${validated} YouTube-working proxies so far...`);
+            }
+          } else {
+            failed++;
+          }
+        });
+        
+        // Small delay between batches
+        if (i + maxConcurrent < toTest.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+      
+      // Update YouTube-working proxies list
+      this.youtubeWorkingProxies = newYouTubeProxies;
+      this.lastYouTubeValidation = Date.now();
+      
+      console.log(`✅ YouTube proxy validation complete:`);
+      console.log(`   ✓ YouTube-working: ${validated}`);
+      console.log(`   ✗ Failed: ${failed}`);
+      console.log(`   📊 YouTube success rate: ${((validated / toTest.length) * 100).toFixed(1)}%`);
+      
+      this.isValidatingYouTube = false;
+      return this.youtubeWorkingProxies;
+      
+    } catch (err) {
+      console.log('⚠️  YouTube proxy validation error:', err.message);
+      this.isValidatingYouTube = false;
+      return this.youtubeWorkingProxies;
+    }
+  }
+
   // 🔄 Validate proxies if needed (called automatically)
   async ensureValidatedProxies() {
     const now = Date.now();
@@ -461,9 +587,12 @@ class ProxyManager {
       oxylabs: this.oxylabsWorking ? 'Active (Premium)' : 'Not configured',
       total: this.proxies.length,
       working: this.workingProxies.length,
+      youtubeWorking: this.youtubeWorkingProxies.length,
       lastFetch: this.lastFetch ? new Date(this.lastFetch).toLocaleString() : 'Never',
       lastValidation: this.lastValidation ? new Date(this.lastValidation).toLocaleString() : 'Never',
-      validationRate: this.proxies.length > 0 ? `${((this.workingProxies.length / this.proxies.length) * 100).toFixed(1)}%` : '0%'
+      lastYouTubeValidation: this.lastYouTubeValidation ? new Date(this.lastYouTubeValidation).toLocaleString() : 'Never',
+      validationRate: this.proxies.length > 0 ? `${((this.workingProxies.length / this.proxies.length) * 100).toFixed(1)}%` : '0%',
+      youtubeValidationRate: this.workingProxies.length > 0 ? `${((this.youtubeWorkingProxies.length / this.workingProxies.length) * 100).toFixed(1)}%` : '0%'
     };
   }
 }
