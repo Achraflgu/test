@@ -9042,6 +9042,11 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           
           console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
           
+          // 🔄 Resume pool regeneration when cookie-less download succeeds (after a short delay)
+          setTimeout(() => {
+            checkAndResumeRegeneration().catch(() => {});
+          }, 2000); // 2s delay to ensure activeDownloads cleanup completes
+          
           shouldContinue = false;
           break;
         }
@@ -9641,6 +9646,11 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           downloadUrl: `/api/download/archive/${downloadId}`,
           message: `🎉 All ${musicFiles.length} tracks downloaded successfully!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
         });
+        
+        // 🔄 Resume pool regeneration when download completes (after a short delay)
+        setTimeout(() => {
+          checkAndResumeRegeneration().catch(() => {});
+        }, 2000); // 2s delay to ensure activeDownloads cleanup completes
         
         shouldContinue = false;
         continue;
