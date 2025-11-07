@@ -1,10 +1,14 @@
-# Simplified Dockerfile for Railway
+# Optimized Dockerfile for Railway (Alpine-based, memory-efficient)
 FROM node:18-alpine
 
-# Install essential packages and Python tools
+# Install essential packages and Python tools (split for better caching)
 RUN apk add --no-cache \
     python3 \
     py3-pip \
+    python3-dev \
+    gcc \
+    g++ \
+    make \
     ffmpeg \
     curl \
     wget
@@ -15,14 +19,19 @@ WORKDIR /app
 # Copy package files from server directory
 COPY server/package*.json ./
 
-# Install Node.js dependencies
-RUN npm install --production
+# Install Node.js dependencies (production only, reduces size)
+RUN npm ci --only=production --no-audit --no-fund
 
-# Install Python dependencies in virtual environment
+# Copy requirements.txt first (for better Docker layer caching)
+COPY server/requirements.txt ./
+
+# Install Python dependencies in virtual environment (memory-efficient)
+# Use --no-cache-dir and split pip install to reduce memory usage
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir spotdl yt-dlp
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copy application code from server directory
+# Copy application code from server directory (last, for better caching)
 COPY server/ .
 
 # Set PATH to include virtual environment

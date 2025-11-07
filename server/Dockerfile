@@ -1,40 +1,42 @@
-# Use Node.js 18 as base image (includes npm)
+# Optimized Dockerfile for Railway (Debian-based, memory-efficient)
 FROM node:18-slim
 
-# Install Python 3.11, pip, and venv
-RUN apt-get update && apt-get install -y \
-    python3.11 \
+# Install Python 3, pip, and venv (use python3 instead of python3.11 for better compatibility)
+# Split into separate RUN commands to reduce memory pressure during build
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
     python3-pip \
-    python3.11-venv \
+    python3-venv \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
-
-# Create symlinks for python and pip commands (if they don't exist)
-RUN ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
-    ln -sf /usr/bin/python3.11 /usr/bin/python
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files first (for better Docker layer caching)
 COPY package*.json ./
+
+# Install Node.js dependencies (use npm ci for faster, more reliable builds)
+RUN npm ci --only=production --no-audit --no-fund
+
+# Copy requirements.txt (for better Docker layer caching)
 COPY requirements.txt ./
 
-# Install Node.js dependencies
-RUN npm install
-
-# Install Python dependencies in virtual environment (cache-bust: 2025-01-09)
+# Install Python dependencies in virtual environment (memory-efficient)
+# Split pip install to reduce memory usage during build
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install -r requirements.txt
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (last, for better caching)
 COPY . .
-
-# Expose port
-EXPOSE 3001
 
 # Set PATH to include virtual environment
 ENV PATH="/opt/venv/bin:$PATH"
+
+# Expose port
+EXPOSE 3001
 
 # Start the server
 CMD ["node", "index.js"]
