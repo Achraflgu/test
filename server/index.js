@@ -5716,7 +5716,7 @@ app.post('/api/download/start', async (req, res) => {
       });
       
       // Emit instant complete with download URL - ONLY to this client
-      emitSocket.emit('download:complete', {
+      const instantCompleteData = {
         downloadId,
         status: 'completed',
         message: '✅ File already exists - downloading instantly!',
@@ -5725,7 +5725,10 @@ app.post('/api/download/start', async (req, res) => {
         outputFolder,
         downloadUrl: `/api/download/archive/${downloadId}`,
         failedTracks: []
-      });
+      };
+      
+      console.log(`📤 Emitting download:complete with data:`, JSON.stringify(instantCompleteData, null, 2));
+      emitSocket.emit('download:complete', instantCompleteData);
       
       // Show success notification - ONLY to this client
       emitSocket.emit('download:status', {
@@ -9874,14 +9877,23 @@ app.get('/api/download/status/:downloadId', (req, res) => {
 // Download completed files as ZIP archive (or single file for 1 track)
 app.get('/api/download/archive/:downloadId', async (req, res) => {
   const { downloadId } = req.params;
+  console.log(`\n📥 [ARCHIVE] Client requesting download for: ${downloadId}`);
+  
   const downloadInfo = activeDownloads.get(downloadId);
 
   if (!downloadInfo) {
+    console.log(`❌ [ARCHIVE] Download not found in activeDownloads`);
+    console.log(`   Available downloads:`, Array.from(activeDownloads.keys()));
     return res.status(404).json({ error: 'Download not found' });
   }
 
+  console.log(`✅ [ARCHIVE] Download found, status: ${downloadInfo.status}`);
+  console.log(`   Tracks count: ${downloadInfo.tracks?.length || 0}`);
+  console.log(`   Output folder: ${downloadInfo.outputFolder}`);
+
   // Allow both 'completed' and 'partial' status to show failed tracks
   if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial') {
+    console.log(`❌ [ARCHIVE] Download not ready yet (status: ${downloadInfo.status})`);
     return res.status(400).json({ error: 'Download not completed yet' });
   }
 
