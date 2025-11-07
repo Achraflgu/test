@@ -2023,6 +2023,8 @@ async function ensurePoolIsFull() {
       }
     }
     
+    // 🛡️ PAUSE: If downloads are active, pause ALL regeneration (regardless of cookie count)
+    // This ensures downloads get full resources and stability
     if (hasActive && !waitingForStrongCookie) {
       console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
@@ -2146,6 +2148,8 @@ async function regenerateSingleCookie(slotIndex) {
       }
     }
     
+    // 🛡️ PAUSE: If downloads are active, pause ALL regeneration (regardless of cookie count)
+    // This ensures downloads get full resources and stability
     if (hasActive && !waitingForStrongCookie) {
       console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
@@ -2824,7 +2828,7 @@ async function initializeAutoCookies() {
       if (isRedisAvailable()) {
         const cookies = await getAllCookiesFromRedis();
         if (cookies.length > 0) {
-          await setPrimaryCookieToRedis(cookies[0].content);
+          await savePrimaryCookieToRedis(cookies[0].content);
           await fs.writeFile(AUTO_COOKIE_PATH, cookies[0].content, 'utf8').catch(() => {});
           console.log('  💾 Updated primary cookie from pool');
         }
