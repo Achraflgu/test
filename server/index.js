@@ -1126,22 +1126,24 @@ async function testCookies(cookiePath) {
                              normalizedError.includes('bot') ||
                              normalizedError.includes('login_required');
         
-        // 🛡️ DETECT YOUTUBE-SPECIFIC ERRORS: Mark proxy as dead if it fails with YouTube errors
-        const isYouTubeError = normalizedError.includes('failed to extract any player response') ||
-                              normalizedError.includes('no video formats found') ||
-                              normalizedError.includes('unable to download api page');
+        // 🛡️ DON'T MARK PROXY AS DEAD DURING COOKIE TESTS
+        // Cookie test failures are usually due to fake cookies, not bad proxies
+        // Only mark proxies as dead if it's clearly a proxy connection issue (timeout/connection error)
+        // NOT for YouTube errors during cookie testing (could be cookie issue, not proxy issue)
         
-        // If proxy is being used and we get YouTube-specific errors, mark proxy as dead
-        if (proxy && isYouTubeError && !isCookieIssue) {
+        // Only mark proxy as dead if it's a clear proxy connection problem (not YouTube errors)
+        if (proxy && isProxyIssue && (code === null || normalizedError.includes('connection') || normalizedError.includes('timeout'))) {
           // Extract proxy IP:PORT from proxy string (format: http://IP:PORT)
           const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
           if (proxyMatch) {
             const proxyHost = proxyMatch[1];
             // Mark proxy as failed (will remove from YouTube-validated list)
             proxyManager.markFailed(proxyHost);
-            console.log(`  🗑️ Marked proxy as DEAD (YouTube error): ${proxyHost.substring(0, 20)}...`);
+            console.log(`  🗑️ Marked proxy as DEAD (connection/timeout error): ${proxyHost.substring(0, 20)}...`);
           }
         }
+        // Note: We DON'T mark proxies as dead for YouTube errors during cookie testing
+        // because the error could be due to fake cookies, not a bad proxy
         
         if (code === null) {
           console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
