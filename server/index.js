@@ -1973,7 +1973,7 @@ async function ensurePoolIsFull() {
     // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
     let cookieLessInProgress = false;
     for (const [id, info] of activeDownloads.entries()) {
-      if (info.triedCookieLessFirst && !info.waitingForStrongCookie && info.status === 'downloading') {
+      if (info.cookieLessAttemptInProgress === true) {
         cookieLessInProgress = true;
         break;
       }
@@ -1984,14 +1984,24 @@ async function ensurePoolIsFull() {
       return false; // Don't regenerate during cookie-less first attempt
     }
     
-    if (hasActive && validatedCookies >= 1) {
-      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) with ${validatedCookies} VALIDATED working cookie(s) - pausing regeneration for safety`);
-      return false; // Don't regenerate during active downloads if we have at least 1 validated cookie
+    // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
+    // EXCEPTION: Allow regeneration when waiting for strong cookie (needed for download to proceed)
+    let waitingForStrongCookie = false;
+    for (const [id, info] of activeDownloads.entries()) {
+      if (info.waitingForStrongCookie === true) {
+        waitingForStrongCookie = true;
+        break;
+      }
     }
     
-    // If downloads are active but 0 validated cookies, we MUST regenerate immediately (emergency mode)
-    if (hasActive && validatedCookies === 0) {
-      console.log(`  🚨 EMERGENCY: Downloads active but 0 validated cookies - regenerating NOW!`);
+    if (hasActive && !waitingForStrongCookie) {
+      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing regeneration to focus on downloads`);
+      return false; // Don't regenerate during active downloads (user wants stability)
+    }
+    
+    // If waiting for strong cookie, allow regeneration (needed for download to proceed)
+    if (hasActive && waitingForStrongCookie) {
+      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration`);
       // Continue with regeneration (don't return)
     }
     
@@ -2086,7 +2096,7 @@ async function regenerateSingleCookie(slotIndex) {
     // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
     let cookieLessInProgress = false;
     for (const [id, info] of activeDownloads.entries()) {
-      if (info.triedCookieLessFirst && !info.waitingForStrongCookie && info.status === 'downloading') {
+      if (info.cookieLessAttemptInProgress === true) {
         cookieLessInProgress = true;
         break;
       }
@@ -2097,9 +2107,25 @@ async function regenerateSingleCookie(slotIndex) {
       return false; // Don't regenerate during cookie-less first attempt
     }
     
-    if (hasActive && existingCookies.length >= 1) {
-      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) with ${existingCookies.length} cookie(s) in pool - safe to continue`);
-      return false; // Don't regenerate during active downloads if we have at least 1 cookie file
+    // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
+    // EXCEPTION: Allow regeneration when waiting for strong cookie (needed for download to proceed)
+    let waitingForStrongCookie = false;
+    for (const [id, info] of activeDownloads.entries()) {
+      if (info.waitingForStrongCookie === true) {
+        waitingForStrongCookie = true;
+        break;
+      }
+    }
+    
+    if (hasActive && !waitingForStrongCookie) {
+      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) - pausing to focus on downloads`);
+      return false; // Don't regenerate during active downloads (user wants stability)
+    }
+    
+    // If waiting for strong cookie, allow regeneration (needed for download to proceed)
+    if (hasActive && waitingForStrongCookie) {
+      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration for slot ${slotIndex + 1}`);
+      // Continue with regeneration (don't return)
     }
     
     // Mark this slot as being regenerated
@@ -8755,6 +8781,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Set flag to indicate we're trying cookie-less first
     downloadInfo.triedCookieLessFirst = true;
     downloadInfo.waitingForStrongCookie = false;
+    downloadInfo.cookieLessAttemptInProgress = false; // Will be set when attempt starts
   } else if (existingCookies.length === 0) {
     // No cookies at all (not even weak ones)
     console.log(`\n⏸️ Download paused: 0 cookies in pool - waiting for generation...`);
@@ -8829,6 +8856,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       console.log(`\n🎯 Attempt 1: Cookie-less mode (android_sdkless + YouTube-validated proxy)`);
       console.log(`   📋 This is the FIRST attempt - if it fails, will pause and wait for strong cookie`);
       
+      // 🛡️ SET FLAG: Cookie-less attempt in progress - pause all cookie generation
+      downloadInfo.cookieLessAttemptInProgress = true;
+      
       // Try cookie-less download with YouTube-validated proxy
       const cookieLessSuccess = await tryYtDlpFallback(
         tracks, 
@@ -8842,6 +8872,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         true // cookieLessFirst = true
       );
       
+      // 🛡️ CLEAR FLAG: Cookie-less attempt completed
+      downloadInfo.cookieLessAttemptInProgress = false;
+      
       if (cookieLessSuccess && cookieLessSuccess.successCount > 0) {
         console.log(`\n✅ Cookie-less attempt SUCCEEDED! (${cookieLessSuccess.successCount} tracks downloaded)`);
         // Check if all tracks are done
@@ -8851,6 +8884,56 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
         );
         if (musicFilesAfter.length >= tracks.length) {
           console.log(`✅ All tracks downloaded successfully!`);
+          // 🚀 IMMEDIATE COMPLETION: Emit completion event right away (don't wait for cookies)
+          downloadInfo.status = 'completed';
+          downloadInfo.totalSuccess = musicFilesAfter.length;
+          downloadInfo.totalFailed = tracks.length - musicFilesAfter.length;
+          downloadInfo.attempts = attempt;
+          
+          const elapsedTime = formatElapsedTime(downloadInfo.startTime);
+          
+          // Verify files are ready
+          try {
+            const verifyFiles = musicFilesAfter.slice(0, Math.min(5, musicFilesAfter.length));
+            for (const file of verifyFiles) {
+              const filePath = path.join(outputFolder, file);
+              await fs.access(filePath);
+            }
+            console.log(`✅ Verified ${verifyFiles.length} files are ready for download`);
+          } catch (verifyErr) {
+            console.log(`⚠️ File verification warning: ${verifyErr.message} (will continue anyway)`);
+          }
+          
+          // Emit completion immediately
+          const completeEventData = {
+            downloadId,
+            outputFolder,
+            totalSuccess: musicFilesAfter.length,
+            totalFailed: tracks.length - musicFilesAfter.length,
+            attempts: attempt,
+            downloadUrl: musicFilesAfter.length > 0 ? `/api/download/archive/${downloadId}` : null,
+            failedTracks: [],
+            message: `🎉 All ${tracks.length} tracks downloaded!\n⏱️ Completed in ${elapsedTime}\n📦 Click to download your ZIP file!`
+          };
+          
+          console.log(`📤 Emitting download:complete immediately for ${downloadId}: ${musicFilesAfter.length}/${tracks.length} tracks`);
+          
+          const clientSocketId = downloadInfo.socketId;
+          const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
+          
+          if (clientSocket) {
+            clientSocket.emit('download:complete', completeEventData);
+            console.log(`✅ Emitted to specific client socket: ${clientSocketId}`);
+          } else if (socket && socket.connected !== false) {
+            socket.emit('download:complete', completeEventData);
+            console.log(`✅ Emitted to passed socket: ${socket.id}`);
+          } else {
+            io.emit('download:complete', completeEventData);
+            console.log(`⚠️ No specific socket found - broadcasting to all clients`);
+          }
+          
+          console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
+          
           shouldContinue = false;
           break;
         }
