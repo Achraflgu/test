@@ -19,6 +19,7 @@ class ProxyManager {
     // 🌟 OXYLABS Premium Proxy Configuration
     this.oxylabsConfig = null;
     this.oxylabsWorking = false;
+    this.oxylabsWorksWithYouTube = false; // 🎯 Track if Oxylabs works specifically with YouTube
     
     // 🆕 UPDATED 2025 - Public proxy sources (verified working)
     this.sources = [
@@ -109,13 +110,20 @@ class ProxyManager {
     // The actual downloads will determine if it really works
     if (works) {
       this.oxylabsWorking = true;
-      console.log('✅ Oxylabs proxy verified and working!');
-      console.log('   🎯 Will use Oxylabs for all YouTube requests (PRIORITY 1)');
+      if (this.oxylabsWorksWithYouTube) {
+        console.log('✅ Oxylabs proxy verified and working with YouTube!');
+        console.log('   🎯 Will use Oxylabs for all YouTube requests (PRIORITY 1)');
+      } else {
+        console.log('✅ Oxylabs proxy works but NOT with YouTube');
+        console.log('   🔄 Will use YouTube-validated free proxies for YouTube requests');
+        console.log('   💡 Oxylabs may work for other sites, but YouTube blocks it');
+      }
     } else {
-      // Even if test fails, still try to use it (test might be too strict)
-      this.oxylabsWorking = true; // Optimistic - let actual usage test it
-      console.log('⚠️  Oxylabs test had issues, but will still try to use it');
-      console.log('   💡 Test might be too strict - actual downloads will verify');
+      // Test failed - don't use Oxylabs for YouTube
+      this.oxylabsWorking = true; // Still mark as working (for non-YouTube use)
+      this.oxylabsWorksWithYouTube = false; // But NOT for YouTube
+      console.log('⚠️  Oxylabs test failed - will use YouTube-validated proxies instead');
+      console.log('   💡 YouTube-validated proxies will be used for cookie generation and downloads');
     }
     
     return true; // Always return true if configured
@@ -149,32 +157,40 @@ class ProxyManager {
         console.log('   ⚠️  Oxylabs basic test failed, trying YouTube...');
       }
       
-      // Test 2: YouTube (optional - might be blocked but proxy still works)
+      // Test 2: YouTube (CRITICAL - test if Oxylabs works with YouTube specifically)
       try {
         const youtubeTest = await fetch('https://www.youtube.com/', {
           agent,
           timeout: 20000, // Longer timeout for YouTube
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
           }
         });
         
         if (youtubeTest.ok) {
           console.log('   ✅ Oxylabs residential proxy working (YouTube accessible)');
+          this.oxylabsWorksWithYouTube = true; // Mark as working with YouTube
           return true;
+        } else {
+          console.log('   ⚠️  Oxylabs proxy accessible but YouTube returned non-200 status');
+          this.oxylabsWorksWithYouTube = false; // Mark as NOT working with YouTube
+          return false; // Return false so we use YouTube-validated proxies instead
         }
       } catch (youtubeErr) {
-        console.log('   ⚠️  YouTube test failed, but proxy may still work for downloads');
-        // Don't fail completely - proxy might work even if YouTube blocks test
-        return true; // Assume it works - let actual downloads test it
+        console.log('   ❌ Oxylabs YouTube test failed:', youtubeErr.message);
+        console.log('   🔄 Will use YouTube-validated free proxies instead');
+        this.oxylabsWorksWithYouTube = false; // Mark as NOT working with YouTube
+        return false; // Return false so we use YouTube-validated proxies instead
       }
       
       return false;
     } catch (err) {
-      console.log('   ⚠️  Oxylabs test had issues:', err.message);
-      console.log('   💡 Will still try to use Oxylabs - test might be too strict');
-      // Return true anyway - let actual usage determine if it works
-      return true; // Be optimistic - proxy might work even if test fails
+      console.log('   ❌ Oxylabs test error:', err.message);
+      console.log('   🔄 Will use YouTube-validated free proxies instead');
+      this.oxylabsWorksWithYouTube = false; // Mark as NOT working with YouTube
+      return false; // Return false so we use YouTube-validated proxies
     }
   }
 
@@ -292,13 +308,16 @@ class ProxyManager {
     }
   }
 
-  // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs > YouTube-Validated > Validated > Free)
+  // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs-YouTube > YouTube-Validated > Validated > Free)
   getProxyForYtdlp() {
-    // 🌟 PRIORITY 1: Oxylabs premium proxy (BEST - 99% success rate)
-    // Use Oxylabs if configured, even if test failed (test might be too strict)
-    if (this.oxylabsConfig) {
-      console.log('   🌟 Using Oxylabs premium proxy (residential)');
+    // 🌟 PRIORITY 1: Oxylabs premium proxy (ONLY if it works with YouTube!)
+    // If Oxylabs doesn't work with YouTube, skip it and use YouTube-validated proxies
+    if (this.oxylabsConfig && this.oxylabsWorksWithYouTube) {
+      console.log('   🌟 Using Oxylabs premium proxy (residential) - verified working with YouTube');
       return this.oxylabsConfig.residential;
+    } else if (this.oxylabsConfig && !this.oxylabsWorksWithYouTube) {
+      // Oxylabs configured but doesn't work with YouTube - skip it
+      console.log('   ⏭️  Skipping Oxylabs (doesn\'t work with YouTube) - using YouTube-validated proxies');
     }
     
     // 🎯 PRIORITY 2: YouTube-validated proxies (BEST for YouTube - tested specifically!)

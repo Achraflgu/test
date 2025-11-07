@@ -2896,7 +2896,7 @@ async function regenerateCookiesOnFailure() {
     // Generate and test new cookies (retry many times until working cookies found)
     const cookiePath = await generateAndTestCookies(50); // Try 50 times until success
     
-    if (cookiePath) {
+  if (cookiePath) {
       console.log('✅ New cookies regenerated and saved!');
       
       // Update metadata
@@ -3086,7 +3086,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     if (proxyFromManager) {
       proxy = proxyFromManager;
       if (proxyFromManager.includes('oxylabs.io')) {
-        proxyType = 'Oxylabs Premium';
+      proxyType = 'Oxylabs Premium';
         console.log(`   🌟 Using Oxylabs premium proxy to bypass YouTube blocking`);
       } else {
         proxyType = 'Free Proxy';
@@ -10733,12 +10733,30 @@ startupSequence().then(async () => {
       const validatedStats = proxyManager.getStats();
       console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
       
-      // 🎯 Step 2.5: Filter working proxies for YouTube compatibility
+      // 🎯 Step 2.5: Filter working proxies for YouTube compatibility (CRITICAL if Oxylabs doesn't work with YouTube)
       if (validatedStats.working > 0) {
         console.log('\n🎯 Filtering proxies for YouTube compatibility...');
         await proxyManager.validateProxiesForYouTube(null, 20, 50); // Test 50 working proxies, 20 at a time
         const youtubeStats = proxyManager.getStats();
         console.log(`✅ YouTube-validated proxies: ${youtubeStats.youtubeWorking}/${youtubeStats.working} working with YouTube (${youtubeStats.youtubeValidationRate} success rate)`);
+        
+        // 🔥 If Oxylabs doesn't work with YouTube, ensure we have YouTube-validated proxies
+        if (oxylabsReady && !proxyManager.oxylabsWorksWithYouTube) {
+          if (youtubeStats.youtubeWorking === 0) {
+            console.log('⚠️  WARNING: Oxylabs doesn\'t work with YouTube AND no YouTube-validated proxies found!');
+            console.log('   🔄 Testing more proxies for YouTube compatibility...');
+            // Test more proxies if we have none
+            await proxyManager.validateProxiesForYouTube(null, 20, 100); // Test up to 100 proxies
+            const retryStats = proxyManager.getStats();
+            if (retryStats.youtubeWorking > 0) {
+              console.log(`✅ Found ${retryStats.youtubeWorking} YouTube-working proxies after extended testing`);
+            } else {
+              console.log('⚠️  Still no YouTube-working proxies - cookie generation may fail');
+            }
+          } else {
+            console.log(`✅ YouTube-validated proxies ready: ${youtubeStats.youtubeWorking} proxies available for cookie generation`);
+          }
+        }
       }
       
       // Step 3: Start background validation task (re-validate every 5 minutes)
@@ -10771,7 +10789,7 @@ startupSequence().then(async () => {
     if (stats.working > 10) {
       console.log(`   🟡 15-35% (${stats.working} Validated Free Proxies)`);
       console.log('   ⚠️  Free proxies - success rate varies, consider upgrading to Oxylabs');
-    } else {
+  } else {
       console.log('   🔴 1-8% (Free Proxies - Low Quality)');
       console.log('   ⚠️  Very few working proxies, downloads will likely fail');
     }
