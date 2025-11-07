@@ -10319,18 +10319,23 @@ app.get('/api/proxy/status', async (req, res) => {
   });
 });
 
-// Refresh proxy pool manually
+// Refresh proxy pool manually (fetches and validates)
 app.post('/api/proxy/refresh', async (req, res) => {
   if (process.env.USE_FREE_PROXIES !== 'true') {
     return res.status(400).json({ error: 'Free proxies not enabled' });
   }
   
   try {
+    // Fetch new proxies
     await proxyManager.fetchProxies();
+    
+    // Validate them
+    await proxyManager.validateProxies(null, 50, 100);
+    
     const stats = proxyManager.getStats();
     res.json({
       success: true,
-      message: 'Proxy pool refreshed',
+      message: 'Proxy pool refreshed and validated',
       stats
     });
   } catch (error) {
@@ -10676,9 +10681,23 @@ startupSequence().then(async () => {
     console.log('✅ Free proxies enabled (fallback)');
     console.log('\n🌐 Initializing free proxy pool...');
     try {
+      // Step 1: Fetch proxies from sources
       await proxyManager.fetchProxies();
       const stats = proxyManager.getStats();
-      console.log(`✅ Proxy pool ready: ${stats.total} proxies loaded`);
+      console.log(`✅ Fetched ${stats.total} proxies from sources`);
+      
+      // Step 2: Validate proxies (test first 100 to save time)
+      console.log('\n🧪 Testing proxies to find working ones...');
+      await proxyManager.validateProxies(null, 50, 100);
+      const validatedStats = proxyManager.getStats();
+      console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
+      
+      // Step 3: Start background validation task (re-validate every 5 minutes)
+      setInterval(async () => {
+        console.log('\n🔄 Background proxy validation starting...');
+        await proxyManager.ensureValidatedProxies();
+      }, 5 * 60 * 1000); // Every 5 minutes
+      
     } catch (error) {
       console.log('⚠️ Failed to load proxies:', error.message);
       console.log('Will try to fetch proxies on first use');

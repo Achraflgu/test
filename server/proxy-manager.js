@@ -1,5 +1,6 @@
 // Free Proxy Manager - Fetches and rotates free proxies automatically
 import fetch from 'node-fetch';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 class ProxyManager {
   constructor() {
@@ -7,7 +8,10 @@ class ProxyManager {
     this.workingProxies = [];
     this.currentIndex = 0;
     this.lastFetch = 0;
+    this.lastValidation = 0;
     this.FETCH_INTERVAL = 10 * 60 * 1000; // Refresh every 10 minutes
+    this.VALIDATION_INTERVAL = 5 * 60 * 1000; // Re-validate every 5 minutes
+    this.isValidating = false;
     
     // 🆕 UPDATED 2025 - Public proxy sources (verified working)
     this.sources = [
@@ -170,8 +174,16 @@ class ProxyManager {
     }
   }
 
-  // Get proxy formatted for yt-dlp
+  // Get proxy formatted for yt-dlp (prefers validated proxies)
   getProxyForYtdlp() {
+    // 🎯 Prefer working/validated proxies first
+    if (this.workingProxies.length > 0) {
+      const randomIndex = Math.floor(Math.random() * this.workingProxies.length);
+      const proxy = this.workingProxies[randomIndex];
+      return `http://${proxy}`;
+    }
+    
+    // Fallback to any proxy if no validated ones
     const proxy = this.getRandomProxy();
     if (!proxy) return null;
     
@@ -180,12 +192,150 @@ class ProxyManager {
     return `http://${proxy}`;
   }
 
+  // 🧪 Test if a single proxy works
+  async testProxy(proxy, timeout = 5000) {
+    try {
+      const proxyUrl = `http://${proxy}`;
+      const agent = new HttpsProxyAgent(proxyUrl);
+      
+      // Test with fast endpoint (Google or httpbin)
+      const testUrls = [
+        'https://www.google.com',
+        'https://httpbin.org/ip',
+        'https://api.ipify.org?format=json'
+      ];
+      
+      const testUrl = testUrls[Math.floor(Math.random() * testUrls.length)];
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      const response = await fetch(testUrl, {
+        agent,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Proxy works if we get a response
+      if (response.ok) {
+        return true;
+      }
+      
+      return false;
+    } catch (err) {
+      // Proxy failed (timeout, connection error, etc.)
+      return false;
+    }
+  }
+
+  // 🔍 Validate multiple proxies in parallel
+  async validateProxies(proxiesToTest = null, maxConcurrent = 50, maxToValidate = 100) {
+    if (this.isValidating) {
+      console.log('⏭️  Proxy validation already in progress - skipping');
+      return this.workingProxies;
+    }
+    
+    this.isValidating = true;
+    
+    try {
+      const proxies = proxiesToTest || this.proxies;
+      
+      if (proxies.length === 0) {
+        console.log('⚠️  No proxies to validate');
+        this.isValidating = false;
+        return [];
+      }
+      
+      // Limit validation to save time (test first N proxies)
+      const toTest = proxies.slice(0, maxToValidate);
+      console.log(`🧪 Validating ${toTest.length} proxies (${maxConcurrent} concurrent tests)...`);
+      
+      let validated = 0;
+      let failed = 0;
+      const newWorkingProxies = [];
+      
+      // Process in batches for controlled concurrency
+      for (let i = 0; i < toTest.length; i += maxConcurrent) {
+        const batch = toTest.slice(i, i + maxConcurrent);
+        
+        const results = await Promise.allSettled(
+          batch.map(async (proxy) => {
+            const works = await this.testProxy(proxy, 5000);
+            return { proxy, works };
+          })
+        );
+        
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value.works) {
+            validated++;
+            newWorkingProxies.push(result.value.proxy);
+            
+            // Show progress every 10 validated proxies
+            if (validated % 10 === 0) {
+              console.log(`  ✅ Validated ${validated} working proxies so far...`);
+            }
+          } else {
+            failed++;
+          }
+        });
+        
+        // Small delay between batches to avoid overwhelming the network
+        if (i + maxConcurrent < toTest.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      // Update working proxies list
+      this.workingProxies = newWorkingProxies;
+      this.lastValidation = Date.now();
+      
+      console.log(`✅ Proxy validation complete:`);
+      console.log(`   ✓ Working: ${validated}`);
+      console.log(`   ✗ Failed: ${failed}`);
+      console.log(`   📊 Success rate: ${((validated / toTest.length) * 100).toFixed(1)}%`);
+      
+      this.isValidating = false;
+      return this.workingProxies;
+      
+    } catch (err) {
+      console.log('⚠️  Proxy validation error:', err.message);
+      this.isValidating = false;
+      return this.workingProxies;
+    }
+  }
+
+  // 🔄 Validate proxies if needed (called automatically)
+  async ensureValidatedProxies() {
+    const now = Date.now();
+    
+    // Skip if we have working proxies and validated recently
+    if (this.workingProxies.length > 10 && now - this.lastValidation < this.VALIDATION_INTERVAL) {
+      return this.workingProxies;
+    }
+    
+    // Skip if validation is already running
+    if (this.isValidating) {
+      return this.workingProxies;
+    }
+    
+    console.log('🔄 Time to validate/refresh working proxies...');
+    await this.validateProxies();
+    
+    return this.workingProxies;
+  }
+
   // Get stats
   getStats() {
     return {
       total: this.proxies.length,
       working: this.workingProxies.length,
-      lastFetch: this.lastFetch ? new Date(this.lastFetch).toLocaleString() : 'Never'
+      lastFetch: this.lastFetch ? new Date(this.lastFetch).toLocaleString() : 'Never',
+      lastValidation: this.lastValidation ? new Date(this.lastValidation).toLocaleString() : 'Never',
+      validationRate: this.proxies.length > 0 ? `${((this.workingProxies.length / this.proxies.length) * 100).toFixed(1)}%` : '0%'
     };
   }
 }
