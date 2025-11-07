@@ -20,7 +20,8 @@ WORKDIR /app
 COPY server/package*.json ./
 
 # Install Node.js dependencies (production only, reduces size)
-RUN npm ci --only=production --no-audit --no-fund
+# Using npm install instead of npm ci because lock file may be out of sync
+RUN npm install --only=production --no-audit --no-fund
 
 # Copy requirements.txt first (for better Docker layer caching)
 COPY server/requirements.txt ./
