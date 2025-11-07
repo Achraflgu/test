@@ -6852,12 +6852,39 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       downloadOptions.cookies = cookiePath;
     }
 
+    // 🎯 COOKIE-LESS FIRST MODE: Force android_sdkless if cookiePath is null (cookie-less mode)
     const profileList = cookiePath ? COOKIE_CLIENT_PROFILES : COOKIELESS_CLIENT_PROFILES;
-    const profile = profileList[clientAttempt % profileList.length];
+    let profile;
+    
+    if (cookiePath === null) {
+      // Cookie-less mode: Force android_sdkless (first profile in COOKIELESS_CLIENT_PROFILES)
+      profile = COOKIELESS_CLIENT_PROFILES[0]; // android_sdkless
+      console.log(`  🎯 Cookie-less mode: FORCING android_sdkless client (no cookies)`);
+    } else {
+      profile = profileList[clientAttempt % profileList.length];
+    }
     
     // Apply client profile
     applyClientProfileToOptions(downloadOptions, profile);
     console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
+    
+    // 🎯 COOKIE-LESS FIRST MODE: Force YouTube-validated proxy (if available)
+    if (cookiePath === null) {
+      const youtubeProxy = proxyManager.getProxyForYtdlp();
+      if (youtubeProxy) {
+        // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
+        downloadOptions.proxy = youtubeProxy;
+        console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
+        if (youtubeProxy.includes('oxylabs.io')) {
+          console.log(`     🌟 Oxylabs premium proxy (verified working with YouTube)`);
+        } else {
+          const shortProxy = youtubeProxy.length > 30 ? youtubeProxy.substring(0, 27) + '...' : youtubeProxy;
+          console.log(`     🎯 YouTube-validated proxy: ${shortProxy}`);
+        }
+      } else {
+        console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
+      }
+    }
     
     // 🎯 Inject PO token for enhanced authentication (bypasses bot detection)
     await injectPOToken(downloadOptions);
@@ -7233,7 +7260,7 @@ async function tryInvidiousAPI(track, outputFolder, socket, downloadId) {
 }
 
 // Try yt-dlp fallback for failed tracks - WITH PARALLEL DOWNLOADS (8 threads)
-async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, downloadId, youtubeLinks = {}, settings = {}, attemptNumber = 0) {
+async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, downloadId, youtubeLinks = {}, settings = {}, attemptNumber = 0, cookieLessFirst = false) {
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
   console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
@@ -7449,10 +7476,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         track.isSpotifySearch = true;
         track.searchTerm = searchTerm;
         
-        // Use smart cookie rotation
-        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
-          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
-        }, 5);
+        // 🎯 COOKIE-LESS FIRST MODE: If cookieLessFirst is true, force cookie-less with android_sdkless + YouTube proxy
+        let ytdlExecSuccess = false;
+        if (cookieLessFirst) {
+          console.log(`  🎯 Cookie-less first mode: Using android_sdkless + YouTube-validated proxy (NO cookies)`);
+          // Force cookie-less mode (null = no cookies)
+          ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0);
+        } else {
+          // Use smart cookie rotation (normal mode)
+          ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
+            return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
+          }, 5);
+        }
         
           if (ytdlExecSuccess) {
             console.log(`✅ youtube-dl-exec SUCCESS (Spotify search): ${track.name}`);
@@ -7488,10 +7523,18 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         // Restore original URL
         track.url = originalUrl;
       } else if (track.url && track.url.includes('youtube.com')) {
-        // YouTube direct link - use smart cookie rotation
-        const ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
-          return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
-        }, 5);
+        // YouTube direct link
+        let ytdlExecSuccess = false;
+        if (cookieLessFirst) {
+          console.log(`  🎯 Cookie-less first mode: Using android_sdkless + YouTube-validated proxy (NO cookies)`);
+          // Force cookie-less mode (null = no cookies)
+          ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0);
+        } else {
+          // Use smart cookie rotation (normal mode)
+          ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
+            return await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt);
+          }, 5);
+        }
         
           if (ytdlExecSuccess) {
             console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
@@ -8662,12 +8705,32 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     console.log(`⚠️  No socket ID found, broadcasting to all clients`);
   }
 
-  // 🛡️ OPTIMIZED: Just check if cookies EXIST (don't validate - saves 10s+ per download)
-  // Validation is expensive and cookies die fast anyway - better to try and regenerate on failure
+  // 🛡️ SMART COOKIE CHECK: Check for STRONG cookies (not just any cookies)
   await initCookiePool(); // Ensure pool is loaded from Redis
   const existingCookies = await getWorkingCookiesFromPool();
+  const strongCookies = existingCookies.filter(c => {
+    // Check quality from metadata or assume 'strong' if not specified
+    const quality = c.quality || 'strong';
+    return quality === 'strong';
+  });
   
-  if (existingCookies.length === 0) {
+  // 🎯 NEW STRATEGY: If 0 strong cookies, try cookie-less FIRST (fast attempt)
+  if (strongCookies.length === 0) {
+    console.log(`\n🎯 Strategy: 0/5 STRONG cookies - trying cookie-less with YouTube-validated proxy FIRST`);
+    console.log(`   📋 Will use: android_sdkless client + YouTube-validated proxy`);
+    console.log(`   ⏱️  If this fails, will pause and wait for 1 strong cookie`);
+    
+    socket.emit('download:status', {
+      downloadId,
+      status: 'downloading',
+      message: '🎯 Trying cookie-less download first (fast attempt)...'
+    });
+    
+    // Set flag to indicate we're trying cookie-less first
+    downloadInfo.triedCookieLessFirst = true;
+    downloadInfo.waitingForStrongCookie = false;
+  } else if (existingCookies.length === 0) {
+    // No cookies at all (not even weak ones)
     console.log(`\n⏸️ Download paused: 0 cookies in pool - waiting for generation...`);
     socket.emit('download:status', {
       downloadId,
@@ -8697,7 +8760,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       });
     }
   } else {
-    console.log(`  ✅ Pool status: ${existingCookies.length}/5 cookies available - starting download immediately`);
+    console.log(`  ✅ Pool status: ${existingCookies.length}/5 cookies (${strongCookies.length} STRONG) - starting download immediately`);
   }
 
   // Start download timer
@@ -8733,6 +8796,102 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     if (!downloadInfo || downloadInfo.cancelled) {
       console.log('❌ Download was cancelled, stopping all attempts');
       return;
+    }
+    
+    // 🎯 COOKIE-LESS FIRST ATTEMPT: If 0 strong cookies, try cookie-less ONCE, then pause
+    if (downloadInfo.triedCookieLessFirst && !downloadInfo.waitingForStrongCookie && attempt === 0) {
+      console.log(`\n🎯 Attempt 1: Cookie-less mode (android_sdkless + YouTube-validated proxy)`);
+      console.log(`   📋 This is the FIRST attempt - if it fails, will pause and wait for strong cookie`);
+      
+      // Try cookie-less download with YouTube-validated proxy
+      const cookieLessSuccess = await tryYtDlpFallback(
+        tracks, 
+        outputFolder, 
+        outputPath, 
+        socket, 
+        downloadId, 
+        youtubeLinks, 
+        settings, 
+        0, // attemptNumber
+        true // cookieLessFirst = true
+      );
+      
+      if (cookieLessSuccess && cookieLessSuccess.successCount > 0) {
+        console.log(`\n✅ Cookie-less attempt SUCCEEDED! (${cookieLessSuccess.successCount} tracks downloaded)`);
+        // Check if all tracks are done
+        const filesAfter = await fs.readdir(outputFolder);
+        const musicFilesAfter = filesAfter.filter(f => 
+          f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
+        );
+        if (musicFilesAfter.length >= tracks.length) {
+          console.log(`✅ All tracks downloaded successfully!`);
+          shouldContinue = false;
+          break;
+        }
+      } else {
+        console.log(`\n❌ Cookie-less attempt FAILED - pausing and waiting for 1 STRONG cookie...`);
+        downloadInfo.waitingForStrongCookie = true;
+        socket.emit('download:status', {
+          downloadId,
+          status: 'waiting',
+          message: '⏳ Cookie-less attempt failed - waiting for strong cookie... (may take 30-60s)'
+        });
+        
+        // Trigger cookie generation
+        ensurePoolIsFull().catch(err => console.log(`  ⚠️ Pool fill error: ${err.message}`));
+        
+        // Wait for at least 1 STRONG cookie
+        let strongCookieFound = false;
+        const waitStartTime = Date.now();
+        const maxWaitTime = 300000; // 5 minutes
+        
+        while (Date.now() - waitStartTime < maxWaitTime) {
+          await initCookiePool();
+          const currentCookies = await getWorkingCookiesFromPool();
+          const strongCookies = currentCookies.filter(c => {
+            const quality = c.quality || 'strong';
+            return quality === 'strong';
+          });
+          
+          if (strongCookies.length >= 1) {
+            strongCookieFound = true;
+            console.log(`  ✅ STRONG cookie available! (${strongCookies.length} strong cookies found)`);
+            break;
+          }
+          
+          // Log status every 10 seconds
+          const elapsed = Math.floor((Date.now() - waitStartTime) / 1000);
+          if (elapsed % 10 === 0 && elapsed > 0) {
+            console.log(`  ⏳ Waiting for STRONG cookie... (${elapsed}s elapsed)`);
+            socket.emit('download:status', {
+              downloadId,
+              status: 'waiting',
+              message: `⏳ Waiting for strong cookie... (${elapsed}s)`
+            });
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+        
+        if (!strongCookieFound) {
+          console.log(`  ⚠️ No STRONG cookie found after waiting - proceeding with available cookies`);
+          socket.emit('download:status', {
+            downloadId,
+            status: 'downloading',
+            message: '⚠️ Proceeding with available cookies (may have lower success rate)'
+          });
+        } else {
+          console.log(`  ✅ STRONG cookie ready - resuming download with cookies`);
+          socket.emit('download:status', {
+            downloadId,
+            status: 'downloading',
+            message: '✅ Strong cookie ready - resuming download...'
+          });
+        }
+        
+        downloadInfo.waitingForStrongCookie = false;
+        // Continue to next attempt (will use cookies now)
+      }
     }
     
     // 🛡️ AGGRESSIVE COOKIE CHECK: Pause download if cookies drop to 0 DURING download
