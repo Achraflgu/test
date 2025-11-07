@@ -2231,6 +2231,21 @@ async function regenerateSingleCookie(slotIndex) {
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
     
     while (attempts < maxAttempts) {
+      // 🛡️ CHECK: Pause if downloads become active during regeneration
+      const hasActiveNow = hasActiveDownloads();
+      let waitingForStrongCookie = false;
+      for (const [id, info] of activeDownloads.entries()) {
+        if (info.waitingForStrongCookie === true && info.status === 'waiting') {
+          waitingForStrongCookie = true;
+          break;
+        }
+      }
+      
+      if (hasActiveNow && !waitingForStrongCookie) {
+        console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
+        return false; // Pause regeneration
+      }
+      
       attempts += PARALLEL_GENERATION;
       
       // Generate multiple cookies in parallel
