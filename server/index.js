@@ -1008,6 +1008,7 @@ async function testCookies(cookiePath) {
       '--no-playlist',
       '--quiet',
       '--no-warnings',
+      '--no-check-certificates', // 🔒 Fix SSL certificate errors when using proxies
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
       '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
@@ -1439,13 +1440,27 @@ async function generateRealisticYouTubeCookies(attempt = 0) {
 
 // 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!) + EARLY STOP
 async function generateAndTestCookies(maxAttempts = 100) {
-  // 🛡️ SAFETY CHECK: Pause if downloads are active (check BEFORE starting generation)
+  // 🛡️ SAFETY CHECK: Pause if downloads are active OR cookie-less attempt in progress
   const hasActive = hasActiveDownloads();
   const currentCookies = await getWorkingCookiesFromPool();
   
-  if (hasActive && currentCookies.length >= 1) {
-    console.log(`\n⏸️ [Cookie Generation BLOCKED] Downloads active (${activeDownloads.size}) with ${currentCookies.length} working cookie(s)`);
-    console.log(`  💡 Returning existing cookies - generation will resume after downloads complete`);
+  // 🎯 Check if cookie-less first attempt is in progress (should pause ALL regeneration)
+  let cookieLessInProgress = false;
+  for (const [id, info] of activeDownloads.entries()) {
+    if (info.cookieLessAttemptInProgress === true) {
+      cookieLessInProgress = true;
+      break;
+    }
+  }
+  
+  // 🛡️ PAUSE if: (1) Active downloads with cookies, OR (2) Cookie-less attempt in progress
+  if ((hasActive && currentCookies.length >= 1) || cookieLessInProgress) {
+    if (cookieLessInProgress) {
+      console.log(`\n⏸️ [Cookie Generation BLOCKED] Cookie-less download attempt in progress - pausing regeneration`);
+    } else {
+      console.log(`\n⏸️ [Cookie Generation BLOCKED] Downloads active (${activeDownloads.size}) with ${currentCookies.length} working cookie(s)`);
+    }
+    console.log(`  💡 Returning existing cookies - generation will resume after download completes`);
     
     // Return existing cookies instead of generating new ones
     return {
@@ -8782,6 +8797,10 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     downloadInfo.triedCookieLessFirst = true;
     downloadInfo.waitingForStrongCookie = false;
     downloadInfo.cookieLessAttemptInProgress = false; // Will be set when attempt starts
+    
+    // 🛡️ IMMEDIATELY pause cookie generation when download starts with 0 cookies
+    // This prevents cookie generation from interfering with the cookie-less attempt
+    console.log(`  ⏸️ Pausing cookie generation during cookie-less download attempt`);
   } else if (existingCookies.length === 0) {
     // No cookies at all (not even weak ones)
     console.log(`\n⏸️ Download paused: 0 cookies in pool - waiting for generation...`);
