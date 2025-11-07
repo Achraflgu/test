@@ -1015,20 +1015,24 @@ async function testCookies(cookiePath) {
     ];
 
     // 🌐 ADD PROXY SUPPORT (bypass IP ban during cookie testing)
-    if (process.env.USE_FREE_PROXIES === 'true') {
-      const proxy = proxyManager.getProxyForYtdlp();
-      if (proxy) {
-        testArgs.push('--proxy', proxy);
+    // Use proxy manager which automatically handles Oxylabs > Free proxies priority
+    const proxy = proxyManager.getProxyForYtdlp();
+    if (proxy) {
+      testArgs.push('--proxy', proxy);
+      // Show which type of proxy is being used
+      if (proxy.includes('oxylabs.io')) {
+        console.log(`  🌟 Testing cookie via Oxylabs premium proxy`);
+      } else {
         const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
         console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
       }
-    } else if (process.env.OXYLABS_PROXY) {
-      testArgs.push('--proxy', process.env.OXYLABS_PROXY);
-      console.log(`  🌐 Testing cookie via Oxylabs proxy`);
     } else if (process.env.SCRAPERAPI_KEY) {
+      // Fallback to ScraperAPI if proxy manager has nothing
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
       console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
+    } else {
+      console.log(`  ⚠️  No proxy available for cookie testing`);
     }
 
     return await new Promise((resolve) => {
@@ -3035,11 +3039,17 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     let proxy = null;
     let proxyType = 'none';
     
-    // 🎯 PRIORITY 1: Oxylabs Premium Proxy (BEST - 60-80% success rate)
-    if (process.env.OXYLABS_PROXY) {
-      proxy = process.env.OXYLABS_PROXY;
-      proxyType = 'Oxylabs Premium';
-      console.log(`   🌐 Using Oxylabs proxy to bypass YouTube blocking`);
+    // 🎯 PRIORITY 1: Use proxy manager (handles Oxylabs > Free proxies automatically)
+    const proxyFromManager = proxyManager.getProxyForYtdlp();
+    if (proxyFromManager) {
+      proxy = proxyFromManager;
+      if (proxyFromManager.includes('oxylabs.io')) {
+        proxyType = 'Oxylabs Premium';
+        console.log(`   🌟 Using Oxylabs premium proxy to bypass YouTube blocking`);
+      } else {
+        proxyType = 'Free Proxy';
+        console.log(`   🌐 Using proxy to bypass YouTube blocking`);
+      }
     }
     // 🎯 PRIORITY 2: ScraperAPI (GOOD - 40-60% success rate)
     else if (process.env.SCRAPERAPI_KEY) {
@@ -9208,24 +9218,20 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Build yt-dlp args for spotdl (including proxy if available)
     let ytdlpArgs = '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10';
     
-    // Add Oxylabs proxy if available (PROFESSIONAL - best option)
-    if (process.env.OXYLABS_PROXY) {
-      ytdlpArgs += ` --proxy ${process.env.OXYLABS_PROXY} --no-check-certificate`;
-      console.log('🌐 Oxylabs proxy enabled for spotdl downloads');
-    }
-    // Add ScraperAPI proxy if available (PAID)
-    else if (process.env.SCRAPERAPI_KEY) {
+    // Add proxy using proxy manager (handles Oxylabs > Free proxies automatically)
+    const proxy = proxyManager.getProxyForYtdlp();
+    if (proxy) {
+      ytdlpArgs += ` --proxy ${proxy} --no-check-certificate`;
+      if (proxy.includes('oxylabs.io')) {
+        console.log('🌟 Oxylabs premium proxy enabled for spotdl downloads');
+      } else {
+        console.log(`🌐 Proxy enabled for spotdl downloads: ${proxy.substring(0, 30)}...`);
+      }
+    } else if (process.env.SCRAPERAPI_KEY) {
+      // Fallback to ScraperAPI if proxy manager has nothing
       const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       ytdlpArgs += ` --proxy ${scraperApiProxy} --no-check-certificate`;
       console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');
-    }
-    // Otherwise, use free rotating proxies (FREE)
-    else if (process.env.USE_FREE_PROXIES === 'true') {
-      const proxy = proxyManager.getProxyForYtdlp();
-      if (proxy) {
-        ytdlpArgs += ` --proxy ${proxy}`;
-        console.log(`🌐 Free proxy enabled for spotdl: ${proxy}`);
-      }
     }
     
     const spotdlArgs = [
