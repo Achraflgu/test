@@ -994,7 +994,7 @@ async function replaceCookieInPool(index, newCookieContent) {
 
 // ⚡ ULTRA-STRICT cookie test - Tests ACTUAL audio extraction (not just metadata!)
 // This ensures cookies work for REAL downloads, not just API calls
-async function testCookies(cookiePath) {
+async function testCookies(cookiePath, skipProxy = false) {
   try {
     // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (the REAL test!)
     const testArgs = [
@@ -1019,20 +1019,23 @@ async function testCookies(cookiePath) {
     // Use proxy manager which automatically handles Oxylabs > Free proxies priority
     let proxy = null;
     
-    // Try to get proxy (with retry if proxy manager not ready yet)
-    for (let retry = 0; retry < 3; retry++) {
-      proxy = proxyManager.getProxyForYtdlp();
-      if (proxy) break;
-      
-      // If no proxy and we have Oxylabs credentials, wait a bit for initialization
-      if (process.env.OXYLABS_USERNAME && process.env.OXYLABS_PASSWORD && retry < 2) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s
-        continue;
+    // 🎯 FALLBACK: Skip proxies if explicitly requested (after many proxy failures)
+    if (!skipProxy) {
+      // Try to get proxy (with retry if proxy manager not ready yet)
+      for (let retry = 0; retry < 3; retry++) {
+        proxy = proxyManager.getProxyForYtdlp();
+        if (proxy) break;
+        
+        // If no proxy and we have Oxylabs credentials, wait a bit for initialization
+        if (process.env.OXYLABS_USERNAME && process.env.OXYLABS_PASSWORD && retry < 2) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s
+          continue;
+        }
+        break;
       }
-      break;
     }
     
-    if (proxy) {
+    if (proxy && !skipProxy) {
       testArgs.push('--proxy', proxy);
       // Show which type of proxy is being used
       if (proxy.includes('oxylabs.io')) {
@@ -1041,11 +1044,13 @@ async function testCookies(cookiePath) {
         const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
         console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
       }
-    } else if (process.env.SCRAPERAPI_KEY) {
+    } else if (process.env.SCRAPERAPI_KEY && !skipProxy) {
       // Fallback to ScraperAPI if proxy manager has nothing
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
       console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
+    } else if (skipProxy) {
+      console.log(`  🔄 Testing cookie WITHOUT proxy (fallback after proxy failures)`);
     } else {
       console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
     }
@@ -1789,6 +1794,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
+        // 🎯 FALLBACK: After 15+ consecutive failures, try WITHOUT proxies (direct connection)
+        // This gives a chance for cookie generation to succeed even when all proxies are dead
+        const tryWithoutProxy = consecutiveFailures >= 15 && batch >= 5;
+        
         // Generate multiple cookie sets in parallel
         const cookiePromises = [];
         for (let i = 0; i < PARALLEL_TESTS; i++) {
@@ -1804,8 +1813,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
               const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}_${i}.txt`);
               await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
               
-              // Test cookies (5s timeout)
-              const testResult = await testCookies(tempCookiePath);
+              // 🎯 Test cookies - try without proxy if all proxies are failing
+              const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
               
               // Clean up temp file
               await fs.unlink(tempCookiePath).catch(() => {});
@@ -2311,6 +2320,11 @@ async function regenerateSingleCookie(slotIndex) {
       
       attempts += PARALLEL_GENERATION;
       
+      // 🎯 FALLBACK: After 15+ attempts with proxies all failing, try WITHOUT proxies (direct connection)
+      // This gives a chance for cookie generation to succeed even when all proxies are dead
+      const proxyFailures = global['cookie_regeneration_failures'] || 0;
+      const tryWithoutProxy = proxyFailures >= 15 && attempts >= 15; // Try without proxy after 15 failures
+      
       // Generate multiple cookies in parallel
       const generationPromises = [];
       for (let i = 0; i < PARALLEL_GENERATION; i++) {
@@ -2323,7 +2337,8 @@ async function regenerateSingleCookie(slotIndex) {
             const tempCookiePath = path.join(__dirname, `.temp_regenerate_${slotIndex}_${Date.now()}_${i}.txt`);
             await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
             
-            const testResult = await testCookies(tempCookiePath);
+            // 🎯 Try without proxy if all proxies are failing
+            const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
             await fs.unlink(tempCookiePath).catch(() => {});
             
             // ✅ Only accept STRONG cookies (not weak, not failed)
