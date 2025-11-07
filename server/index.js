@@ -1115,7 +1115,31 @@ async function testCookies(cookiePath) {
         }
 
         // Timeout or process error = fail
-        console.log('  ❌ Cookie test FAILED (no audio extracted, code: ' + (code ?? 'null') + ')');
+        // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
+        const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
+        const isProxyIssue = errorOutput.toLowerCase().includes('proxy') || 
+                            errorOutput.toLowerCase().includes('connection') ||
+                            errorOutput.toLowerCase().includes('timeout');
+        const isCookieIssue = errorOutput.toLowerCase().includes('sign in') ||
+                             errorOutput.toLowerCase().includes('bot') ||
+                             errorOutput.toLowerCase().includes('login_required');
+        
+        if (code === null) {
+          console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
+          if (errorPreview) {
+            console.log(`     Error preview: ${errorPreview}...`);
+          }
+        } else {
+          console.log(`  ❌ Cookie test FAILED (code: ${code}, ${proxy ? 'with proxy' : 'no proxy'})`);
+          if (isProxyIssue) {
+            console.log(`     🔍 Issue: PROXY problem (connection/timeout)`);
+          } else if (isCookieIssue) {
+            console.log(`     🔍 Issue: COOKIE problem (bot detection/login required)`);
+          } else if (errorPreview) {
+            console.log(`     Error preview: ${errorPreview}...`);
+          }
+        }
+        
         resolveOnce({ status: 'fail', reason: code === null ? 'timeout' : 'process_error' });
       });
 
@@ -1126,12 +1150,15 @@ async function testCookies(cookiePath) {
 
       // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
       const isOxylabs = proxy && proxy.includes('oxylabs.io');
-      const timeout = isOxylabs ? 30000 : 12000; // 30s for Oxylabs, 12s for free proxies
+      const timeout = isOxylabs ? 45000 : 12000; // 45s for Oxylabs (increased), 12s for free proxies
       
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
-        console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit)`);
+        const proxyType = isOxylabs ? 'Oxylabs' : (proxy ? 'free proxy' : 'no proxy');
+        console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit, ${proxyType})`);
+        console.log(`     💡 This usually means: Generated cookies are fake and YouTube rejects them`);
+        console.log(`     💡 Solution: Use real browser cookies (YOUTUBE_COOKIES env var)`);
         resolveOnce({ status: 'fail', reason: 'timeout' });
       }, timeout);
     });
