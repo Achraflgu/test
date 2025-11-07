@@ -1210,41 +1210,87 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
     
     let output = '';
     let errorOutput = '';
+    let resolved = false;
+    
+    const resolveOnce = (value) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
     
     proc.stdout.on('data', data => output += data.toString());
     proc.stderr.on('data', data => errorOutput += data.toString());
     
     proc.on('close', (code) => {
-      if (code !== 0) {
-        console.log('⚠️  PO token generation failed:', errorOutput || 'Unknown error');
-        resolve(null);
+      if (resolved) return;
+      // Try to parse JSON output even if exit code is non-zero (Python script outputs JSON on errors)
+      try {
+        if (output.trim()) {
+          const result = JSON.parse(output);
+          if (result.success && result.po_token) {
+            console.log('✅ Generated PO token successfully');
+            console.log(`   Token: ${result.po_token.substring(0, 20)}...`);
+            console.log(`   Visitor Data: ${result.visitor_data ? result.visitor_data.substring(0, 20) + '...' : 'none'}`);
+            resolveOnce(result);
+            return;
+          } else {
+            // Python script returned error in JSON format
+            const errorMsg = result.error || 'Unknown error';
+            const errorType = result.error_type || 'Unknown';
+            console.log(`⚠️  PO token generation failed: ${errorMsg} (${errorType})`);
+            if (errorOutput) {
+              console.log(`   stderr: ${errorOutput.substring(0, 200)}`);
+            }
+            resolveOnce(null);
+            return;
+          }
+        }
+      } catch (e) {
+        // Failed to parse JSON - output might be empty or malformed
+        if (code !== 0) {
+          console.log(`⚠️  PO token generation failed (exit code ${code}):`, errorOutput || output || 'No output received');
+          if (errorOutput) {
+            console.log(`   stderr: ${errorOutput.substring(0, 200)}`);
+          }
+        } else {
+          console.log('⚠️  Failed to parse PO token response:', e.message);
+          if (output) {
+            console.log(`   Output: ${output.substring(0, 200)}`);
+          }
+        }
+        resolveOnce(null);
         return;
       }
       
-      try {
-        const result = JSON.parse(output);
-        if (result.success && result.po_token) {
-          console.log('✅ Generated PO token successfully');
-          console.log(`   Token: ${result.po_token.substring(0, 20)}...`);
-          console.log(`   Visitor Data: ${result.visitor_data ? result.visitor_data.substring(0, 20) + '...' : 'none'}`);
-          resolve(result);
-        } else {
-          console.log('⚠️  PO token generation returned no token:', result.error || 'Unknown');
-          resolve(null);
-        }
-      } catch (e) {
-        console.log('⚠️  Failed to parse PO token response:', e.message);
-        resolve(null);
+      // No output at all
+      if (code !== 0) {
+        console.log(`⚠️  PO token generation failed (exit code ${code}):`, errorOutput || 'No output received');
+      } else {
+        console.log('⚠️  PO token generation returned no output');
       }
+      resolveOnce(null);
     });
     
     proc.on('error', (err) => {
+      if (resolved) return;
       console.log('⚠️  PO token process error:', err.message);
       if (err.message.includes('ENOENT')) {
         console.log('   💡 Tip: Install Python 3 and pytubefix (pip install pytubefix)');
       }
-      resolve(null);
+      resolveOnce(null);
     });
+    
+    // Handle timeout
+    setTimeout(() => {
+      if (resolved) return;
+      try {
+        proc.kill('SIGKILL');
+        console.log('⚠️  PO token generation timeout (30s) - process killed');
+        resolveOnce(null);
+      } catch (e) {
+        // Process already finished
+      }
+    }, 30000);
   });
 }
 
