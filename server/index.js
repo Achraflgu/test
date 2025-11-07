@@ -1205,7 +1205,7 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
     
     const proc = spawn('python3', [scriptPath, videoUrl], {
       cwd: __dirname,
-      timeout: 30000
+      timeout: 5000 // 5s timeout - PO tokens are optional, don't delay downloads
     });
     
     let output = '';
@@ -1280,17 +1280,17 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
       resolveOnce(null);
     });
     
-    // Handle timeout
+    // Handle timeout (reduced to 5s - PO tokens are optional, don't delay downloads)
     setTimeout(() => {
       if (resolved) return;
       try {
         proc.kill('SIGKILL');
-        console.log('⚠️  PO token generation timeout (30s) - process killed');
+        // Silent timeout - PO tokens are optional, downloads work without them
         resolveOnce(null);
       } catch (e) {
         // Process already finished
       }
-    }, 30000);
+    }, 5000); // 5s timeout instead of 30s - don't delay downloads
   });
 }
 
@@ -7112,7 +7112,17 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     }
     
     // 🎯 Inject PO token for enhanced authentication (bypasses bot detection)
-    await injectPOToken(downloadOptions);
+    // ⚡ FAST TIMEOUT: Try to get PO token, but don't delay download more than 3 seconds
+    // PO tokens are optional enhancement, downloads work fine without them
+    try {
+      await Promise.race([
+        injectPOToken(downloadOptions),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000)) // 3s max wait
+      ]);
+    } catch (err) {
+      // Silently fail - PO tokens are optional, proceed without them
+      // Don't log - PO token failures are expected and downloads work fine without them
+    }
     
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
