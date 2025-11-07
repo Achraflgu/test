@@ -1031,20 +1031,24 @@ async function testCookies(cookiePath) {
       break;
     }
     
+    // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
+    const isOxylabs = proxy && proxy.includes('oxylabs.io');
+    const timeout = isOxylabs ? 60000 : 20000; // 60s for Oxylabs (increased!), 20s for free proxies
+    
     if (proxy) {
       testArgs.push('--proxy', proxy);
       // Show which type of proxy is being used
       if (proxy.includes('oxylabs.io')) {
-        console.log(`  🌟 Testing cookie via Oxylabs premium proxy`);
+        console.log(`  🌟 Testing cookie via Oxylabs premium proxy (${timeout/1000}s timeout)`);
       } else {
         const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
-        console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
+        console.log(`  🌐 Testing cookie via proxy: ${shortProxy} (${timeout/1000}s timeout)`);
       }
     } else if (process.env.SCRAPERAPI_KEY) {
       // Fallback to ScraperAPI if proxy manager has nothing
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
-      console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
+      console.log(`  🌐 Testing cookie via ScraperAPI proxy (${timeout/1000}s timeout)`);
     } else {
       console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
     }
@@ -1060,9 +1064,11 @@ async function testCookies(cookiePath) {
         resolve(value);
       };
 
+      // 🔥 CRITICAL FIX: Spawn timeout must match our custom timeout!
+      // Previously: spawn timeout (12s) was killing process before custom timeout (30s) could trigger
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 12000 // 12s timeout for actual extraction
+        timeout: timeout + 5000 // Spawn timeout = custom timeout + 5s buffer (prevents premature kill)
       });
 
       testProcess.stdout.on('data', (data) => {
@@ -1124,10 +1130,7 @@ async function testCookies(cookiePath) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
-      // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
-      const isOxylabs = proxy && proxy.includes('oxylabs.io');
-      const timeout = isOxylabs ? 30000 : 12000; // 30s for Oxylabs, 12s for free proxies
-      
+      // 🎯 Custom timeout handler (spawn timeout already set above, this is backup)
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
