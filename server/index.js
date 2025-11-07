@@ -3919,9 +3919,10 @@ async function getYoutubeiVersion() {
 
 // Helper function to update yt-dlp and spotdl
 async function updateDependencies() {
-  // Silent update check for Python tools
+  // Install from requirements.txt to ensure all dependencies (including pytubefix) are installed
   return new Promise((resolve) => {
-    const updateProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', 'yt-dlp', 'spotdl']);
+    const requirementsPath = path.join(__dirname, 'requirements.txt');
+    const updateProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', '-r', requirementsPath]);
     let output = '';
     
     updateProcess.stdout.on('data', (data) => {
@@ -3933,9 +3934,26 @@ async function updateDependencies() {
     });
     
     updateProcess.on('close', (code) => {
-      const updated = output.includes('Successfully installed') || output.includes('Requirement already satisfied');
+      const updated = output.includes('Successfully installed') || output.includes('Requirement already satisfied') || code === 0;
       versionInfo.lastUpdated = new Date().toISOString();
       resolve(updated);
+    });
+    
+    updateProcess.on('error', (err) => {
+      // If requirements.txt install fails, fallback to direct install
+      console.log('⚠️  Failed to install from requirements.txt, trying direct install...');
+      const fallbackProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', 'yt-dlp', 'spotdl', 'pytubefix']);
+      let fallbackOutput = '';
+      
+      fallbackProcess.stdout.on('data', (data) => {
+        fallbackOutput += data.toString();
+      });
+      
+      fallbackProcess.on('close', (fallbackCode) => {
+        const fallbackUpdated = fallbackOutput.includes('Successfully installed') || fallbackOutput.includes('Requirement already satisfied') || fallbackCode === 0;
+        versionInfo.lastUpdated = new Date().toISOString();
+        resolve(fallbackUpdated);
+      });
     });
   });
 }
