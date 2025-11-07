@@ -1561,6 +1561,20 @@ async function generateAndTestCookies(maxAttempts = 100) {
       // 🎯 PHASE 1: Get 2-3 STRONG cookies quickly (blocking, up to 90s)
       // 🎯 PHASE 2: Fill remaining slots in background (non-blocking after Phase 1)
       while (cookiesFound < cookiesNeeded) {
+        // 🛡️ CHECK: Pause if cookie-less download attempt is in progress
+        let cookieLessInProgress = false;
+        for (const [id, info] of activeDownloads.entries()) {
+          if (info.cookieLessAttemptInProgress === true) {
+            cookieLessInProgress = true;
+            break;
+          }
+        }
+        
+        if (cookieLessInProgress) {
+          console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+          break; // Exit loop to pause generation
+        }
+        
         batch++;
         const elapsed = Date.now() - startTime;
         const inPhase1 = elapsed < PHASE1_TIME && strongCookiesFound < MIN_STRONG_FOR_OPERATION;
@@ -2720,6 +2734,20 @@ async function generateSingleStrongCookie() {
   const PARALLEL_TESTS = 3;
   
   for (let batch = 1; batch <= MAX_ATTEMPTS / PARALLEL_TESTS; batch++) {
+    // 🛡️ CHECK: Pause if cookie-less download attempt is in progress
+    let cookieLessInProgress = false;
+    for (const [id, info] of activeDownloads.entries()) {
+      if (info.cookieLessAttemptInProgress === true) {
+        cookieLessInProgress = true;
+        break;
+      }
+    }
+    
+    if (cookieLessInProgress) {
+      console.log(`  ⏸️ Pausing cookie generation: Cookie-less download attempt in progress`);
+      return false; // Pause generation
+    }
+    
     // Generate 3 cookies in parallel
     const cookiePromises = [];
     for (let i = 0; i < PARALLEL_TESTS; i++) {
@@ -3779,24 +3807,10 @@ async function getYoutubeiVersion() {
 
 // Helper function to update yt-dlp and spotdl
 async function updateDependencies() {
-  // Silent update check for Python tools with timeout to prevent hanging
+  // Silent update check for Python tools
   return new Promise((resolve) => {
     const updateProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', 'yt-dlp', 'spotdl']);
     let output = '';
-    let resolved = false;
-    
-    // ⏱️ TIMEOUT: Kill process after 2 minutes (prevents hanging forever)
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        try {
-          updateProcess.kill('SIGKILL');
-        } catch (err) {}
-        console.log('⚠️ Python tools update timed out after 2 minutes - continuing with existing installations');
-        versionInfo.lastUpdated = new Date().toISOString();
-        resolve(false); // Return false to indicate timeout
-      }
-    }, 120000); // 2 minutes timeout
     
     updateProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -3807,20 +3821,9 @@ async function updateDependencies() {
     });
     
     updateProcess.on('close', (code) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
       const updated = output.includes('Successfully installed') || output.includes('Requirement already satisfied');
       versionInfo.lastUpdated = new Date().toISOString();
       resolve(updated);
-    });
-    
-    updateProcess.on('error', (err) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-      console.log(`⚠️ Python tools update error: ${err.message}`);
-      resolve(false);
     });
   });
 }
@@ -3838,19 +3841,6 @@ async function updateNodePackages() {
     
     let output = '';
     let errorOutput = '';
-    let resolved = false;
-    
-    // ⏱️ TIMEOUT: Kill process after 2 minutes (prevents hanging forever)
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        try {
-          updateProcess.kill('SIGKILL');
-        } catch (err) {}
-        console.log('⚠️ npm package update timed out after 2 minutes - continuing with existing packages');
-        resolve(false); // Return false to indicate timeout
-      }
-    }, 120000); // 2 minutes timeout
     
     updateProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -3861,9 +3851,6 @@ async function updateNodePackages() {
     });
     
     updateProcess.on('close', (code) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
       if (code === 0) {
         console.log('✅ npm packages checked/updated');
         resolve(true);
@@ -3874,9 +3861,6 @@ async function updateNodePackages() {
     });
     
     updateProcess.on('error', (error) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
       console.log('⚠️ npm update skipped (not critical)');
       resolve(false);
     });
@@ -8840,7 +8824,9 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     // Set flag to indicate we're trying cookie-less first
     downloadInfo.triedCookieLessFirst = true;
     downloadInfo.waitingForStrongCookie = false;
-    downloadInfo.cookieLessAttemptInProgress = false; // Will be set when attempt starts
+    // 🛡️ SET FLAG EARLY: Pause cookie generation IMMEDIATELY when we detect 0 cookies
+    // This prevents any ongoing cookie generation from interfering with the download
+    downloadInfo.cookieLessAttemptInProgress = true;
     
     // 🛡️ IMMEDIATELY pause cookie generation when download starts with 0 cookies
     // This prevents cookie generation from interfering with the cookie-less attempt
@@ -8914,15 +8900,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       return;
     }
     
-    // 🎯 COOKIE-LESS FIRST ATTEMPT: If 0 strong cookies, try cookie-less ONCE, then pause
-    if (downloadInfo.triedCookieLessFirst && !downloadInfo.waitingForStrongCookie && attempt === 0) {
-      console.log(`\n🎯 Attempt 1: Cookie-less mode (android_sdkless + YouTube-validated proxy)`);
-      console.log(`   📋 This is the FIRST attempt - if it fails, will pause and wait for strong cookie`);
-      
-      // 🛡️ SET FLAG: Cookie-less attempt in progress - pause all cookie generation
-      downloadInfo.cookieLessAttemptInProgress = true;
-      
-      // Try cookie-less download with YouTube-validated proxy
+      // 🎯 COOKIE-LESS FIRST ATTEMPT: If 0 strong cookies, try cookie-less ONCE, then pause
+      if (downloadInfo.triedCookieLessFirst && !downloadInfo.waitingForStrongCookie && attempt === 0) {
+        console.log(`\n🎯 Attempt 1: Cookie-less mode (android_sdkless + YouTube-validated proxy)`);
+        console.log(`   📋 This is the FIRST attempt - if it fails, will pause and wait for strong cookie`);
+        
+        // 🛡️ FLAG ALREADY SET: Cookie-less attempt in progress (set earlier when 0 cookies detected)
+        // downloadInfo.cookieLessAttemptInProgress is already true (set at line 8829)
+        
+        // Try cookie-less download with YouTube-validated proxy
       const cookieLessSuccess = await tryYtDlpFallback(
         tracks, 
         outputFolder, 
