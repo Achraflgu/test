@@ -1169,14 +1169,28 @@ async function testCookies(cookiePath) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
-      // 🎯 Dynamic timeout: Longer for Oxylabs (premium proxies might be slower but more reliable)
+      // 🎯 Dynamic timeout: Longer for Oxylabs and YouTube-validated proxies (slower but more reliable)
       const isOxylabs = proxy && proxy.includes('oxylabs.io');
-      const timeout = isOxylabs ? 45000 : 12000; // 45s for Oxylabs (increased), 12s for free proxies
+      // Check if proxy is YouTube-validated (format: http://IP:PORT, need to extract IP:PORT)
+      let isYouTubeValidated = false;
+      if (proxy && !isOxylabs) {
+        const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+        if (proxyMatch) {
+          const proxyHost = proxyMatch[1];
+          // Check if this proxy is in YouTube-validated list
+          const stats = proxyManager.getStats();
+          // We can't directly check, but if we have YouTube-validated proxies, give more time
+          // to all non-Oxylabs proxies (they might be YouTube-validated)
+          isYouTubeValidated = stats.youtubeWorking > 0;
+        }
+      }
+      // Timeout: 45s for Oxylabs, 25s for YouTube-validated proxies, 20s for other proxies, 12s for no proxy
+      const timeout = isOxylabs ? 45000 : (isYouTubeValidated ? 25000 : (proxy ? 20000 : 12000));
       
       setTimeout(() => {
         if (resolved) return;
         try { testProcess.kill('SIGKILL'); } catch {}
-        const proxyType = isOxylabs ? 'Oxylabs' : (proxy ? 'free proxy' : 'no proxy');
+        const proxyType = isOxylabs ? 'Oxylabs' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy ? 'free proxy' : 'no proxy'));
         console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit, ${proxyType})`);
         resolveOnce({ status: 'fail', reason: 'timeout' });
       }, timeout);
