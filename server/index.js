@@ -10657,26 +10657,19 @@ async function startupSequence() {
 startupSequence().then(async () => {
   // ✅ Python detected - continue with server startup
   
-  // 🔍 CHECK PROXY CONFIGURATION
-  console.log('\n🔍 Checking proxy configuration...');
+  // 🔍 INITIALIZE PROXY SYSTEM (Priority: Oxylabs > Validated Free > Free)
+  console.log('\n🔍 Initializing proxy system...');
   
-  // Check Oxylabs (Priority 1)
-  if (process.env.OXYLABS_PROXY) {
-    console.log('✅ Oxylabs proxy configured! 🎯');
-    console.log(`   Proxy: ${process.env.OXYLABS_PROXY.split('@')[1] || 'dc.oxylabs.io:8000'}`);
-  } else {
-    console.log('⚠️  Oxylabs proxy NOT configured');
-  }
+  // 🌟 PRIORITY 1: Initialize Oxylabs premium proxy (BEST)
+  const oxylabsReady = await proxyManager.initOxylabs();
   
-  // Check ScraperAPI (Priority 2)
+  // Check ScraperAPI (for future use)
   if (process.env.SCRAPERAPI_KEY) {
-    console.log('✅ ScraperAPI key configured!');
+    console.log('✅ ScraperAPI key configured (not used yet)');
     console.log(`   Key: ${process.env.SCRAPERAPI_KEY.substring(0, 8)}...`);
-  } else {
-    console.log('⚠️  ScraperAPI key NOT configured');
   }
   
-  // Initialize free proxy pool if enabled (Priority 3 - Fallback)
+  // 🎯 PRIORITY 2-3: Initialize free proxy pool (fallback if no Oxylabs)
   if (process.env.USE_FREE_PROXIES === 'true') {
     console.log('✅ Free proxies enabled (fallback)');
     console.log('\n🌐 Initializing free proxy pool...');
@@ -10707,14 +10700,21 @@ startupSequence().then(async () => {
   }
   
   console.log('\n📊 Download Success Rate Estimate:');
-  if (process.env.OXYLABS_PROXY) {
-    console.log('   🟢 60-80% (Oxylabs Premium)');
-  } else if (process.env.SCRAPERAPI_KEY) {
-    console.log('   🟡 40-60% (ScraperAPI)');
+  if (oxylabsReady) {
+    console.log('   🟢🟢🟢 85-99% (Oxylabs Premium - ACTIVE)');
+    console.log('   ✨ Residential IPs, best quality, minimal detection');
   } else if (process.env.USE_FREE_PROXIES === 'true') {
-    console.log('   🔴 1-4% (Free Proxies Only)');
+    const stats = proxyManager.getStats();
+    if (stats.working > 10) {
+      console.log(`   🟡 15-35% (${stats.working} Validated Free Proxies)`);
+      console.log('   ⚠️  Free proxies - success rate varies, consider upgrading to Oxylabs');
+    } else {
+      console.log('   🔴 1-8% (Free Proxies - Low Quality)');
+      console.log('   ⚠️  Very few working proxies, downloads will likely fail');
+    }
   } else {
-    console.log('   ⚫ 0% (No Proxies - will fail)');
+    console.log('   ⚫ 0% (No Proxies Configured)');
+    console.log('   ❌ YouTube downloads will fail 100% - configure Oxylabs or free proxies');
   }
   console.log('');
   

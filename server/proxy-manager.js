@@ -1,4 +1,4 @@
-// Free Proxy Manager - Fetches and rotates free proxies automatically
+// Proxy Manager - Premium (Oxylabs) + Free Proxies with validation
 import fetch from 'node-fetch';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
@@ -12,6 +12,10 @@ class ProxyManager {
     this.FETCH_INTERVAL = 10 * 60 * 1000; // Refresh every 10 minutes
     this.VALIDATION_INTERVAL = 5 * 60 * 1000; // Re-validate every 5 minutes
     this.isValidating = false;
+    
+    // 🌟 OXYLABS Premium Proxy Configuration
+    this.oxylabsConfig = null;
+    this.oxylabsWorking = false;
     
     // 🆕 UPDATED 2025 - Public proxy sources (verified working)
     this.sources = [
@@ -65,6 +69,77 @@ class ProxyManager {
       'https://raw.githubusercontent.com/Zaeem20/FREE_PROXIES_LIST/master/http.txt',
       'https://raw.githubusercontent.com/Zaeem20/FREE_PROXIES_LIST/master/https.txt'
     ];
+  }
+
+  // 🌟 Initialize Oxylabs premium proxy (HIGHEST PRIORITY)
+  async initOxylabs() {
+    const username = process.env.OXYLABS_USERNAME;
+    const password = process.env.OXYLABS_PASSWORD;
+    
+    if (!username || !password) {
+      console.log('⚠️  Oxylabs credentials not found in environment');
+      return false;
+    }
+    
+    console.log('🌟 Initializing Oxylabs premium proxy...');
+    console.log(`   Username: ${username}`);
+    
+    // Oxylabs proxy formats:
+    // Residential: pr.oxylabs.io:7777
+    // Datacenter: dc.oxylabs.io:8001
+    // Realtime: realtime.oxylabs.io:60000
+    
+    this.oxylabsConfig = {
+      username,
+      password,
+      // Try residential first (best for avoiding detection)
+      residential: `http://${username}:${password}@pr.oxylabs.io:7777`,
+      datacenter: `http://${username}:${password}@dc.oxylabs.io:8001`,
+      realtime: `http://${username}:${password}@realtime.oxylabs.io:60000`
+    };
+    
+    // Test Oxylabs connection
+    console.log('🧪 Testing Oxylabs connection...');
+    const works = await this.testOxylabs();
+    
+    if (works) {
+      this.oxylabsWorking = true;
+      console.log('✅ Oxylabs proxy verified and working!');
+      console.log('   🎯 Will use Oxylabs for all YouTube requests (PRIORITY 1)');
+      return true;
+    } else {
+      console.log('⚠️  Oxylabs test failed - will use free proxies instead');
+      this.oxylabsWorking = false;
+      return false;
+    }
+  }
+
+  // 🧪 Test Oxylabs proxy
+  async testOxylabs() {
+    if (!this.oxylabsConfig) return false;
+    
+    try {
+      // Test with residential proxy (best quality)
+      const agent = new HttpsProxyAgent(this.oxylabsConfig.residential);
+      
+      const response = await fetch('https://www.youtube.com/', {
+        agent,
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      if (response.ok) {
+        console.log('   ✅ Oxylabs residential proxy working');
+        return true;
+      }
+      
+      return false;
+    } catch (err) {
+      console.log('   ❌ Oxylabs test failed:', err.message);
+      return false;
+    }
   }
 
   // Fetch proxies from all sources
@@ -181,21 +256,32 @@ class ProxyManager {
     }
   }
 
-  // Get proxy formatted for yt-dlp (prefers validated proxies)
+  // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs > Validated > Free)
   getProxyForYtdlp() {
-    // 🎯 Prefer working/validated proxies first
+    // 🌟 PRIORITY 1: Oxylabs premium proxy (BEST - 99% success rate)
+    if (this.oxylabsWorking && this.oxylabsConfig) {
+      console.log('   🌟 Using Oxylabs premium proxy (residential)');
+      return this.oxylabsConfig.residential;
+    }
+    
+    // 🎯 PRIORITY 2: Validated free proxies (GOOD - tested and working)
     if (this.workingProxies.length > 0) {
       const randomIndex = Math.floor(Math.random() * this.workingProxies.length);
       const proxy = this.workingProxies[randomIndex];
+      const shortProxy = proxy.length > 20 ? proxy.substring(0, 17) + '...' : proxy;
+      console.log(`   ✅ Using validated free proxy: ${shortProxy}`);
       return `http://${proxy}`;
     }
     
-    // Fallback to any proxy if no validated ones
+    // ⚠️ PRIORITY 3: Untested free proxies (RISKY - may not work)
     const proxy = this.getRandomProxy();
-    if (!proxy) return null;
+    if (!proxy) {
+      console.log('   ❌ No proxies available');
+      return null;
+    }
     
-    // yt-dlp accepts: http://IP:PORT or socks5://IP:PORT
-    // Most free proxies are HTTP, some are SOCKS
+    const shortProxy = proxy.length > 20 ? proxy.substring(0, 17) + '...' : proxy;
+    console.log(`   ⚠️  Using untested free proxy: ${shortProxy}`);
     return `http://${proxy}`;
   }
 
@@ -338,6 +424,7 @@ class ProxyManager {
   // Get stats
   getStats() {
     return {
+      oxylabs: this.oxylabsWorking ? 'Active (Premium)' : 'Not configured',
       total: this.proxies.length,
       working: this.workingProxies.length,
       lastFetch: this.lastFetch ? new Date(this.lastFetch).toLocaleString() : 'Never',
