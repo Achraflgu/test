@@ -1985,23 +1985,23 @@ async function ensurePoolIsFull() {
     }
     
     // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
-    // EXCEPTION: Allow regeneration when waiting for strong cookie (needed for download to proceed)
+    // EXCEPTION: Only allow regeneration when explicitly waiting for strong cookie (needed for download to proceed)
     let waitingForStrongCookie = false;
     for (const [id, info] of activeDownloads.entries()) {
-      if (info.waitingForStrongCookie === true) {
+      if (info.waitingForStrongCookie === true && info.status === 'waiting') {
         waitingForStrongCookie = true;
         break;
       }
     }
     
     if (hasActive && !waitingForStrongCookie) {
-      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing regeneration to focus on downloads`);
+      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
     }
     
-    // If waiting for strong cookie, allow regeneration (needed for download to proceed)
+    // Only allow regeneration when explicitly waiting for strong cookie
     if (hasActive && waitingForStrongCookie) {
-      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration`);
+      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration (needed for download)`);
       // Continue with regeneration (don't return)
     }
     
@@ -2108,23 +2108,23 @@ async function regenerateSingleCookie(slotIndex) {
     }
     
     // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
-    // EXCEPTION: Allow regeneration when waiting for strong cookie (needed for download to proceed)
+    // EXCEPTION: Only allow regeneration when explicitly waiting for strong cookie (needed for download to proceed)
     let waitingForStrongCookie = false;
     for (const [id, info] of activeDownloads.entries()) {
-      if (info.waitingForStrongCookie === true) {
+      if (info.waitingForStrongCookie === true && info.status === 'waiting') {
         waitingForStrongCookie = true;
         break;
       }
     }
     
     if (hasActive && !waitingForStrongCookie) {
-      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) - pausing to focus on downloads`);
+      console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
     }
     
-    // If waiting for strong cookie, allow regeneration (needed for download to proceed)
+    // Only allow regeneration when explicitly waiting for strong cookie
     if (hasActive && waitingForStrongCookie) {
-      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration for slot ${slotIndex + 1}`);
+      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration for slot ${slotIndex + 1} (needed for download)`);
       // Continue with regeneration (don't return)
     }
     
@@ -8875,14 +8875,22 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       // 🛡️ CLEAR FLAG: Cookie-less attempt completed
       downloadInfo.cookieLessAttemptInProgress = false;
       
-      if (cookieLessSuccess && cookieLessSuccess.successCount > 0) {
-        console.log(`\n✅ Cookie-less attempt SUCCEEDED! (${cookieLessSuccess.successCount} tracks downloaded)`);
-        // Check if all tracks are done
-        const filesAfter = await fs.readdir(outputFolder);
-        const musicFilesAfter = filesAfter.filter(f => 
-          f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
-        );
-        if (musicFilesAfter.length >= tracks.length) {
+      // 🎯 CHECK FILES DIRECTLY (more reliable than return value)
+      // Small delay to ensure files are written to disk
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const filesAfter = await fs.readdir(outputFolder);
+      const musicFilesAfter = filesAfter.filter(f => 
+        f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
+      );
+      
+      // Check if download succeeded (either by return value OR by file existence)
+      const successCount = typeof cookieLessSuccess === 'number' ? cookieLessSuccess : (cookieLessSuccess?.successCount || 0);
+      const hasFiles = musicFilesAfter.length >= tracks.length;
+      
+      if (successCount > 0 || hasFiles) {
+        console.log(`\n✅ Cookie-less attempt SUCCEEDED! (${successCount} tracks from return, ${musicFilesAfter.length} files found)`);
+        
+        if (hasFiles) {
           console.log(`✅ All tracks downloaded successfully!`);
           // 🚀 IMMEDIATE COMPLETION: Emit completion event right away (don't wait for cookies)
           downloadInfo.status = 'completed';
