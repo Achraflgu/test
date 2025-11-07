@@ -1117,8 +1117,8 @@ async function testCookies(cookiePath) {
 
         // Timeout or process error = fail
         // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
+        // Note: normalizedError is already declared above (line 1080)
         const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
-        const normalizedError = errorOutput.toLowerCase();
         const isProxyIssue = normalizedError.includes('proxy') || 
                             normalizedError.includes('connection') ||
                             normalizedError.includes('timeout');
