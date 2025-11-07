@@ -3779,10 +3779,24 @@ async function getYoutubeiVersion() {
 
 // Helper function to update yt-dlp and spotdl
 async function updateDependencies() {
-  // Silent update check for Python tools
+  // Silent update check for Python tools with timeout to prevent hanging
   return new Promise((resolve) => {
     const updateProcess = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--upgrade', '--quiet', 'yt-dlp', 'spotdl']);
     let output = '';
+    let resolved = false;
+    
+    // ⏱️ TIMEOUT: Kill process after 2 minutes (prevents hanging forever)
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        try {
+          updateProcess.kill('SIGKILL');
+        } catch (err) {}
+        console.log('⚠️ Python tools update timed out after 2 minutes - continuing with existing installations');
+        versionInfo.lastUpdated = new Date().toISOString();
+        resolve(false); // Return false to indicate timeout
+      }
+    }, 120000); // 2 minutes timeout
     
     updateProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -3793,9 +3807,20 @@ async function updateDependencies() {
     });
     
     updateProcess.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
       const updated = output.includes('Successfully installed') || output.includes('Requirement already satisfied');
       versionInfo.lastUpdated = new Date().toISOString();
       resolve(updated);
+    });
+    
+    updateProcess.on('error', (err) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      console.log(`⚠️ Python tools update error: ${err.message}`);
+      resolve(false);
     });
   });
 }
@@ -3813,6 +3838,19 @@ async function updateNodePackages() {
     
     let output = '';
     let errorOutput = '';
+    let resolved = false;
+    
+    // ⏱️ TIMEOUT: Kill process after 2 minutes (prevents hanging forever)
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        try {
+          updateProcess.kill('SIGKILL');
+        } catch (err) {}
+        console.log('⚠️ npm package update timed out after 2 minutes - continuing with existing packages');
+        resolve(false); // Return false to indicate timeout
+      }
+    }, 120000); // 2 minutes timeout
     
     updateProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -3823,6 +3861,9 @@ async function updateNodePackages() {
     });
     
     updateProcess.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
       if (code === 0) {
         console.log('✅ npm packages checked/updated');
         resolve(true);
@@ -3833,6 +3874,9 @@ async function updateNodePackages() {
     });
     
     updateProcess.on('error', (error) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
       console.log('⚠️ npm update skipped (not critical)');
       resolve(false);
     });
