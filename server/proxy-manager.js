@@ -9,25 +9,50 @@ class ProxyManager {
     this.lastFetch = 0;
     this.FETCH_INTERVAL = 10 * 60 * 1000; // Refresh every 10 minutes
     
-    // Public proxy sources (regularly updated)
+    // 🆕 UPDATED 2025 - Public proxy sources (verified working)
     this.sources = [
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=http',
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=https',
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4',
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5',
+      // 🔥 ProxyScrape V4 API (BEST - 500+ proxies, fast, reliable)
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=20000',
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=us',
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=ca,gb,de,fr',
+      
+      // ProxyScrape V2 (backup)
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all',
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4&timeout=10000&country=all',
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all',
+      
+      // GitHub proxy lists (updated daily)
+      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt',
+      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt',
+      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
+      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies_anonymous/http.txt',
+      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt',
+      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt',
+      'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
+      'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt',
+      'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
+      'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/https.txt',
+      'https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt',
+      'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt',
+      'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-https.txt',
+      
+      // Proxy-List APIs
       'https://www.proxy-list.download/api/v1/get?type=http',
       'https://www.proxy-list.download/api/v1/get?type=https',
       'https://www.proxy-list.download/api/v1/get?type=socks4',
       'https://www.proxy-list.download/api/v1/get?type=socks5',
-      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
-      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt',
-      'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt',
-      'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
-      'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt',
-      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
-      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt',
-      'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt',
-      'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/proxy.txt'
+      
+      // Additional sources
+      'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=http,https',
+      'https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt',
+      'https://raw.githubusercontent.com/ObcbO/getproxy/master/file/http.txt',
+      'https://raw.githubusercontent.com/ObcbO/getproxy/master/file/https.txt',
+      'https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt',
+      'https://raw.githubusercontent.com/mmpx12/proxy-list/master/https.txt',
+      'https://raw.githubusercontent.com/prxchk/proxy-list/main/http.txt',
+      'https://raw.githubusercontent.com/Zaeem20/FREE_PROXIES_LIST/master/http.txt',
+      'https://raw.githubusercontent.com/Zaeem20/FREE_PROXIES_LIST/master/https.txt'
     ];
   }
 
@@ -48,19 +73,39 @@ class ProxyManager {
       this.sources.map(async (url) => {
         try {
           const response = await fetch(url, { 
-            timeout: 10000,
-            headers: { 'User-Agent': 'Mozilla/5.0' }
+            timeout: 15000, // Increased timeout for V4 API
+            headers: { 
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Accept': 'text/plain, application/json, */*'
+            }
           });
           
           if (!response.ok) return [];
           
-          const text = await response.text();
+          const contentType = response.headers.get('content-type');
+          let text;
           
-          // Extract IP:PORT patterns
-          const proxyRegex = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}/g;
+          // Handle JSON responses (like GeoNode)
+          if (contentType && contentType.includes('application/json')) {
+            const json = await response.json();
+            if (json.data && Array.isArray(json.data)) {
+              text = json.data.map(p => `${p.ip}:${p.port}`).join('\n');
+            } else {
+              text = JSON.stringify(json);
+            }
+          } else {
+            text = await response.text();
+          }
+          
+          // Extract IP:PORT patterns (supports http://IP:PORT and IP:PORT formats)
+          const proxyRegex = /(?:https?:\/\/)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5})/g;
           const matches = text.match(proxyRegex) || [];
           
-          matches.forEach(proxy => allProxies.add(proxy.trim()));
+          // Clean up proxies (remove protocol if present)
+          matches.forEach(proxy => {
+            const cleanProxy = proxy.replace(/^https?:\/\//, '').trim();
+            if (cleanProxy) allProxies.add(cleanProxy);
+          });
           
           if (matches.length > 0) {
             successCount++;
@@ -78,7 +123,7 @@ class ProxyManager {
     this.proxies = Array.from(allProxies);
     this.lastFetch = now;
     
-    console.log(`✅ Total proxies collected: ${this.proxies.length} from ${successCount} sources`);
+    console.log(`✅ Total proxies collected: ${this.proxies.length} from ${successCount}/${this.sources.length} sources`);
     return this.proxies;
   }
 

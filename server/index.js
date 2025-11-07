@@ -1014,6 +1014,23 @@ async function testCookies(cookiePath) {
       '--max-filesize', '3M' // Abort if too large (just testing)
     ];
 
+    // 🌐 ADD PROXY SUPPORT (bypass IP ban during cookie testing)
+    if (process.env.USE_FREE_PROXIES === 'true') {
+      const proxy = proxyManager.getProxyForYtdlp();
+      if (proxy) {
+        testArgs.push('--proxy', proxy);
+        const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
+        console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
+      }
+    } else if (process.env.OXYLABS_PROXY) {
+      testArgs.push('--proxy', process.env.OXYLABS_PROXY);
+      console.log(`  🌐 Testing cookie via Oxylabs proxy`);
+    } else if (process.env.SCRAPERAPI_KEY) {
+      const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
+      testArgs.push('--proxy', scraperProxy);
+      console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
+    }
+
     return await new Promise((resolve) => {
       let stdoutData = '';
       let errorOutput = '';
@@ -1100,6 +1117,120 @@ async function testCookies(cookiePath) {
     console.log(`  ❌ Cookie test failed: ${err.message}`);
     return { status: 'fail', reason: 'exception' };
   }
+}
+
+// ====================================
+// 🎯 PO TOKEN GENERATION SYSTEM
+// ====================================
+// Generates YouTube PO tokens using pytubefix for enhanced authentication
+
+let poTokenCache = null;
+let poTokenExpiry = 0;
+const PO_TOKEN_LIFETIME = 3600000; // 1 hour (tokens expire)
+
+/**
+ * Generate a fresh PO token using Python pytubefix library
+ * @param {string} videoUrl - YouTube video URL to use for token generation
+ * @returns {Promise<Object|null>} PO token data or null on failure
+ */
+async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXAC9IVRw') {
+  return new Promise((resolve) => {
+    const scriptPath = path.join(__dirname, 'generate-potoken.py');
+    
+    const proc = spawn('python3', [scriptPath, videoUrl], {
+      cwd: __dirname,
+      timeout: 30000
+    });
+    
+    let output = '';
+    let errorOutput = '';
+    
+    proc.stdout.on('data', data => output += data.toString());
+    proc.stderr.on('data', data => errorOutput += data.toString());
+    
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        console.log('⚠️  PO token generation failed:', errorOutput || 'Unknown error');
+        resolve(null);
+        return;
+      }
+      
+      try {
+        const result = JSON.parse(output);
+        if (result.success && result.po_token) {
+          console.log('✅ Generated PO token successfully');
+          console.log(`   Token: ${result.po_token.substring(0, 20)}...`);
+          console.log(`   Visitor Data: ${result.visitor_data ? result.visitor_data.substring(0, 20) + '...' : 'none'}`);
+          resolve(result);
+        } else {
+          console.log('⚠️  PO token generation returned no token:', result.error || 'Unknown');
+          resolve(null);
+        }
+      } catch (e) {
+        console.log('⚠️  Failed to parse PO token response:', e.message);
+        resolve(null);
+      }
+    });
+    
+    proc.on('error', (err) => {
+      console.log('⚠️  PO token process error:', err.message);
+      if (err.message.includes('ENOENT')) {
+        console.log('   💡 Tip: Install Python 3 and pytubefix (pip install pytubefix)');
+      }
+      resolve(null);
+    });
+  });
+}
+
+/**
+ * Get PO token (from cache or generate fresh)
+ * @param {boolean} forceRefresh - Force generate a new token
+ * @returns {Promise<Object|null>} Cached or fresh PO token
+ */
+async function getPOToken(forceRefresh = false) {
+  const now = Date.now();
+  
+  // Return cached token if valid
+  if (!forceRefresh && poTokenCache && now < poTokenExpiry) {
+    console.log('♻️  Using cached PO token');
+    return poTokenCache;
+  }
+  
+  // Generate fresh token
+  console.log('🔄 Generating fresh PO token...');
+  const token = await generatePOToken();
+  
+  if (token && token.po_token) {
+    poTokenCache = token;
+    poTokenExpiry = now + PO_TOKEN_LIFETIME;
+    console.log(`   ⏰ Token will expire in ${PO_TOKEN_LIFETIME / 60000} minutes`);
+  }
+  
+  return token;
+}
+
+/**
+ * Inject PO token into yt-dlp options
+ * @param {Object} options - yt-dlp download options
+ * @returns {Promise<Object>} Modified options with PO token
+ */
+async function injectPOToken(options) {
+  const poToken = await getPOToken();
+  
+  if (poToken && poToken.po_token) {
+    // Add PO token to extractor args
+    const existingArgs = options.extractorArgs || '';
+    const tokenArg = `youtube:po_token=${poToken.po_token}`;
+    const visitorArg = poToken.visitor_data ? `;visitor_data=${poToken.visitor_data}` : '';
+    
+    options.extractorArgs = existingArgs 
+      ? `${existingArgs};${tokenArg}${visitorArg}`
+      : `${tokenArg}${visitorArg}`;
+    
+    console.log('🎯 Injected PO token into download options');
+  }
+  
+  return options;
 }
 
 // ====================================
@@ -6672,9 +6803,12 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const profileList = cookiePath ? COOKIE_CLIENT_PROFILES : COOKIELESS_CLIENT_PROFILES;
     const profile = profileList[clientAttempt % profileList.length];
     
-    // Apply client profile (PO token system removed - was non-functional)
+    // Apply client profile
     applyClientProfileToOptions(downloadOptions, profile);
     console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
+    
+    // 🎯 Inject PO token for enhanced authentication (bypasses bot detection)
+    await injectPOToken(downloadOptions);
     
     console.log(`  🔧 Download options:`, JSON.stringify(downloadOptions, null, 2));
     
