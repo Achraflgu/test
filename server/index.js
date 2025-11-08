@@ -2274,29 +2274,72 @@ async function ensurePoolIsFull() {
         }
       }
       
-      // Wait for all slots to be filled (or timeout after 120s for stricter validation)
-      try {
-        await Promise.race([
-          Promise.all(fillPromises),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 120000))
-        ]);
-      } catch (err) {
-        console.log(`  ⚠️ Some slots took too long to fill, continuing anyway`);
-      }
+      // 🔄 CONTINUE UNTIL 5/5 COOKIES: Keep checking and regenerating until we have all 5 cookies
+      // Only stop if downloads become active (unless waiting for strong cookie)
+      const startTime = Date.now();
+      const checkInterval = 10000; // Check every 10 seconds
+      let lastStatusLog = 0;
       
-      const finalCookies = await getWorkingCookiesFromPool();
-      console.log(`  ✅ Pool status: ${finalCookies.length}/${COOKIE_POOL_SIZE} cookies available`);
+      // Track which slots we're trying to fill
+      const slotsToFill = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
+        .filter(i => !existingIndices.includes(i));
       
-      // Track success/failure
-      if (finalCookies.length >= COOKIE_POOL_SIZE) {
-        consecutivePoolFillFailures = 0; // Reset on success
-        isFillingPool = false;
-        return true;
-      } else {
-        consecutivePoolFillFailures++;
-        console.log(`  ⚠️ Pool fill incomplete (${consecutivePoolFillFailures}/${MAX_CONSECUTIVE_FAILURES} failures)`);
-        isFillingPool = false;
-        return false;
+      while (true) { // Continue until we have 5/5 cookies
+        // Check if downloads became active (unless waiting for strong cookie)
+        const hasActiveNow = hasActiveDownloads();
+        let waitingForStrongCookie = false;
+        for (const [id, info] of activeDownloads.entries()) {
+          if (info.waitingForStrongCookie === true) {
+            waitingForStrongCookie = true;
+            break;
+          }
+        }
+        
+        // If downloads are active and NOT waiting for strong cookie, pause regeneration
+        if (hasActiveNow && !waitingForStrongCookie) {
+          console.log(`  ⏸️ Downloads became active - pausing pool fill (will resume after downloads)`);
+          // Don't clear isFillingPool - we'll resume later
+          return false; // Pause but don't mark as failed
+        }
+        
+        // Check current cookie count
+        const currentCookies = await getWorkingCookiesFromPool();
+        const currentCount = currentCookies.length;
+        const currentIndices = currentCookies.map(c => {
+          return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+        });
+        
+        if (currentCount >= COOKIE_POOL_SIZE) {
+          // ✅ SUCCESS: We have 5/5 cookies!
+          console.log(`  ✅ Pool fill complete: ${currentCount}/${COOKIE_POOL_SIZE} cookies available`);
+          consecutivePoolFillFailures = 0; // Reset on success
+          isFillingPool = false;
+          return true;
+        }
+        
+        // Still missing cookies - find which slots need regeneration
+        const missingSlots = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
+          .filter(i => !currentIndices.includes(i));
+        
+        // Log status every 30 seconds
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        if (elapsed - lastStatusLog >= 30) {
+          console.log(`  ⏳ Still generating cookies: ${currentCount}/${COOKIE_POOL_SIZE} (${missingSlots.length} slots remaining, ${elapsed}s elapsed)`);
+          lastStatusLog = elapsed;
+        }
+        
+        // Start regeneration for any missing slots that aren't already being regenerated
+        for (const slotIndex of missingSlots) {
+          if (!activeRegenerations.has(slotIndex)) {
+            console.log(`  🔄 Starting/restarting regeneration for slot ${slotIndex + 1}...`);
+            regenerateSingleCookie(slotIndex).catch(err => {
+              console.log(`  ⚠️ Regeneration failed for slot ${slotIndex + 1}: ${err.message}`);
+            });
+          }
+        }
+        
+        // Wait before next check
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
     }
     
