@@ -856,89 +856,92 @@ async function getWorkingCookiesFromPool() {
   try {
     await initCookiePool();
     
+    // Always check both Redis and filesystem to ensure all cookies are synced
+    const files = await fs.readdir(COOKIE_POOL_DIR).catch(() => []);
+    const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
+    
     // Try Redis first (if available)
     if (isRedisAvailable()) {
       const redisCookies = await getAllCookiesFromRedis();
+      const redisIndices = new Set(redisCookies.map(c => c.index));
+      
       if (redisCookies.length > 0) {
         console.log(`  🍪 Loaded ${redisCookies.length} cookies from Redis`);
-        
-        // 🔧 SYNC: If we have fewer than 5 cookies in Redis, check filesystem and migrate missing ones
-        if (redisCookies.length < COOKIE_POOL_SIZE) {
-          const files = await fs.readdir(COOKIE_POOL_DIR);
-          const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
-          const redisIndices = new Set(redisCookies.map(c => c.index));
-          
-          // Find cookies in filesystem that are not in Redis
-          for (const file of cookieFiles) {
-            try {
-              const index = parseInt(file.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-              if (!redisIndices.has(index) && index < COOKIE_POOL_SIZE) {
-                const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
-                // Migrate to Redis
-                await saveCookieToRedis(index, content, {
-                  quality: 'strong',
-                  created: new Date().toISOString(),
-                  migrated: true
-                });
-                console.log(`  🔄 Migrated cookie ${index + 1} from filesystem to Redis`);
-                redisCookies.push({
-                  index,
-                  path: path.join(COOKIE_POOL_DIR, file),
-                  content
-                });
-              }
-            } catch {}
-          }
-        }
-        
-        // Also sync to filesystem for compatibility
-        // 🔥 FIX: Update path to filesystem path (not Redis key) - yt-dlp needs file path
-        for (const cookie of redisCookies) {
-          const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
-          await fs.writeFile(cookiePath, cookie.content, 'utf8').catch(() => {});
-          // Update path to filesystem path (yt-dlp needs file path, not Redis key like "cookie_pool:0")
-          cookie.path = cookiePath;
-        }
-        
-        if (redisCookies.length < COOKIE_POOL_SIZE) {
-          console.log(`  ⚠️ Only ${redisCookies.length}/${COOKIE_POOL_SIZE} cookies in Redis - will generate missing ones`);
-        } else {
-          console.log(`  ✅ All ${COOKIE_POOL_SIZE} cookies loaded from Redis`);
-        }
-        
-        return redisCookies;
       }
+      
+      // 🔧 SYNC: Always check filesystem and migrate any missing cookies to Redis
+      let migratedCount = 0;
+      for (const file of cookieFiles) {
+        try {
+          const index = parseInt(file.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+          // Only migrate if: index is valid (0-4) AND not already in Redis
+          if (index >= 0 && index < COOKIE_POOL_SIZE && !redisIndices.has(index)) {
+            const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
+            // Migrate to Redis
+            await saveCookieToRedis(index, content, {
+              quality: 'strong',
+              created: new Date().toISOString(),
+              migrated: true
+            }).catch(() => {});
+            console.log(`  🔄 Migrated cookie ${index + 1} from filesystem to Redis`);
+            migratedCount++;
+            
+            // Add to redisCookies array
+            redisCookies.push({
+              index,
+              path: path.join(COOKIE_POOL_DIR, file),
+              content
+            });
+          }
+        } catch {}
+      }
+      
+      if (migratedCount > 0) {
+        console.log(`  ✅ Migrated ${migratedCount} cookie(s) from filesystem to Redis`);
+      }
+      
+      // Also sync Redis cookies to filesystem for compatibility
+      // 🔥 FIX: Update path to filesystem path (not Redis key) - yt-dlp needs file path
+      for (const cookie of redisCookies) {
+        const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
+        await fs.writeFile(cookiePath, cookie.content, 'utf8').catch(() => {});
+        // Update path to filesystem path (yt-dlp needs file path, not Redis key like "cookie_pool:0")
+        cookie.path = cookiePath;
+      }
+      
+      // Sort by index to ensure proper order
+      redisCookies.sort((a, b) => a.index - b.index);
+      
+      if (redisCookies.length < COOKIE_POOL_SIZE) {
+        console.log(`  ⚠️ Only ${redisCookies.length}/${COOKIE_POOL_SIZE} cookies in Redis - will generate missing ones`);
+      } else if (redisCookies.length === COOKIE_POOL_SIZE) {
+        console.log(`  ✅ All ${COOKIE_POOL_SIZE} cookies loaded from Redis`);
+      } else {
+        console.log(`  ✅ Loaded ${redisCookies.length} cookies from Redis (${COOKIE_POOL_SIZE} needed)`);
+      }
+      
+      return redisCookies;
     }
     
-    // Fallback to filesystem
-    const files = await fs.readdir(COOKIE_POOL_DIR);
-    const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
+    // Fallback to filesystem (Redis not available)
     const cookies = [];
     
     for (const file of cookieFiles) {
       try {
         const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
         const index = parseInt(file.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-        cookies.push({ 
-          path: path.join(COOKIE_POOL_DIR, file), 
-          content,
-          index
-        });
-        
-        // 🔧 SYNC: If Redis is available, save filesystem cookies to Redis
-        if (isRedisAvailable() && index < COOKIE_POOL_SIZE) {
-          await saveCookieToRedis(index, content, {
-            quality: 'strong',
-            created: new Date().toISOString(),
-            migrated: true
-          }).catch(() => {});
+        if (index >= 0 && index < COOKIE_POOL_SIZE) {
+          cookies.push({ 
+            path: path.join(COOKIE_POOL_DIR, file), 
+            content,
+            index
+          });
         }
       } catch {}
     }
     
-    if (isRedisAvailable() && cookies.length > 0) {
-      console.log(`  🔄 Migrated ${cookies.length} cookies from filesystem to Redis`);
-    }
+    // Sort by index
+    cookies.sort((a, b) => a.index - b.index);
     
     return cookies;
   } catch (err) {
@@ -8468,7 +8471,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
-        const result = await new Promise((resolve, reject) => {
+      const result = await new Promise((resolve, reject) => {
         const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs, {
           cwd: outputFolder,
           shell: false,
@@ -11052,8 +11055,8 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       // Build safe Content-Disposition header
       const asciiName = singleFile.replace(/[^\x20-\x7E]/g, '_');
       const encodedName = encodeURIComponent(singleFile).replace(/\*/g, '%2A');
-      const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
-      
+    const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+    
       // Set headers for audio file
       const fileExt = path.extname(singleFile).toLowerCase();
       const mimeTypes = {
@@ -11063,8 +11066,8 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       };
       
       res.setHeader('Content-Type', mimeTypes[fileExt] || 'audio/mpeg');
-      res.setHeader('Content-Disposition', contentDisposition);
-      res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Disposition', contentDisposition);
+    res.setHeader('Cache-Control', 'no-cache');
       
       // IDM-compatible headers for better download manager support
       const fileStats = fsSync.statSync(filePath);
@@ -11137,9 +11140,9 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
       }
       
       // Create archive optimized for music files (already compressed formats)
-      const archive = archiver('zip', {
+    const archive = archiver('zip', {
         store: true, // ⚡ NO COMPRESSION - MP3/M4A files are already compressed!
-        forceLocalTime: true, // Better compatibility
+      forceLocalTime: true, // Better compatibility
         forceZip64: true, // Enable ZIP64 for large files (>4GB support)
         highWaterMark: 1024 * 1024 * 16 // 16MB buffer for faster streaming
       });
@@ -11173,15 +11176,15 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
         }
       });
       
-      archive.on('error', (err) => {
+    archive.on('error', (err) => {
         console.error('Archive creation error:', err);
         try { fsSync.unlinkSync(zipFilePath); } catch {}
         throw err;
-      });
-      
+    });
+    
       // Add all files from the output folder
-      archive.directory(outputFolder, false);
-      
+    archive.directory(outputFolder, false);
+    
       // Finalize and wait for completion
       await archive.finalize();
       await new Promise((resolve, reject) => {
