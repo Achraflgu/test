@@ -7888,8 +7888,17 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     if (hasTimeoutError) {
       console.log('  ⏱️  Timeout/connection error detected in youtube-dl-exec');
       
-      // If proxy was used, return 'timeout' to trigger proxy rotation
+      // If proxy was used, mark it as dead and return 'timeout' to trigger proxy rotation
       if (downloadOptions.proxy && !skipProxy) {
+        // Extract proxy host and mark as dead
+        if (typeof downloadOptions.proxy === 'string') {
+          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (timeout in download): ${proxyHost.substring(0, 30)}...`);
+          }
+        }
         console.log(`  🔄 Will rotate to next proxy on retry`);
         return 'timeout';
       } else {
@@ -8483,38 +8492,49 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         if (cookieLessFirst) {
           console.log(`  🎯 Cookie-less first mode: Using android_sdkless + YouTube-validated proxy (NO cookies)`);
           
-          // 🔧 STABILITY FIX: Retry with proxy rotation on timeout
-          while (!ytdlExecSuccess && retryCount < maxProxyRetries) {
+          // 🔄 Retry with proxy rotation on timeout (3 proxies + 1 no-proxy attempt = 4 total)
+          while (retryCount <= maxProxyRetries) {
             if (retryCount > 0) {
-              console.log(`  🔄 Retry ${retryCount}/${maxProxyRetries} with new proxy after timeout...`);
+              console.log(`  🔄 Retry ${retryCount}/${maxProxyRetries + 1} after timeout...`);
+            }
+            
+            // Attempt download (cookie-less mode with proxy, or without proxy on final attempt)
+            const skipProxy = retryCount === maxProxyRetries; // Skip proxy on 4th attempt
+            
+            if (skipProxy) {
+              console.log(`  🚫 All ${maxProxyRetries} proxies timed out - trying WITHOUT proxy (final attempt)...`);
             }
             
             // Force cookie-less mode (null = no cookies)
-            ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0);
+            ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0, skipProxy);
             
-            // If timeout, rotate proxy and retry
-            if (ytdlExecSuccess === 'timeout' || ytdlExecSuccess === 'timeout_no_proxy') {
+            // 🔧 If timeout occurred: proxy is dead, retry with different proxy
+            if (ytdlExecSuccess === 'timeout') {
+              console.log(`  ⏱️  Timeout detected - proxy is slow/dead, retrying with different proxy`);
               retryCount++;
-              if (ytdlExecSuccess === 'timeout_no_proxy') {
-                // No more proxies - try without proxy
-                console.log(`  🚫 All proxies failed - trying without proxy...`);
-                ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0, true); // true = skip proxy
-                break;
+              
+              // Don't wait on last retry (will try without proxy)
+              if (retryCount < maxProxyRetries) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1s between retries
               }
-              // Wait a bit before retrying with new proxy
-              await new Promise(resolve => setTimeout(resolve, 2000));
               continue;
+            }
+            
+            // If timeout_no_proxy - tried without proxy and still timed out
+            if (ytdlExecSuccess === 'timeout_no_proxy') {
+              console.log(`  ❌ Timeout even without proxy - download failed`);
+              break;
             }
             
             // If success or other error, break
             if (ytdlExecSuccess === true || ytdlExecSuccess === 'success') {
+              console.log(`  ✅ Download succeeded on attempt ${retryCount + 1}`);
               break;
             }
             
-            retryCount++;
-            if (retryCount < maxProxyRetries) {
-              await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+            // Other error (not timeout) - break and try next method
+            console.log(`  ⚠️  Non-timeout error - trying next download method`);
+            break;
           }
         } else {
           // Use smart cookie rotation (normal mode)
