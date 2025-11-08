@@ -2635,6 +2635,12 @@ async function regenerateSingleCookie(slotIndex) {
             
             // ✅ Only accept STRONG cookies (not weak, not failed)
             if (testResult && testResult.status === 'strong') {
+              // 🔧 FIX: Verify cookie content exists before returning
+              if (!cookieData || !cookieData.cookieContent) {
+                console.log(`  ⚠️ Cookie test passed but cookie content is missing - skipping save`);
+                return null;
+              }
+              console.log(`  ✅ Cookie test passed - preparing to save to slot ${slotIndex + 1}`);
               return { 
                 content: cookieData.cookieContent, 
                 quality: 'strong',
@@ -2651,6 +2657,11 @@ async function regenerateSingleCookie(slotIndex) {
       
       const results = await Promise.all(generationPromises);
       const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
+      
+      // 🔧 DEBUG: Log how many strong cookies were found
+      if (strongCookies.length > 0) {
+        console.log(`  ✅ Found ${strongCookies.length} STRONG cookie(s) from batch - preparing to save...`);
+      }
       
       // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
       if (strongCookies.length === 0 && attempts < maxAttempts) {
@@ -2684,7 +2695,27 @@ async function regenerateSingleCookie(slotIndex) {
       if (strongCookies.length > 0) {
         // ✅ STEP 3: Replace failed cookie slot with FIRST strong cookie
         const firstStrongCookie = strongCookies[0];
-        await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
+        
+        // 🔧 FIX: Verify cookie content exists before saving
+        if (!firstStrongCookie || !firstStrongCookie.content) {
+          console.log(`  ❌ ERROR: Strong cookie object is missing content - cannot save!`);
+          console.log(`  🔍 Debug: firstStrongCookie = ${JSON.stringify(firstStrongCookie ? Object.keys(firstStrongCookie) : 'null')}`);
+          // Continue to next attempt instead of returning false
+          attempts += PARALLEL_GENERATION;
+          continue;
+        }
+        
+        console.log(`  💾 Saving STRONG cookie to slot ${slotIndex + 1}...`);
+        const saveResult = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
+        
+        // 🔧 FIX: Verify save was successful
+        if (!saveResult) {
+          console.log(`  ❌ ERROR: Failed to save cookie to pool (saveCookieToPool returned null)`);
+          // Continue to next attempt instead of returning false
+          attempts += PARALLEL_GENERATION;
+          continue;
+        }
+        
         // This replaces the failed cookie at slotIndex
         console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie`);
         
