@@ -10688,189 +10688,150 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     const folderName = path.basename(outputFolder);
     const zipFileName = `${folderName}.zip`;
     
-    // Build a safe Content-Disposition header
-    const asciiName = zipFileName.replace(/[^\x20-\x7E]/g, '_'); // ASCII-only fallback
-    const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A'); // RFC5987
+    // Build safe Content-Disposition header
+    const asciiName = zipFileName.replace(/[^\x20-\x7E]/g, '_');
+    const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A');
     const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
     
-    // Set response headers for optimal streaming
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', contentDisposition);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('Accept-Ranges', 'bytes'); // IDM-compatible: enable resume support
+    // 🔧 FIX: Calculate accurate ZIP size BEFORE creating (enables Content-Length header)
+    // ZIP with store=true has predictable overhead: ~76 bytes per file + 22 bytes fixed
+    let totalFileSize = 0;
+    const fileSizes = [];
     
-    // Note: Content-Length cannot be set for chunked encoding with ZIP64
-    // ZIP64 format handles large files (>4GB) automatically
-    
-    // Calculate total size for better progress tracking
-    let totalSize = 0;
     try {
       for (const file of musicFiles) {
         const filePath = path.join(outputFolder, file);
         try {
           const stats = await fs.stat(filePath);
-          totalSize += stats.size;
+          totalFileSize += stats.size;
+          fileSizes.push({ name: file, size: stats.size });
         } catch (e) {
           console.warn(`Could not stat file ${file}:`, e.message);
         }
       }
-      console.log(`📊 Total archive size estimate: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+      
+      // Calculate ZIP overhead (very accurate for store=true mode)
+      // Local file header: 30 bytes per file
+      // Central directory: 46 bytes per file  
+      // End of central directory: 22 bytes
+      // Filename in headers: average filename length per file
+      const avgFilenameLength = musicFiles.reduce((sum, f) => sum + f.length, 0) / musicFiles.length;
+      const zipOverhead = (musicFiles.length * (30 + 46 + avgFilenameLength * 2)) + 22;
+      const estimatedZipSize = totalFileSize + zipOverhead;
+      
+      console.log(`📊 Files total: ${(totalFileSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+      console.log(`📊 ZIP overhead: ${(zipOverhead / 1024).toFixed(2)} KB`);
+      console.log(`📊 Estimated ZIP size: ${(estimatedZipSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+      
+      // Set headers for optimal download manager support
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', contentDisposition);
+      res.setHeader('Content-Length', estimatedZipSize); // ✅ Accurate size estimate - enables progress bar and pause/resume
+      res.setHeader('Accept-Ranges', 'bytes'); // ✅ Enable resume (partial support)
+      res.setHeader('Cache-Control', 'no-cache');
+      // NOTE: Don't set Transfer-Encoding: chunked when Content-Length is set
+      
+      // Create archive optimized for music files (store=true = no compression)
+      const archive = archiver('zip', {
+        store: true, // No compression - MP3 files are already compressed
+        forceLocalTime: true,
+        forceZip64: true, // Support files >4GB
+        highWaterMark: 1024 * 1024 * 16 // 16MB buffer for fast streaming
+      });
+      
+      // Track progress
+      let processedFiles = 0;
+      let bytesProcessed = 0;
+      const startTime = Date.now();
+      let lastLogTime = startTime;
+      let entryCount = 0;
+      
+      archive.on('progress', (progress) => {
+        processedFiles = progress?.entries?.processed || 0;
+        bytesProcessed = progress?.bytes?.processed || 0;
+        
+        // Log progress every 20 files or every 10 seconds
+        const now = Date.now();
+        if (processedFiles % 20 === 0 || now - lastLogTime > 10000) {
+          const percent = totalFileSize > 0 ? ((bytesProcessed / totalFileSize) * 100).toFixed(1) : '?';
+          const elapsed = ((now - startTime) / 1000).toFixed(1);
+          console.log(`📦 ZIP: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)}/${(totalFileSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%) - ${elapsed}s`);
+          lastLogTime = now;
+        }
+      });
+      
+      archive.on('entry', (entry) => {
+        entryCount++;
+        if (entryCount === 1 || entryCount % 50 === 0 || entryCount === musicFiles.length) {
+          console.log(`📄 ZIP: ${entryCount}/${musicFiles.length} - ${entry.name.substring(0, 50)}`);
+        }
+      });
+      
+      // Handle errors
+      archive.on('error', (err) => {
+        console.error('Archive error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Archive creation failed', details: err.message });
+        } else {
+          res.destroy();
+        }
+      });
+      
+      // Handle client disconnect gracefully
+      let clientDisconnected = false;
+      req.on('close', () => {
+        if (!archive.finalized) {
+          console.log('⚠️  Client disconnected during archive download');
+          clientDisconnected = true;
+          // Don't abort immediately - give it a moment (network hiccup recovery)
+          setTimeout(() => {
+            if (!archive.finalized) {
+              archive.abort();
+            }
+          }, 2000);
+        }
+      });
+      
+      // Pipe archive directly to response (streaming - fastest)
+      archive.pipe(res);
+      
+      // Add all files to archive
+      archive.directory(outputFolder, false);
+      
+      // Finalize archive (starts streaming immediately)
+      await archive.finalize();
+      
+      console.log(`✅ ZIP archive streaming: ${zipFileName} (${(estimatedZipSize / 1024 / 1024 / 1024).toFixed(2)} GB)`);
+      
     } catch (e) {
       console.warn('Could not calculate total size:', e.message);
+      // Fallback to chunked encoding if size calculation fails
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', contentDisposition);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('Accept-Ranges', 'bytes');
+      
+      const archive = archiver('zip', {
+        store: true,
+        forceLocalTime: true,
+        forceZip64: true,
+        highWaterMark: 1024 * 1024 * 16
+      });
+      
+      archive.on('error', (err) => {
+        console.error('Archive error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Archive creation failed', details: err.message });
+        }
+      });
+      
+      archive.pipe(res);
+      archive.directory(outputFolder, false);
+      await archive.finalize();
+      
+      console.log(`📦 ZIP archive created and sent: ${zipFileName}`);
     }
-    
-    // Create archive optimized for music files (already compressed formats)
-    // Enable ZIP64 for unlimited file size support
-    const archive = archiver('zip', {
-      store: true, // ⚡ NO COMPRESSION - MP3/M4A files are already compressed!
-      forceLocalTime: true, // Better compatibility
-      forceZip64: true, // Enable ZIP64 for large files (>4GB support)
-      highWaterMark: 1024 * 1024 * 16 // 16MB buffer for faster streaming
-    });
-    
-    // Set high water mark to prevent memory issues with large files
-    archive.setMaxListeners(0); // Remove listener limit
-    
-    // Track if archive is finalized or aborted (must be declared before handlers)
-    let archiveAborted = false;
-    let archiveFinalized = false;
-    let keepAliveInterval = null;
-    let stallChecker = null;
-    
-    // Handle archive errors
-    archive.on('error', (err) => {
-      console.error('Archive error:', err);
-      archiveAborted = true;
-      if (keepAliveInterval) clearInterval(keepAliveInterval);
-      if (stallChecker) clearInterval(stallChecker);
-      if (!res.headersSent) {
-        try { 
-          res.status(500).json({ error: 'Archive creation failed', details: err.message }); 
-        } catch (e) {
-          console.error('Failed to send error response:', e);
-        }
-      }
-    });
-    
-    // Track when archive finishes
-    archive.on('end', () => {
-      archiveFinalized = true;
-      if (keepAliveInterval) clearInterval(keepAliveInterval);
-      if (stallChecker) clearInterval(stallChecker);
-    });
-    
-    // Handle response errors
-    res.on('error', (err) => {
-      console.error('Response stream error:', err);
-      if (!archiveFinalized && !archiveAborted) {
-        archiveAborted = true;
-        archive.abort();
-      }
-    });
-    
-    // Handle client disconnect with delay (network hiccup recovery)
-    req.on('close', () => {
-      console.log('⚠️  Client disconnected during archive download');
-      // Don't abort immediately - wait a bit in case it's a temporary network issue
-      // The client might reconnect or the download manager might resume
-      setTimeout(() => {
-        if (!archiveFinalized && !archiveAborted) {
-          console.log('⚠️  Client disconnect confirmed - aborting archive after delay');
-          archiveAborted = true;
-          archive.abort();
-        }
-      }, 5000); // 5 second grace period
-    });
-    
-    // Add keep-alive mechanism to prevent network timeouts during large transfers
-    // Send periodic empty chunks to keep connection alive
-    let lastKeepAlive = Date.now();
-    keepAliveInterval = setInterval(() => {
-      if (archiveFinalized || archiveAborted) {
-        if (keepAliveInterval) clearInterval(keepAliveInterval);
-        return;
-      }
-      
-      // If archive is still streaming but no data sent in 30 seconds, send keep-alive
-      const timeSinceLastActivity = Date.now() - lastKeepAlive;
-      if (timeSinceLastActivity > 30000 && !res.destroyed && res.writable) {
-        try {
-          // Send a comment entry to keep connection alive (ZIP format allows this)
-          // This prevents network/proxy timeouts during large file processing
-          res.flush && res.flush(); // Force flush any buffered data
-        } catch (err) {
-          // Ignore flush errors
-        }
-      }
-    }, 10000); // Check every 10 seconds
-    
-    // Update last activity on data events
-    archive.on('data', () => {
-      lastKeepAlive = Date.now();
-    });
-    
-    // Pipe archive to response
-    archive.pipe(res);
-    
-    // Add progress monitoring with throttling (avoid Railway log rate limits)
-    let processedFiles = 0;
-    let lastLogTime = 0;
-    let entryCount = 0;
-    let lastBytesProcessed = 0;
-    let lastActivityTime = Date.now();
-    const LOG_INTERVAL = 2000; // Log every 2 seconds max
-    
-    // Monitor for stalled transfers
-    stallChecker = setInterval(() => {
-      const timeSinceActivity = Date.now() - lastActivityTime;
-      if (timeSinceActivity > 60000 && !archiveFinalized && !archiveAborted) {
-        // No activity for 60 seconds - might be stalled
-        console.log(`⚠️  Archive transfer appears stalled (no activity for ${Math.floor(timeSinceActivity / 1000)}s)`);
-        console.log(`📊 Last processed: ${processedFiles}/${musicFiles.length} files, ${(lastBytesProcessed / 1024 / 1024 / 1024).toFixed(2)} GB`);
-      }
-    }, 30000); // Check every 30 seconds
-    
-    archive.on('progress', (progress) => {
-      // Safe access to progress properties
-      processedFiles = progress?.entries?.processed || 0;
-      const bytesProcessed = progress?.bytes?.processed || 0;
-      const now = Date.now();
-      
-      // Update activity tracking
-      if (bytesProcessed > lastBytesProcessed) {
-        lastBytesProcessed = bytesProcessed;
-        lastActivityTime = now;
-      }
-      
-      // Only log every 2 seconds to avoid Railway rate limits (500 logs/sec)
-      if (now - lastLogTime >= LOG_INTERVAL) {
-        const percent = totalSize > 0 && bytesProcessed > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
-        console.log(`📦 ZIP: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)}/${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
-        lastLogTime = now;
-      }
-    });
-    
-    // Log only every 20th file to avoid spam (Railway limit: 500 logs/sec)
-    archive.on('entry', (entry) => {
-      entryCount++;
-      if (entryCount === 1 || entryCount % 20 === 0 || entryCount === musicFiles.length) {
-        console.log(`📄 ZIP: ${entryCount}/${musicFiles.length} - ${entry.name.substring(0, 50)}`);
-      }
-    });
-    
-    // Add all files from the output folder with optimized settings
-    archive.directory(outputFolder, false);
-    
-    // Finalize the archive
-    archiveFinalized = true;
-    if (keepAliveInterval) clearInterval(keepAliveInterval);
-    if (stallChecker) clearInterval(stallChecker);
-    await archive.finalize();
-    
-    console.log(`✅ ZIP archive finalized: ${processedFiles} files processed`);
-    
-    console.log(`📦 ZIP archive created and sent: ${zipFileName}`);
   } catch (error) {
     console.error('Error creating ZIP archive:', error);
     res.status(500).json({ error: 'Failed to create ZIP archive' });

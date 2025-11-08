@@ -227,65 +227,65 @@ export const DownloadQueue = () => {
           return prev.map(d => {
             if (d.downloadId === data.downloadId) {
             // Handle both playlist progress (completed/totalTracks) and single track progress (progress: 100)
-            let progress = d.progress; // Start with current progress
             let completedTracks = d.completedTracks || 0;
             let totalTracks = d.totalTracks || 1;
             
             // Priority 1: Check for playlist progress format (completed/totalTracks) - MOST ACCURATE
-            if (data.totalTracks > 0 && data.completed !== undefined) {
+            if (data.totalTracks !== undefined && data.totalTracks > 0 && data.completed !== undefined) {
               // Playlist progress format - use exact values from backend
               completedTracks = data.completed;
               totalTracks = data.totalTracks;
-              progress = Math.round((data.completed / data.totalTracks) * 100);
             }
-            // Priority 2: Individual track completed (status: 'completed' with completed/totalTracks info)
-            else if (data.status === 'completed' && data.totalTracks > 0 && data.completed !== undefined) {
-              // Individual track completed - use the completed count from backend
-              completedTracks = data.completed;
+            // Priority 2: Check if we have completed tracks info in data (fallback)
+            else if (data.completedTracks !== undefined && data.totalTracks !== undefined && data.totalTracks > 0) {
+              completedTracks = data.completedTracks;
               totalTracks = data.totalTracks;
-              progress = Math.round((data.completed / data.totalTracks) * 100);
             }
             // Priority 3: Single track download (progress: 100)
             else if (data.progress !== undefined && totalTracks === 1) {
               // Single track progress format
-              progress = Math.max(d.progress, data.progress);
               if (data.progress === 100) {
                 completedTracks = 1;
-                progress = 100;
               }
             }
-            // Priority 4: Status is completed but no progress info
-            else if (data.status === 'completed') {
-              // Assume completion if status says so
-              if (totalTracks === 1) {
-                completedTracks = 1;
-                progress = 100;
-              } else {
-                // For playlists, only mark complete if we have all tracks
-                if (completedTracks >= totalTracks) {
-                  progress = 100;
-                }
-              }
+            // Priority 4: Status is completed but no progress info - use existing values
+            else if (data.status === 'completed' && totalTracks === 1) {
+              completedTracks = 1;
             }
+            
+            // 🔧 FIX: Always calculate progress from completedTracks/totalTracks (not from old progress value)
+            // This ensures accurate percentage calculation (e.g., 3/6 = 50%, not 100%)
+            let progress = 0;
+            if (totalTracks > 0) {
+              progress = Math.round((completedTracks / totalTracks) * 100);
+            } else {
+              progress = d.progress || 0;
+            }
+            
+            // Clamp progress to valid range (0-100)
+            progress = Math.max(0, Math.min(100, progress));
+            
+            // Ensure completedTracks doesn't exceed totalTracks
+            const finalCompletedTracks = Math.min(Math.max(0, completedTracks), totalTracks);
             
             // Update status - mark as completed only when ALL tracks are done
             // Individual tracks send status: 'completed', but overall download is only complete when all tracks are done
-            const isCompleted = (completedTracks >= totalTracks && totalTracks > 1) || 
+            const isCompleted = (finalCompletedTracks >= totalTracks && totalTracks > 0) || 
                                (data.status === 'completed' && totalTracks === 1) ||
-                               (progress === 100 && completedTracks >= totalTracks);
+                               (progress >= 100 && finalCompletedTracks >= totalTracks && totalTracks > 0);
             const newStatus = isCompleted ? 'completed' : 'downloading';
             
-            // Ensure progress doesn't go backwards and is clamped to valid range
-            const finalProgress = Math.min(Math.max(d.progress, progress), 100);
-            const finalCompletedTracks = Math.min(completedTracks, totalTracks);
+            // If status is completed, ensure progress is 100% and all tracks are completed
+            const finalProgress = isCompleted ? 100 : progress;
+            const finalCompletedTracksForStatus = isCompleted ? totalTracks : finalCompletedTracks;
             
-            console.log(`📊 [DownloadQueue] Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${finalProgress}%, ${d.completedTracks}/${d.totalTracks} → ${finalCompletedTracks}/${totalTracks}`);
+            console.log(`📊 [DownloadQueue] Updating download ${data.downloadId}: ${d.status} → ${newStatus}, ${d.progress}% → ${finalProgress}%, ${d.completedTracks}/${d.totalTracks} → ${finalCompletedTracksForStatus}/${totalTracks} (calculated: ${completedTracks}/${totalTracks} = ${progress}%)`);
             
             return {
               ...d,
               status: newStatus,
               progress: finalProgress,
-              completedTracks: finalCompletedTracks,
+              completedTracks: finalCompletedTracksForStatus,
               totalTracks,
               // Set completedAt if status is completed
               completedAt: newStatus === 'completed' && !d.completedAt ? new Date().toISOString() : d.completedAt
@@ -414,26 +414,32 @@ export const DownloadQueue = () => {
           const folderName = data.outputFolder ? data.outputFolder.split(/[/\\]/).pop() || 'Download' : 'Download';
           const downloadFilename = `${folderName}.zip`;
           
-          // Auto-start download using iframe method (works with IDM and regular browsers)
+          // 🔧 FIX: Auto-start download using direct link (best for download managers)
+          // This allows download managers (IDM) to properly detect file size and enable pause/resume
           console.log('📥 [DownloadQueue] Auto-triggering download:', fullDownloadUrl, downloadFilename);
           
-          // Create hidden iframe for download (IDM-compatible)
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = fullDownloadUrl;
-          document.body.appendChild(iframe);
+          // Create download link and trigger (works best with IDM and browsers)
+          // This allows download managers to handle the download properly with Content-Length header
+          const link = document.createElement('a');
+          link.href = fullDownloadUrl;
+          link.download = downloadFilename;
+          link.style.display = 'none';
+          document.body.appendChild(link);
           
-          // Clean up iframe after download starts
+          // Trigger download
+          link.click();
+          
+          // Clean up after a delay
           setTimeout(() => {
             try {
-              document.body.removeChild(iframe);
+              document.body.removeChild(link);
             } catch (e) {
               // Ignore cleanup errors
             }
-          }, 1000);
+          }, 100);
           
-          toast.success('📦 Download Complete!', {
-            description: `Your files are downloading automatically...`,
+          toast.success('📦 Download Started!', {
+            description: `Downloading ${downloadFilename}...`,
             duration: 3000,
           });
         } else {
@@ -682,42 +688,50 @@ export const DownloadQueue = () => {
         <CardContent className="p-3 space-y-3">
           {/* Current Download Display */}
           <div className="transition-all duration-300 ease-in-out">
-            {(currentDownload.status === 'downloading' || currentDownload.status === 'queued') && (
-              <div className="flex items-start gap-2.5 p-3 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20 hover:border-primary/30 transition-all">
-                <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
-                  {currentDownload.status === 'downloading' ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  ) : (
-                    <Clock className="h-4 w-4 text-primary" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <p className="text-sm font-semibold truncate">{currentDownload.folderName}</p>
-                    <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 shrink-0">
-                      {currentDownload.status === 'downloading' ? 'Active' : 'Queued'}
-                    </Badge>
+            {(currentDownload.status === 'downloading' || currentDownload.status === 'queued') && (() => {
+              // 🔧 Calculate progress from tracks to ensure accuracy (e.g., 3/6 = 50%, not 100%)
+              const calculatedProgress = currentDownload.totalTracks > 0 
+                ? Math.round((currentDownload.completedTracks / currentDownload.totalTracks) * 100)
+                : currentDownload.progress;
+              const displayProgress = Math.max(0, Math.min(100, calculatedProgress));
+              
+              return (
+                <div className="flex items-start gap-2.5 p-3 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20 hover:border-primary/30 transition-all">
+                  <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+                    {currentDownload.status === 'downloading' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    ) : (
+                      <Clock className="h-4 w-4 text-primary" />
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <div className="relative overflow-hidden rounded-full h-3">
-                      <Progress 
-                        value={currentDownload.progress} 
-                        className="h-full bg-muted/50" 
-                      />
-                      {currentDownload.status === 'downloading' && currentDownload.progress > 0 && currentDownload.progress < 100 && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer rounded-full" />
-                      )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-sm font-semibold truncate">{currentDownload.folderName}</p>
+                      <Badge variant="default" className="text-[10px] px-2 py-0.5 h-5 shrink-0">
+                        {currentDownload.status === 'downloading' ? 'Active' : 'Queued'}
+                      </Badge>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground font-medium">
-                        {currentDownload.completedTracks}/{currentDownload.totalTracks} tracks
-                      </span>
-                      <span className="font-bold text-primary">{currentDownload.progress}%</span>
+                    <div className="space-y-2">
+                      <div className="relative overflow-hidden rounded-full h-3">
+                        <Progress 
+                          value={displayProgress} 
+                          className="h-full bg-muted/50" 
+                        />
+                        {currentDownload.status === 'downloading' && displayProgress > 0 && displayProgress < 100 && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer rounded-full" />
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground font-medium">
+                          {currentDownload.completedTracks}/{currentDownload.totalTracks} tracks
+                        </span>
+                        <span className="font-bold text-primary">{displayProgress}%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
             
             {currentDownload.status === 'completed' && (
               <div className="flex items-start gap-2.5 p-3 bg-gradient-to-br from-green-500/10 to-green-500/5 rounded-lg border border-green-500/20 hover:border-green-500/30 transition-all">
