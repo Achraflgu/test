@@ -2335,13 +2335,16 @@ async function ensurePoolIsFull() {
         const regenerationStartTimes = global['regenerationStartTimes'];
         const slotFailureCounts = global['slotFailureCounts'];
         const slotLastRetryTimes = global['slotLastRetryTimes'];
-        const STUCK_TIMEOUT = 300000; // 5 minutes
+        const STUCK_TIMEOUT = 180000; // 3 minutes (reduced from 5)
+        const NO_PROGRESS_TIMEOUT = 90000; // 90 seconds - clear if no progress for this long
         const MIN_RETRY_DELAY = 60000; // Wait at least 60s between retries for the same slot
         
         for (const slotIndex of Array.from(activeRegenerations)) {
           const startTime = regenerationStartTimes.get(slotIndex) || Date.now();
           const elapsed = Date.now() - startTime;
           
+          // Clear slots that have been regenerating for too long without success
+          // This prevents slots from getting stuck when regeneration keeps failing
           if (elapsed > STUCK_TIMEOUT) {
             console.log(`  🔓 Clearing stuck regeneration for slot ${slotIndex + 1} (stuck for ${Math.floor(elapsed/1000)}s) - will retry`);
             activeRegenerations.delete(slotIndex);
@@ -2349,6 +2352,26 @@ async function ensurePoolIsFull() {
             // Increment failure count for this slot
             slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
             slotLastRetryTimes.set(slotIndex, Date.now());
+          } else if (elapsed > NO_PROGRESS_TIMEOUT) {
+            // Check if this slot still needs regeneration (maybe it succeeded but lock wasn't cleared)
+            const currentCookies = await getWorkingCookiesFromPool();
+            const currentIndices = currentCookies.map(c => {
+              return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+            });
+            
+            if (!currentIndices.includes(slotIndex)) {
+              // Still missing - but taking too long, clear and retry with backoff
+              console.log(`  🔓 Clearing slow regeneration for slot ${slotIndex + 1} (no progress for ${Math.floor(elapsed/1000)}s) - will retry with backoff`);
+              activeRegenerations.delete(slotIndex);
+              regenerationStartTimes.delete(slotIndex);
+              slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
+              slotLastRetryTimes.set(slotIndex, Date.now());
+            } else {
+              // Cookie exists! Just clear the lock (regeneration succeeded but lock wasn't cleared)
+              console.log(`  🔓 Clearing orphaned lock for slot ${slotIndex + 1} (cookie exists but lock still active)`);
+              activeRegenerations.delete(slotIndex);
+              regenerationStartTimes.delete(slotIndex);
+            }
           }
         }
         
