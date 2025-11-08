@@ -2132,6 +2132,13 @@ async function checkAndResumeRegeneration() {
       return;
     }
     
+    // 🔧 FIX: Clear any stuck regeneration locks (regenerations that were paused)
+    // This ensures regeneration can resume after downloads complete
+    if (activeRegenerations.size > 0) {
+      console.log(`  🔓 Clearing ${activeRegenerations.size} stuck regeneration lock(s) to allow resumption...`);
+      activeRegenerations.clear();
+    }
+    
     // All downloads are completed/cancelled/failed - safe to resume
     // 🔧 FIX: Validate cookies first to detect and remove dead ones, then fill missing slots
     console.log(`\n🔄 Downloads completed - validating cookie pool and resuming maintenance...`);
@@ -2439,6 +2446,22 @@ async function regenerateSingleCookie(slotIndex) {
         console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${DELAY_BETWEEN_BATCHES/1000}s before next batch...`);
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + PARALLEL_GENERATION;
+        
+        // 🔧 FIX: Check if downloads became active during wait (might need to pause)
+        const hasActiveNow = hasActiveDownloads();
+        let waitingForStrongCookie = false;
+        for (const [id, info] of activeDownloads.entries()) {
+          if (info.waitingForStrongCookie === true) {
+            waitingForStrongCookie = true;
+            break;
+          }
+        }
+        
+        if (hasActiveNow && !waitingForStrongCookie) {
+          console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
+          activeRegenerations.delete(slotIndex); // 🔧 FIX: Release lock so regeneration can resume later
+          return false; // Pause regeneration
+        }
       } else if (strongCookies.length > 0) {
         // Reset failure counter on success
         global['cookie_regeneration_failures'] = 0;
