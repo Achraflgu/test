@@ -2204,296 +2204,304 @@ async function waitForWorkingCookie(maxWaitTime = 300000, checkInterval = 5000) 
 async function ensurePoolIsFull() {
   try {
     // 🔒 PREVENT OVERLAPPING CALLS - Only one pool fill at a time
+    // ⚠️ CRITICAL: Check and set immediately to prevent race conditions
     if (isFillingPool) {
       console.log(`  ⏭️ Pool fill already in progress - skipping duplicate call`);
       return false;
     }
     
-    // 🛡️ SAFETY: If downloads are active and we have at least 1 cookie, PAUSE regeneration
-    // Don't validate (too expensive) - just check existence
-    const hasActive = hasActiveDownloads();
-    const existingCookies = await getWorkingCookiesFromPool();
-    const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
-    
-    // 🛡️ CHECK: Are we waiting for strong cookie? (This takes priority - cookie-less failed, need cookies NOW)
-    let waitingForStrongCookie = false;
-    let cookieLessInProgress = false;
-    for (const [id, info] of activeDownloads.entries()) {
-      if (info.waitingForStrongCookie === true) {
-        waitingForStrongCookie = true;
-      }
-      if (info.cookieLessAttemptInProgress === true) {
-        cookieLessInProgress = true;
-      }
-    }
-    
-    // 🎯 PRIORITY: If waiting for strong cookie (cookie-less failed), ALWAYS allow regeneration
-    if (waitingForStrongCookie) {
-      console.log(`  🔄 Cookie-less attempt failed - continuing regeneration to get STRONG cookie (needed for download)`);
-      // Continue with regeneration (don't return) - cookies are needed!
-    } else if (cookieLessInProgress) {
-      // 🎯 PAUSE: If cookie-less first attempt is still in progress (hasn't failed yet), pause until it completes
-      console.log(`  ⏸️ Cookie-less first attempt in progress - pausing regeneration until it completes`);
-      return false; // Don't regenerate during cookie-less first attempt (before it fails)
-    } else if (hasActive) {
-      // 🛡️ PAUSE: If downloads are active (and NOT waiting for strong cookie), pause regeneration
-      // This ensures downloads get full resources and stability
-      console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
-      return false; // Don't regenerate during active downloads (user wants stability)
-    }
-    
-    // 🔌 CIRCUIT BREAKER - Stop trying if too many failures (but skip if emergency mode)
-    if (consecutivePoolFillFailures >= MAX_CONSECUTIVE_FAILURES && !(hasActive && validatedCookies === 0)) {
-      const timeSinceLastAttempt = Date.now() - lastPoolFillAttempt;
-      if (timeSinceLastAttempt < POOL_FILL_COOLDOWN) {
-        console.log(`  🔌 Circuit breaker active: Too many failures (${consecutivePoolFillFailures}), waiting ${Math.ceil((POOL_FILL_COOLDOWN - timeSinceLastAttempt) / 1000)}s before retry`);
-        return false;
-      } else {
-        // Reset after cooldown
-        console.log(`  🔄 Circuit breaker reset - retrying after ${POOL_FILL_COOLDOWN/1000}s cooldown`);
-        consecutivePoolFillFailures = 0;
-      }
-    }
-    
+    // 🔒 SET LOCK IMMEDIATELY - before any async operations to prevent race conditions
     isFillingPool = true;
     lastPoolFillAttempt = Date.now();
     
-    const missingCount = COOKIE_POOL_SIZE - validatedCookies;
-    
-    if (missingCount > 0) {
-      console.log(`\n🔄 Pool maintenance: ${validatedCookies}/${COOKIE_POOL_SIZE} validated cookies - filling ${missingCount} missing slots...`);
-      
-      // Get actual cookie files to determine which slots exist
+    try {
+      // 🛡️ SAFETY: If downloads are active and we have at least 1 cookie, PAUSE regeneration
+      // Don't validate (too expensive) - just check existence
+      const hasActive = hasActiveDownloads();
       const existingCookies = await getWorkingCookiesFromPool();
+      const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
       
-      // Find which slots are missing
-      const existingIndices = existingCookies.map(c => {
-        return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-      });
-      
-      // Fill each missing slot (don't wait - do in background)
-      const fillPromises = [];
-      for (let i = 0; i < COOKIE_POOL_SIZE; i++) {
-        if (!existingIndices.includes(i)) {
-          console.log(`  📍 Filling empty slot ${i + 1}...`);
-          fillPromises.push(regenerateSingleCookie(i));
+      // 🛡️ CHECK: Are we waiting for strong cookie? (This takes priority - cookie-less failed, need cookies NOW)
+      let waitingForStrongCookie = false;
+      let cookieLessInProgress = false;
+      for (const [id, info] of activeDownloads.entries()) {
+        if (info.waitingForStrongCookie === true) {
+          waitingForStrongCookie = true;
+        }
+        if (info.cookieLessAttemptInProgress === true) {
+          cookieLessInProgress = true;
         }
       }
       
-      // 🔄 CONTINUE UNTIL 5/5 COOKIES: Keep checking and regenerating until we have all 5 cookies
-      // Only stop if downloads become active (unless waiting for strong cookie)
-      const startTime = Date.now();
-      const checkInterval = 10000; // Check every 10 seconds
-      let lastStatusLog = 0;
+      // 🎯 PRIORITY: If waiting for strong cookie (cookie-less failed), ALWAYS allow regeneration
+      if (waitingForStrongCookie) {
+        console.log(`  🔄 Cookie-less attempt failed - continuing regeneration to get STRONG cookie (needed for download)`);
+        // Continue with regeneration (don't return) - cookies are needed!
+      } else if (cookieLessInProgress) {
+        // 🎯 PAUSE: If cookie-less first attempt is still in progress (hasn't failed yet), pause until it completes
+        console.log(`  ⏸️ Cookie-less first attempt in progress - pausing regeneration until it completes`);
+        isFillingPool = false; // Release lock before returning
+        return false; // Don't regenerate during cookie-less first attempt (before it fails)
+      } else if (hasActive) {
+        // 🛡️ PAUSE: If downloads are active (and NOT waiting for strong cookie), pause regeneration
+        // This ensures downloads get full resources and stability
+        console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
+        isFillingPool = false; // Release lock before returning
+        return false; // Don't regenerate during active downloads (user wants stability)
+      }
       
-      // Track which slots we're trying to fill
-      const slotsToFill = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
-        .filter(i => !existingIndices.includes(i));
+      // 🔌 CIRCUIT BREAKER - Stop trying if too many failures (but skip if emergency mode)
+      if (consecutivePoolFillFailures >= MAX_CONSECUTIVE_FAILURES && !(hasActive && validatedCookies === 0)) {
+        const timeSinceLastAttempt = Date.now() - lastPoolFillAttempt;
+        if (timeSinceLastAttempt < POOL_FILL_COOLDOWN) {
+          console.log(`  🔌 Circuit breaker active: Too many failures (${consecutivePoolFillFailures}), waiting ${Math.ceil((POOL_FILL_COOLDOWN - timeSinceLastAttempt) / 1000)}s before retry`);
+          isFillingPool = false; // Release lock before returning
+          return false;
+        } else {
+          // Reset after cooldown
+          console.log(`  🔄 Circuit breaker reset - retrying after ${POOL_FILL_COOLDOWN/1000}s cooldown`);
+          consecutivePoolFillFailures = 0;
+        }
+      }
       
-      while (true) { // Continue until we have 5/5 cookies
-        // Check if downloads became active (unless waiting for strong cookie)
-        const hasActiveNow = hasActiveDownloads();
-        let waitingForStrongCookie = false;
-        for (const [id, info] of activeDownloads.entries()) {
-          if (info.waitingForStrongCookie === true) {
-            waitingForStrongCookie = true;
-            break;
-          }
-        }
+      const missingCount = COOKIE_POOL_SIZE - validatedCookies;
+      
+      if (missingCount > 0) {
+        console.log(`\n🔄 Pool maintenance: ${validatedCookies}/${COOKIE_POOL_SIZE} validated cookies - filling ${missingCount} missing slots...`);
         
-        // If downloads are active and NOT waiting for strong cookie, pause regeneration
-        if (hasActiveNow && !waitingForStrongCookie) {
-          console.log(`  ⏸️ Downloads became active - pausing pool fill (will resume after downloads)`);
-          // 🔧 FIX: Clear isFillingPool so we can resume when downloads complete
-          // checkAndResumeRegeneration will call ensurePoolIsFull() again when downloads finish
-          isFillingPool = false;
-          return false; // Pause but don't mark as failed
-        }
+        // Get actual cookie files to determine which slots exist
+        const existingCookies = await getWorkingCookiesFromPool();
         
-        // Check current cookie count
-        const currentCookies = await getWorkingCookiesFromPool();
-        const currentCount = currentCookies.length;
-        const currentIndices = currentCookies.map(c => {
+        // Find which slots are missing
+        const existingIndices = existingCookies.map(c => {
           return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
         });
         
-        if (currentCount >= COOKIE_POOL_SIZE) {
-          // ✅ SUCCESS: We have 5/5 cookies!
-          console.log(`  ✅ Pool fill complete: ${currentCount}/${COOKIE_POOL_SIZE} cookies available`);
-          consecutivePoolFillFailures = 0; // Reset on success
-          isFillingPool = false;
-          return true;
-        }
+        // 🔧 REMOVED: Initial fillPromises loop - the while loop below handles all regeneration
+        // This prevents duplicate regeneration attempts
         
-        // Still missing cookies - find which slots need regeneration
-        const missingSlots = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
-          .filter(i => !currentIndices.includes(i));
+        // 🔄 CONTINUE UNTIL 5/5 COOKIES: Keep checking and regenerating until we have all 5 cookies
+        // Only stop if downloads become active (unless waiting for strong cookie)
+        const startTime = Date.now();
+        const checkInterval = 10000; // Check every 10 seconds
+        let lastStatusLog = 0;
         
-        // 🔧 FIX: Clear stuck regenerations (slots that have been regenerating for > 5 minutes)
-        // Track regeneration start times to detect stuck slots
-        if (!global['regenerationStartTimes']) {
-          global['regenerationStartTimes'] = new Map();
-        }
-        if (!global['slotFailureCounts']) {
-          global['slotFailureCounts'] = new Map();
-        }
-        if (!global['slotLastRetryTimes']) {
-          global['slotLastRetryTimes'] = new Map();
-        }
-        const regenerationStartTimes = global['regenerationStartTimes'];
-        const slotFailureCounts = global['slotFailureCounts'];
-        const slotLastRetryTimes = global['slotLastRetryTimes'];
-        const STUCK_TIMEOUT = 180000; // 3 minutes (reduced from 5)
-        const NO_PROGRESS_TIMEOUT = 90000; // 90 seconds - clear if no progress for this long
-        const MIN_RETRY_DELAY = 60000; // Wait at least 60s between retries for the same slot
+        // Track which slots we're trying to fill
+        const slotsToFill = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
+          .filter(i => !existingIndices.includes(i));
         
-        // 🔧 FIX: Clear stuck regenerations - check both activeRegenerations and orphaned start times
-        for (const slotIndex of Array.from(activeRegenerations)) {
-          const startTime = regenerationStartTimes.get(slotIndex);
-          
-          // If no start time is tracked, this is an orphaned lock - clear it immediately
-          if (!startTime) {
-            console.log(`  🔓 Clearing orphaned regeneration lock for slot ${slotIndex + 1} (no start time tracked)`);
-            activeRegenerations.delete(slotIndex);
-            continue;
+        while (true) { // Continue until we have 5/5 cookies
+          // Check if downloads became active (unless waiting for strong cookie)
+          const hasActiveNow = hasActiveDownloads();
+          let waitingForStrongCookie = false;
+          for (const [id, info] of activeDownloads.entries()) {
+            if (info.waitingForStrongCookie === true) {
+              waitingForStrongCookie = true;
+              break;
+            }
           }
           
-          const elapsed = Date.now() - startTime;
+          // If downloads are active and NOT waiting for strong cookie, pause regeneration
+          if (hasActiveNow && !waitingForStrongCookie) {
+            console.log(`  ⏸️ Downloads became active - pausing pool fill (will resume after downloads)`);
+            // 🔧 FIX: Clear isFillingPool so we can resume when downloads complete
+            // checkAndResumeRegeneration will call ensurePoolIsFull() again when downloads finish
+            isFillingPool = false;
+            return false; // Pause but don't mark as failed
+          }
           
-          // Clear slots that have been regenerating for too long without success
-          // This prevents slots from getting stuck when regeneration keeps failing
-          if (elapsed > STUCK_TIMEOUT) {
-            console.log(`  🔓 Clearing stuck regeneration for slot ${slotIndex + 1} (stuck for ${Math.floor(elapsed/1000)}s) - will retry`);
-            activeRegenerations.delete(slotIndex);
-            regenerationStartTimes.delete(slotIndex);
-            // Increment failure count for this slot
-            slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
-            slotLastRetryTimes.set(slotIndex, Date.now());
-          } else if (elapsed > NO_PROGRESS_TIMEOUT) {
-            // Check if this slot still needs regeneration (maybe it succeeded but lock wasn't cleared)
-            const currentCookies = await getWorkingCookiesFromPool();
-            const currentIndices = currentCookies.map(c => {
-              return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-            });
+          // Check current cookie count
+          const currentCookies = await getWorkingCookiesFromPool();
+          const currentCount = currentCookies.length;
+          const currentIndices = currentCookies.map(c => {
+            return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+          });
+          
+          if (currentCount >= COOKIE_POOL_SIZE) {
+            // ✅ SUCCESS: We have 5/5 cookies!
+            console.log(`  ✅ Pool fill complete: ${currentCount}/${COOKIE_POOL_SIZE} cookies available`);
+            consecutivePoolFillFailures = 0; // Reset on success
+            isFillingPool = false;
+            return true;
+          }
+          
+          // Still missing cookies - find which slots need regeneration
+          const missingSlots = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
+            .filter(i => !currentIndices.includes(i));
+          
+          // 🔧 FIX: Clear stuck regenerations (slots that have been regenerating for > 5 minutes)
+          // Track regeneration start times to detect stuck slots
+          if (!global['regenerationStartTimes']) {
+            global['regenerationStartTimes'] = new Map();
+          }
+          if (!global['slotFailureCounts']) {
+            global['slotFailureCounts'] = new Map();
+          }
+          if (!global['slotLastRetryTimes']) {
+            global['slotLastRetryTimes'] = new Map();
+          }
+          const regenerationStartTimes = global['regenerationStartTimes'];
+          const slotFailureCounts = global['slotFailureCounts'];
+          const slotLastRetryTimes = global['slotLastRetryTimes'];
+          const STUCK_TIMEOUT = 180000; // 3 minutes (reduced from 5)
+          const NO_PROGRESS_TIMEOUT = 90000; // 90 seconds - clear if no progress for this long
+          const MIN_RETRY_DELAY = 60000; // Wait at least 60s between retries for the same slot
+          
+          // 🔧 FIX: Clear stuck regenerations - check both activeRegenerations and orphaned start times
+          for (const slotIndex of Array.from(activeRegenerations)) {
+            const startTime = regenerationStartTimes.get(slotIndex);
             
-            if (!currentIndices.includes(slotIndex)) {
-              // Still missing - but taking too long, clear and retry with backoff
-              // 🔧 FIX: Don't increment failure count for slow progress (only for actual failures)
-              // This allows faster retries when regeneration is just slow, not failing
-              const currentFailureCount = slotFailureCounts.get(slotIndex) || 0;
-              console.log(`  🔓 Clearing slow regeneration for slot ${slotIndex + 1} (no progress for ${Math.floor(elapsed/1000)}s) - will retry (failure count: ${currentFailureCount})`);
+            // If no start time is tracked, this is an orphaned lock - clear it immediately
+            if (!startTime) {
+              console.log(`  🔓 Clearing orphaned regeneration lock for slot ${slotIndex + 1} (no start time tracked)`);
               activeRegenerations.delete(slotIndex);
-              regenerationStartTimes.delete(slotIndex);
-              // Only increment failure count if it's been stuck for a while (3+ minutes)
-              // Otherwise, treat it as slow progress, not failure
-              if (elapsed > STUCK_TIMEOUT) {
-                slotFailureCounts.set(slotIndex, currentFailureCount + 1);
-              }
-              // Set retry time to allow immediate retry (or very short delay) for slow progress
-              slotLastRetryTimes.set(slotIndex, Date.now() - (MIN_RETRY_DELAY * 0.5)); // Allow retry after 30s instead of 60s
-            } else {
-              // Cookie exists! Just clear the lock (regeneration succeeded but lock wasn't cleared)
-              console.log(`  🔓 Clearing orphaned lock for slot ${slotIndex + 1} (cookie exists but lock still active)`);
-              activeRegenerations.delete(slotIndex);
-              regenerationStartTimes.delete(slotIndex);
-            }
-          }
-        }
-        
-        // 🔧 FIX: Also clear any orphaned start times (slots that have start times but aren't in activeRegenerations)
-        if (regenerationStartTimes) {
-          for (const [slotIndex, startTime] of regenerationStartTimes.entries()) {
-            if (!activeRegenerations.has(slotIndex)) {
-              // Orphaned start time - clear it
-              console.log(`  🔓 Clearing orphaned start time for slot ${slotIndex + 1}`);
-              regenerationStartTimes.delete(slotIndex);
-            }
-          }
-        }
-        
-        // Log status every 30 seconds
-        const elapsedTotal = Math.floor((Date.now() - startTime) / 1000);
-        if (elapsedTotal - lastStatusLog >= 30) {
-          const stuckCount = Array.from(activeRegenerations).length;
-          console.log(`  ⏳ Still generating cookies: ${currentCount}/${COOKIE_POOL_SIZE} (${missingSlots.length} slots remaining, ${stuckCount} in progress, ${elapsedTotal}s elapsed)`);
-          lastStatusLog = elapsedTotal;
-        }
-        
-        // Start regeneration for any missing slots that aren't already being regenerated
-        for (const slotIndex of missingSlots) {
-          if (!activeRegenerations.has(slotIndex)) {
-            // Check if we should wait before retrying this slot (to avoid rapid retries)
-            const lastRetry = slotLastRetryTimes.get(slotIndex);
-            const failureCount = slotFailureCounts.get(slotIndex) || 0;
-            const timeSinceLastRetry = lastRetry ? Date.now() - lastRetry : Infinity;
-            
-            // Calculate retry delay based on failure count (exponential backoff)
-            // 🔧 FIX: Use shorter delays for low failure counts to allow faster recovery
-            let retryDelay;
-            if (failureCount === 0) {
-              retryDelay = 30000; // 30s for first retry
-            } else if (failureCount === 1) {
-              retryDelay = 60000; // 60s for second retry
-            } else {
-              retryDelay = Math.min(MIN_RETRY_DELAY * Math.pow(2, Math.min(failureCount - 1, 3)), 300000); // Max 5 minutes
-            }
-            
-            // 🔧 FIX: If we've been trying to fill the pool for a long time (5+ minutes), force retry regardless of backoff
-            // This ensures we don't get permanently stuck waiting for backoff delays
-            const poolFillElapsed = Date.now() - lastPoolFillAttempt;
-            const FORCE_RETRY_AFTER = 300000; // 5 minutes
-            const shouldForceRetry = poolFillElapsed > FORCE_RETRY_AFTER && timeSinceLastRetry > 30000; // At least 30s since last retry
-            
-            if (!shouldForceRetry && timeSinceLastRetry < retryDelay) {
-              // Too soon to retry - skip for now
-              const waitTime = Math.ceil((retryDelay - timeSinceLastRetry) / 1000);
-              if (waitTime > 10) { // Only log if waiting more than 10s
-                // Don't log every time to avoid spam
-              }
               continue;
             }
             
-            if (shouldForceRetry) {
-              console.log(`  🔄 Force retrying regeneration for slot ${slotIndex + 1} (pool fill running for ${Math.floor(poolFillElapsed/1000)}s, ignoring backoff)`);
-            } else {
-              console.log(`  🔄 Starting/restarting regeneration for slot ${slotIndex + 1}... (attempt ${failureCount + 1})`);
-            }
-            slotLastRetryTimes.set(slotIndex, Date.now());
+            const elapsed = Date.now() - startTime;
             
-            // Note: regenerateSingleCookie will set its own start time when it actually starts
-            regenerateSingleCookie(slotIndex).then((success) => {
-              // Clear start time if it exists (regenerateSingleCookie manages its own start time)
-              if (regenerationStartTimes.has(slotIndex)) {
-                regenerationStartTimes.delete(slotIndex);
-              }
-              if (success) {
-                // Reset failure count on success
-                slotFailureCounts.delete(slotIndex);
-                slotLastRetryTimes.delete(slotIndex);
-              } else {
-                // If regeneration returned false (e.g., paused due to active downloads),
-                // don't increment failure count - it's not a failure, just paused
-                // But do increment if it was an actual failure (caught in catch)
-              }
-            }).catch(err => {
-              // Clear start time on error
-              if (regenerationStartTimes.has(slotIndex)) {
-                regenerationStartTimes.delete(slotIndex);
-              }
-              // Increment failure count only on actual errors
+            // Clear slots that have been regenerating for too long without success
+            // This prevents slots from getting stuck when regeneration keeps failing
+            if (elapsed > STUCK_TIMEOUT) {
+              console.log(`  🔓 Clearing stuck regeneration for slot ${slotIndex + 1} (stuck for ${Math.floor(elapsed/1000)}s) - will retry`);
+              activeRegenerations.delete(slotIndex);
+              regenerationStartTimes.delete(slotIndex);
+              // Increment failure count for this slot
               slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
-              console.log(`  ⚠️ Regeneration failed for slot ${slotIndex + 1}: ${err.message}`);
-            });
+              slotLastRetryTimes.set(slotIndex, Date.now());
+            } else if (elapsed > NO_PROGRESS_TIMEOUT) {
+              // Check if this slot still needs regeneration (maybe it succeeded but lock wasn't cleared)
+              const currentCookies = await getWorkingCookiesFromPool();
+              const currentIndices = currentCookies.map(c => {
+                return c.index !== undefined ? c.index : parseInt(c.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+              });
+              
+              if (!currentIndices.includes(slotIndex)) {
+                // Still missing - but taking too long, clear and retry with backoff
+                // 🔧 FIX: Don't increment failure count for slow progress (only for actual failures)
+                // This allows faster retries when regeneration is just slow, not failing
+                const currentFailureCount = slotFailureCounts.get(slotIndex) || 0;
+                console.log(`  🔓 Clearing slow regeneration for slot ${slotIndex + 1} (no progress for ${Math.floor(elapsed/1000)}s) - will retry (failure count: ${currentFailureCount})`);
+                activeRegenerations.delete(slotIndex);
+                regenerationStartTimes.delete(slotIndex);
+                // Only increment failure count if it's been stuck for a while (3+ minutes)
+                // Otherwise, treat it as slow progress, not failure
+                if (elapsed > STUCK_TIMEOUT) {
+                  slotFailureCounts.set(slotIndex, currentFailureCount + 1);
+                }
+                // Set retry time to allow immediate retry (or very short delay) for slow progress
+                slotLastRetryTimes.set(slotIndex, Date.now() - (MIN_RETRY_DELAY * 0.5)); // Allow retry after 30s instead of 60s
+              } else {
+                // Cookie exists! Just clear the lock (regeneration succeeded but lock wasn't cleared)
+                console.log(`  🔓 Clearing orphaned lock for slot ${slotIndex + 1} (cookie exists but lock still active)`);
+                activeRegenerations.delete(slotIndex);
+                regenerationStartTimes.delete(slotIndex);
+              }
+            }
           }
+          
+          // 🔧 FIX: Also clear any orphaned start times (slots that have start times but aren't in activeRegenerations)
+          if (regenerationStartTimes) {
+            for (const [slotIndex, startTime] of regenerationStartTimes.entries()) {
+              if (!activeRegenerations.has(slotIndex)) {
+                // Orphaned start time - clear it
+                console.log(`  🔓 Clearing orphaned start time for slot ${slotIndex + 1}`);
+                regenerationStartTimes.delete(slotIndex);
+              }
+            }
+          }
+          
+          // Log status every 30 seconds
+          const elapsedTotal = Math.floor((Date.now() - startTime) / 1000);
+          if (elapsedTotal - lastStatusLog >= 30) {
+            const stuckCount = Array.from(activeRegenerations).length;
+            console.log(`  ⏳ Still generating cookies: ${currentCount}/${COOKIE_POOL_SIZE} (${missingSlots.length} slots remaining, ${stuckCount} in progress, ${elapsedTotal}s elapsed)`);
+            lastStatusLog = elapsedTotal;
+          }
+          
+          // Start regeneration for any missing slots that aren't already being regenerated
+          for (const slotIndex of missingSlots) {
+            if (!activeRegenerations.has(slotIndex)) {
+              // Check if we should wait before retrying this slot (to avoid rapid retries)
+              const lastRetry = slotLastRetryTimes.get(slotIndex);
+              const failureCount = slotFailureCounts.get(slotIndex) || 0;
+              const timeSinceLastRetry = lastRetry ? Date.now() - lastRetry : Infinity;
+              
+              // Calculate retry delay based on failure count (exponential backoff)
+              // 🔧 FIX: Use shorter delays for low failure counts to allow faster recovery
+              let retryDelay;
+              if (failureCount === 0) {
+                retryDelay = 30000; // 30s for first retry
+              } else if (failureCount === 1) {
+                retryDelay = 60000; // 60s for second retry
+              } else {
+                retryDelay = Math.min(MIN_RETRY_DELAY * Math.pow(2, Math.min(failureCount - 1, 3)), 300000); // Max 5 minutes
+              }
+              
+              // 🔧 FIX: If we've been trying to fill the pool for a long time (5+ minutes), force retry regardless of backoff
+              // This ensures we don't get permanently stuck waiting for backoff delays
+              const poolFillElapsed = Date.now() - lastPoolFillAttempt;
+              const FORCE_RETRY_AFTER = 300000; // 5 minutes
+              const shouldForceRetry = poolFillElapsed > FORCE_RETRY_AFTER && timeSinceLastRetry > 30000; // At least 30s since last retry
+              
+              if (!shouldForceRetry && timeSinceLastRetry < retryDelay) {
+                // Too soon to retry - skip for now
+                const waitTime = Math.ceil((retryDelay - timeSinceLastRetry) / 1000);
+                if (waitTime > 10) { // Only log if waiting more than 10s
+                  // Don't log every time to avoid spam
+                }
+                continue;
+              }
+              
+              if (shouldForceRetry) {
+                console.log(`  🔄 Force retrying regeneration for slot ${slotIndex + 1} (pool fill running for ${Math.floor(poolFillElapsed/1000)}s, ignoring backoff)`);
+              } else {
+                console.log(`  🔄 Starting/restarting regeneration for slot ${slotIndex + 1}... (attempt ${failureCount + 1})`);
+              }
+              slotLastRetryTimes.set(slotIndex, Date.now());
+              
+              // Note: regenerateSingleCookie will set its own start time when it actually starts
+              regenerateSingleCookie(slotIndex).then((success) => {
+                // Clear start time if it exists (regenerateSingleCookie manages its own start time)
+                if (regenerationStartTimes.has(slotIndex)) {
+                  regenerationStartTimes.delete(slotIndex);
+                }
+                if (success) {
+                  // Reset failure count on success
+                  slotFailureCounts.delete(slotIndex);
+                  slotLastRetryTimes.delete(slotIndex);
+                } else {
+                  // If regeneration returned false (e.g., paused due to active downloads),
+                  // don't increment failure count - it's not a failure, just paused
+                  // But do increment if it was an actual failure (caught in catch)
+                }
+              }).catch(err => {
+                // Clear start time on error
+                if (regenerationStartTimes.has(slotIndex)) {
+                  regenerationStartTimes.delete(slotIndex);
+                }
+                // Increment failure count only on actual errors
+                slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
+                console.log(`  ⚠️ Regeneration failed for slot ${slotIndex + 1}: ${err.message}`);
+              });
+            }
+          }
+          
+          // Wait before next check
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
         }
-        
-        // Wait before next check
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      } else {
+        // Pool is already full - no need to do anything
+        console.log(`  ✅ Pool is already full: ${validatedCookies}/${COOKIE_POOL_SIZE} cookies`);
       }
+    } catch (innerErr) {
+      // Inner try block error - release lock and rethrow
+      isFillingPool = false;
+      throw innerErr;
     }
     
     isFillingPool = false;
-    return true; // Pool is already full
+    return true; // Pool is already full or successfully filled
   } catch (err) {
     consecutivePoolFillFailures++;
     console.log(`  ⚠️ Pool maintenance error: ${err.message}`);
