@@ -2202,41 +2202,31 @@ async function ensurePoolIsFull() {
     const existingCookies = await getWorkingCookiesFromPool();
     const validatedCookies = existingCookies.length; // Assume they're valid (will find out during actual use)
     
-    // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
+    // 🛡️ CHECK: Are we waiting for strong cookie? (This takes priority - cookie-less failed, need cookies NOW)
+    let waitingForStrongCookie = false;
     let cookieLessInProgress = false;
     for (const [id, info] of activeDownloads.entries()) {
+      if (info.waitingForStrongCookie === true) {
+        waitingForStrongCookie = true;
+      }
       if (info.cookieLessAttemptInProgress === true) {
         cookieLessInProgress = true;
-        break;
       }
     }
     
-    if (cookieLessInProgress) {
+    // 🎯 PRIORITY: If waiting for strong cookie (cookie-less failed), ALWAYS allow regeneration
+    if (waitingForStrongCookie) {
+      console.log(`  🔄 Cookie-less attempt failed - continuing regeneration to get STRONG cookie (needed for download)`);
+      // Continue with regeneration (don't return) - cookies are needed!
+    } else if (cookieLessInProgress) {
+      // 🎯 PAUSE: If cookie-less first attempt is still in progress (hasn't failed yet), pause until it completes
       console.log(`  ⏸️ Cookie-less first attempt in progress - pausing regeneration until it completes`);
-      return false; // Don't regenerate during cookie-less first attempt
-    }
-    
-    // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
-    // EXCEPTION: Only allow regeneration when explicitly waiting for strong cookie (needed for download to proceed)
-    let waitingForStrongCookie = false;
-    for (const [id, info] of activeDownloads.entries()) {
-      if (info.waitingForStrongCookie === true && info.status === 'waiting') {
-        waitingForStrongCookie = true;
-        break;
-      }
-    }
-    
-    // 🛡️ PAUSE: If downloads are active, pause ALL regeneration (regardless of cookie count)
-    // This ensures downloads get full resources and stability
-    if (hasActive && !waitingForStrongCookie) {
+      return false; // Don't regenerate during cookie-less first attempt (before it fails)
+    } else if (hasActive) {
+      // 🛡️ PAUSE: If downloads are active (and NOT waiting for strong cookie), pause regeneration
+      // This ensures downloads get full resources and stability
       console.log(`  ⏸️ Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
-    }
-    
-    // Only allow regeneration when explicitly waiting for strong cookie
-    if (hasActive && waitingForStrongCookie) {
-      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration (needed for download)`);
-      // Continue with regeneration (don't return)
     }
     
     // 🔌 CIRCUIT BREAKER - Stop trying if too many failures (but skip if emergency mode)
@@ -2327,41 +2317,30 @@ async function regenerateSingleCookie(slotIndex) {
     const hasActive = hasActiveDownloads();
     const existingCookies = await getWorkingCookiesFromPool();
     
-    // 🎯 PAUSE REGENERATION: If cookie-less first attempt is in progress, pause until it completes
+    // 🛡️ CHECK: Are we waiting for strong cookie? (This takes priority - cookie-less failed, need cookies NOW)
+    let waitingForStrongCookie = false;
     let cookieLessInProgress = false;
     for (const [id, info] of activeDownloads.entries()) {
+      if (info.waitingForStrongCookie === true) {
+        waitingForStrongCookie = true;
+      }
       if (info.cookieLessAttemptInProgress === true) {
         cookieLessInProgress = true;
-        break;
       }
     }
     
-    if (cookieLessInProgress) {
+    // 🎯 PRIORITY: If waiting for strong cookie (cookie-less failed), ALWAYS allow regeneration
+    if (waitingForStrongCookie) {
+      console.log(`  🔄 Cookie-less attempt failed - continuing regeneration for slot ${slotIndex + 1} to get STRONG cookie (needed for download)`);
+      // Continue with regeneration (don't return) - cookies are needed!
+    } else if (cookieLessInProgress) {
+      // 🎯 PAUSE: If cookie-less first attempt is still in progress (hasn't failed yet), pause until it completes
       console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Cookie-less first attempt in progress - pausing until it completes`);
-      return false; // Don't regenerate during cookie-less first attempt
-    }
-    
-    // 🛡️ PAUSE ALL REGENERATION DURING ACTIVE DOWNLOADS (focus on downloads, not cookie generation)
-    // EXCEPTION: Only allow regeneration when explicitly waiting for strong cookie (needed for download to proceed)
-    let waitingForStrongCookie = false;
-    for (const [id, info] of activeDownloads.entries()) {
-      if (info.waitingForStrongCookie === true && info.status === 'waiting') {
-        waitingForStrongCookie = true;
-        break;
-      }
-    }
-    
-    // 🛡️ PAUSE: If downloads are active, pause ALL regeneration (regardless of cookie count)
-    // This ensures downloads get full resources and stability
-    if (hasActive && !waitingForStrongCookie) {
+      return false; // Don't regenerate during cookie-less first attempt (before it fails)
+    } else if (hasActive) {
+      // 🛡️ PAUSE: If downloads are active (and NOT waiting for strong cookie), pause regeneration
       console.log(`  ⏸️ Skipping regeneration for slot ${slotIndex + 1}: Downloads active (${activeDownloads.size}) - pausing ALL regeneration to focus on downloads`);
       return false; // Don't regenerate during active downloads (user wants stability)
-    }
-    
-    // Only allow regeneration when explicitly waiting for strong cookie
-    if (hasActive && waitingForStrongCookie) {
-      console.log(`  🔄 Downloads active but waiting for strong cookie - allowing regeneration for slot ${slotIndex + 1} (needed for download)`);
-      // Continue with regeneration (don't return)
     }
     
     // Mark this slot as being regenerated
@@ -9755,15 +9734,18 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           break;
         }
       } else {
-        console.log(`\n❌ Cookie-less attempt FAILED - pausing and waiting for 1 STRONG cookie...`);
+        console.log(`\n❌ Cookie-less attempt FAILED - continuing cookie regeneration to get STRONG cookie...`);
         downloadInfo.waitingForStrongCookie = true;
+        downloadInfo.status = 'waiting'; // Ensure status is set so checks work
+        downloadInfo.cookieLessAttemptInProgress = false; // Clear cookie-less flag since it failed
         socket.emit('download:status', {
           downloadId,
           status: 'waiting',
-          message: '⏳ Cookie-less attempt failed - waiting for strong cookie... (may take 30-60s)'
+          message: '⏳ Cookie-less attempt failed - regenerating cookies... (may take 30-60s)'
         });
         
-        // Trigger cookie generation
+        // 🔄 Trigger cookie generation (should continue even with active downloads since waitingForStrongCookie is true)
+        console.log(`  🔄 Triggering cookie regeneration (cookie-less failed, need cookies now)...`);
         ensurePoolIsFull().catch(err => console.log(`  ⚠️ Pool fill error: ${err.message}`));
         
         // Wait for at least 1 STRONG cookie
