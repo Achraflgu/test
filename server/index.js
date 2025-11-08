@@ -2321,18 +2321,78 @@ async function ensurePoolIsFull() {
         const missingSlots = Array.from({length: COOKIE_POOL_SIZE}, (_, i) => i)
           .filter(i => !currentIndices.includes(i));
         
+        // 🔧 FIX: Clear stuck regenerations (slots that have been regenerating for > 5 minutes)
+        // Track regeneration start times to detect stuck slots
+        if (!global['regenerationStartTimes']) {
+          global['regenerationStartTimes'] = new Map();
+        }
+        if (!global['slotFailureCounts']) {
+          global['slotFailureCounts'] = new Map();
+        }
+        if (!global['slotLastRetryTimes']) {
+          global['slotLastRetryTimes'] = new Map();
+        }
+        const regenerationStartTimes = global['regenerationStartTimes'];
+        const slotFailureCounts = global['slotFailureCounts'];
+        const slotLastRetryTimes = global['slotLastRetryTimes'];
+        const STUCK_TIMEOUT = 300000; // 5 minutes
+        const MIN_RETRY_DELAY = 60000; // Wait at least 60s between retries for the same slot
+        
+        for (const slotIndex of Array.from(activeRegenerations)) {
+          const startTime = regenerationStartTimes.get(slotIndex) || Date.now();
+          const elapsed = Date.now() - startTime;
+          
+          if (elapsed > STUCK_TIMEOUT) {
+            console.log(`  🔓 Clearing stuck regeneration for slot ${slotIndex + 1} (stuck for ${Math.floor(elapsed/1000)}s) - will retry`);
+            activeRegenerations.delete(slotIndex);
+            regenerationStartTimes.delete(slotIndex);
+            // Increment failure count for this slot
+            slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
+            slotLastRetryTimes.set(slotIndex, Date.now());
+          }
+        }
+        
         // Log status every 30 seconds
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         if (elapsed - lastStatusLog >= 30) {
-          console.log(`  ⏳ Still generating cookies: ${currentCount}/${COOKIE_POOL_SIZE} (${missingSlots.length} slots remaining, ${elapsed}s elapsed)`);
+          const stuckCount = Array.from(activeRegenerations).length;
+          console.log(`  ⏳ Still generating cookies: ${currentCount}/${COOKIE_POOL_SIZE} (${missingSlots.length} slots remaining, ${stuckCount} in progress, ${elapsed}s elapsed)`);
           lastStatusLog = elapsed;
         }
         
         // Start regeneration for any missing slots that aren't already being regenerated
         for (const slotIndex of missingSlots) {
           if (!activeRegenerations.has(slotIndex)) {
-            console.log(`  🔄 Starting/restarting regeneration for slot ${slotIndex + 1}...`);
-            regenerateSingleCookie(slotIndex).catch(err => {
+            // Check if we should wait before retrying this slot (to avoid rapid retries)
+            const lastRetry = slotLastRetryTimes.get(slotIndex);
+            const failureCount = slotFailureCounts.get(slotIndex) || 0;
+            const timeSinceLastRetry = lastRetry ? Date.now() - lastRetry : Infinity;
+            
+            // Calculate retry delay based on failure count (exponential backoff)
+            const retryDelay = Math.min(MIN_RETRY_DELAY * Math.pow(2, Math.min(failureCount, 3)), 300000); // Max 5 minutes
+            
+            if (timeSinceLastRetry < retryDelay) {
+              // Too soon to retry - skip for now
+              continue;
+            }
+            
+            console.log(`  🔄 Starting/restarting regeneration for slot ${slotIndex + 1}... (attempt ${failureCount + 1})`);
+            regenerationStartTimes.set(slotIndex, Date.now()); // Track when we started
+            slotLastRetryTimes.set(slotIndex, Date.now());
+            
+            regenerateSingleCookie(slotIndex).then((success) => {
+              // Clear start time on success
+              regenerationStartTimes.delete(slotIndex);
+              if (success) {
+                // Reset failure count on success
+                slotFailureCounts.delete(slotIndex);
+                slotLastRetryTimes.delete(slotIndex);
+              }
+            }).catch(err => {
+              // Clear start time on failure
+              regenerationStartTimes.delete(slotIndex);
+              // Increment failure count
+              slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
               console.log(`  ⚠️ Regeneration failed for slot ${slotIndex + 1}: ${err.message}`);
             });
           }
@@ -2396,6 +2456,12 @@ async function regenerateSingleCookie(slotIndex) {
     // Mark this slot as being regenerated
     activeRegenerations.add(slotIndex);
     
+    // Track regeneration start time (for detecting stuck slots)
+    if (!global['regenerationStartTimes']) {
+      global['regenerationStartTimes'] = new Map();
+    }
+    global['regenerationStartTimes'].set(slotIndex, Date.now());
+    
     console.log(`\n🔄 Regenerating cookie slot ${slotIndex + 1}/${COOKIE_POOL_SIZE} (dead cookie detected)...`);
     
     // 🎯 STEP 1: Check backup pool first (faster than generating!)
@@ -2436,11 +2502,14 @@ async function regenerateSingleCookie(slotIndex) {
         }
       }
       
-      if (hasActiveNow && !waitingForStrongCookie) {
-        console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
-        activeRegenerations.delete(slotIndex); // 🔧 FIX: Release lock so regeneration can resume later
-        return false; // Pause regeneration
-      }
+        if (hasActiveNow && !waitingForStrongCookie) {
+          console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
+          activeRegenerations.delete(slotIndex); // 🔧 FIX: Release lock so regeneration can resume later
+          if (global['regenerationStartTimes']) {
+            global['regenerationStartTimes'].delete(slotIndex);
+          }
+          return false; // Pause regeneration
+        }
       
       attempts += PARALLEL_GENERATION;
       
@@ -2503,6 +2572,9 @@ async function regenerateSingleCookie(slotIndex) {
         if (hasActiveNow && !waitingForStrongCookie) {
           console.log(`  ⏸️ Downloads became active during regeneration - pausing slot ${slotIndex + 1}`);
           activeRegenerations.delete(slotIndex); // 🔧 FIX: Release lock so regeneration can resume later
+          if (global['regenerationStartTimes']) {
+            global['regenerationStartTimes'].delete(slotIndex);
+          }
           return false; // Pause regeneration
         }
       } else if (strongCookies.length > 0) {
@@ -2547,6 +2619,9 @@ async function regenerateSingleCookie(slotIndex) {
         }
         // Release lock
         activeRegenerations.delete(slotIndex);
+        if (global['regenerationStartTimes']) {
+          global['regenerationStartTimes'].delete(slotIndex);
+        }
         return true;
       }
       
@@ -2562,11 +2637,17 @@ async function regenerateSingleCookie(slotIndex) {
     console.log(`  💡 Tip: Consider using real browser cookies if all generated cookies fail`);
     // Release lock
     activeRegenerations.delete(slotIndex);
+    if (global['regenerationStartTimes']) {
+      global['regenerationStartTimes'].delete(slotIndex);
+    }
     return false;
   } catch (err) {
     console.log(`❌ Error regenerating cookie slot ${slotIndex + 1}: ${err.message}`);
     // Release lock on error
     activeRegenerations.delete(slotIndex);
+    if (global['regenerationStartTimes']) {
+      global['regenerationStartTimes'].delete(slotIndex);
+    }
     return false;
   }
 }
