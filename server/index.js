@@ -1048,11 +1048,37 @@ async function testCookies(cookiePath, skipProxy = false) {
       // Fallback to ScraperAPI if proxy manager has nothing
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
+      proxy = scraperProxy; // Set proxy variable for timeout calculation
       console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
     } else if (skipProxy) {
       console.log(`  🔄 Testing cookie WITHOUT proxy (fallback after proxy failures)`);
     } else {
       console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
+    }
+
+    // 🔧 OPTIMIZED: Calculate timeout before spawning process
+    const isOxylabs = proxy && proxy.includes('oxylabs.io');
+    const isScraperAPI = proxy && (proxy.includes('scraperapi') || proxy.includes('scraper-api'));
+    
+    // Check if proxy is YouTube-validated
+    let isYouTubeValidated = false;
+    if (proxy && !isOxylabs && !isScraperAPI && !skipProxy) {
+      const stats = proxyManager.getStats();
+      isYouTubeValidated = stats.youtubeWorking > 0;
+    }
+    
+    // 🔧 OPTIMIZED: Increased timeouts for cookie testing to reduce timeout failures
+    let processTimeout;
+    if (isOxylabs) {
+      processTimeout = 90000; // 90s for Oxylabs (was 45s)
+    } else if (isScraperAPI) {
+      processTimeout = 75000; // 75s for ScraperAPI
+    } else if (isYouTubeValidated) {
+      processTimeout = 60000; // 60s for YouTube-validated (was 25s)
+    } else if (proxy && !skipProxy) {
+      processTimeout = 50000; // 50s for other proxies (was 20s)
+    } else {
+      processTimeout = 30000; // 30s for no proxy (was 12s)
     }
 
     return await new Promise((resolve) => {
@@ -1066,9 +1092,10 @@ async function testCookies(cookiePath, skipProxy = false) {
         resolve(value);
       };
 
+      // 🔧 FIX: Use calculated timeout for process spawn
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 12000 // 12s timeout for actual extraction
+        timeout: processTimeout // Use dynamically calculated timeout
       });
 
       testProcess.stdout.on('data', (data) => {
@@ -1174,31 +1201,16 @@ async function testCookies(cookiePath, skipProxy = false) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
-      // 🎯 Dynamic timeout: Longer for Oxylabs and YouTube-validated proxies (slower but more reliable)
-      const isOxylabs = proxy && proxy.includes('oxylabs.io');
-      // Check if proxy is YouTube-validated (format: http://IP:PORT, need to extract IP:PORT)
-      let isYouTubeValidated = false;
-      if (proxy && !isOxylabs) {
-        const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
-        if (proxyMatch) {
-          const proxyHost = proxyMatch[1];
-          // Check if this proxy is in YouTube-validated list
-          const stats = proxyManager.getStats();
-          // We can't directly check, but if we have YouTube-validated proxies, give more time
-          // to all non-Oxylabs proxies (they might be YouTube-validated)
-          isYouTubeValidated = stats.youtubeWorking > 0;
-        }
-      }
-      // Timeout: 45s for Oxylabs, 25s for YouTube-validated proxies, 20s for other proxies, 12s for no proxy
-      const timeout = isOxylabs ? 45000 : (isYouTubeValidated ? 25000 : (proxy ? 20000 : 12000));
-      
+      // 🔧 OPTIMIZED: Use the same timeout for setTimeout as process timeout (calculated above)
+      // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(() => {
         if (resolved) return;
+        resolved = true;
         try { testProcess.kill('SIGKILL'); } catch {}
-        const proxyType = isOxylabs ? 'Oxylabs' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy ? 'free proxy' : 'no proxy'));
-        console.log(`  ❌ Cookie test timeout - rejecting (${timeout/1000}s limit, ${proxyType})`);
+        const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
+        console.log(`  ❌ Cookie test timeout - rejecting (${processTimeout/1000}s limit, ${proxyType})`);
         resolveOnce({ status: 'fail', reason: 'timeout' });
-      }, timeout);
+      }, processTimeout);
     });
   } catch (err) {
     console.log(`  ❌ Cookie test failed: ${err.message}`);
