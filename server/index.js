@@ -3263,6 +3263,62 @@ youtube.com	TRUE	/	FALSE	${Math.floor(Date.now() / 1000) + 3600}	PREF	f4=4000000
   console.log('   ✅ Advanced bot bypass headers added');
 }
 
+// 🔧 OPTIMIZED TIMEOUT: Balanced for fast downloads but enough time for slow proxies/large files
+function calculateTimeoutForTrack(track, ytdlpArgs = []) {
+  // Get song duration in seconds (default to 180s if unknown)
+  const durationSeconds = track.duration ? parseInt(track.duration) : 180;
+  
+  // 🔧 OPTIMIZED: 40s per minute (was 30s) + 90s overhead (was 60s) for metadata, conversion, network delays
+  // This gives more time for larger files and slower connections
+  const baseTimeout = Math.ceil((durationSeconds / 60) * 40) + 90;
+  
+  // 🔧 OPTIMIZED: Minimum 90s (was 60s), Maximum 1200s (20 minutes, was 600s/10 minutes)
+  // Increased max for very long songs and slow proxies
+  let calculatedTimeout = Math.max(90, Math.min(1200, baseTimeout));
+  
+  // Check if proxy is used
+  const proxyIndex = ytdlpArgs.findIndex(arg => arg === '--proxy');
+  if (proxyIndex === -1 || proxyIndex + 1 >= ytdlpArgs.length) {
+    // No proxy: use base timeout with read timeout at 80% of socket
+    return { 
+      socket: calculatedTimeout.toString(), 
+      read: Math.max(60, Math.ceil(calculatedTimeout * 0.8)).toString() 
+    };
+  }
+  
+  const proxy = ytdlpArgs[proxyIndex + 1];
+  
+  // 🔧 OPTIMIZED: Increased multipliers for slower proxies
+  if (proxy.includes('oxylabs.io')) {
+    // Oxylabs: 1.8x timeout (was 1.5x) - slower but reliable, needs more time
+    return { 
+      socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.8)).toString(), 
+      read: Math.min(180, Math.ceil(calculatedTimeout * 1.4)).toString() // Increased from 120
+    };
+  } else if (proxy.includes('scraperapi')) {
+    // ScraperAPI: 1.6x timeout (was 1.3x)
+    return { 
+      socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.6)).toString(), 
+      read: Math.min(150, Math.ceil(calculatedTimeout * 1.2)).toString() // Increased from 90
+    };
+  } else {
+    // Free proxy: increased multipliers for better reliability
+    const stats = proxyManager.getStats();
+    if (stats.youtubeWorking > 0) {
+      // YouTube-validated: 1.5x timeout (was 1.2x)
+      return { 
+        socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.5)).toString(), 
+        read: Math.min(120, Math.ceil(calculatedTimeout * 1.1)).toString() // Increased from 0.9
+      };
+    }
+    // Regular free proxy: 1.3x timeout (was 1.1x)
+    return { 
+      socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.3)).toString(), 
+      read: Math.min(90, Math.ceil(calculatedTimeout * 1.0)).toString() // Increased from 0.8
+    };
+  }
+}
+
 // Enhanced YouTube helper with MULTIPLE STRATEGIES (NO COOKIES)
 async function addYouTubeEnhancements(args, attempt = 0) {
   // 🆕 EXPANDED TO 10+ STRATEGIES (NO COOKIES REQUIRED)
@@ -3332,12 +3388,18 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   ];
   
   // Helper function to add proxy with intelligent selection and enhanced chaining
-  const addFreeProxy = () => {
+  // 🔧 STABILITY FIX: Made async to support proxy refresh
+  const addFreeProxy = async (skipProxy = false) => {
+    if (skipProxy) {
+      console.log(`   🚫 Skipping proxy (no-proxy fallback mode)`);
+      return false;
+    }
+    
     let proxy = null;
     let proxyType = 'none';
     
     // 🎯 PRIORITY 1: Use proxy manager (handles Oxylabs > Free proxies automatically)
-    const proxyFromManager = proxyManager.getProxyForYtdlp();
+    const proxyFromManager = await proxyManager.getProxyForYtdlp();
     if (proxyFromManager) {
       proxy = proxyFromManager;
       if (proxyFromManager.includes('oxylabs.io')) {
@@ -3445,7 +3507,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     // Add advanced bot bypass methods
     addAdvancedBotBypass(args, 'Anti-Bot', attempt);
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🤖 Anti-bot client: ${client}`);
     console.log('   🔥 Fake cookies, session tokens, browser fingerprint enabled');
@@ -3477,7 +3539,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'Sec-Fetch-Site:none');
     args.push('--add-header', 'Sec-Fetch-User:?1');
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🖥️ Web embedded client: ${client}`);
     console.log('   ✅ Light desktop headers only (no cookies)');
@@ -3536,7 +3598,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     // Add advanced bot bypass methods
     addAdvancedBotBypass(args, 'JSExecution', attempt);
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🧠 JS execution client: ${client}`);
     console.log('   🔥 JS tokens, fingerprints, anti-CAPTCHA enabled');
@@ -3602,7 +3664,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     // Add advanced bot bypass methods
     addAdvancedBotBypass(args, 'BrowserAutomation', attempt);
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🎬 Browser automation client: ${client}`);
     console.log('   🔥 Mouse/keyboard simulation, browsing history, human delays');
@@ -3628,7 +3690,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', `Accept-Language:${geo.lang}`);
     args.push('--add-header', `X-Forwarded-For:${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`);
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🌍 Geo: ${geo.country}, Age-gate: bypassed`);
     return { userAgent, clientType: client, strategy: 'GeoBypass' };
@@ -3661,7 +3723,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'Sec-Ch-Ua-Mobile:?1');
     args.push('--add-header', 'Sec-Ch-Ua-Platform:"Android"');
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log('   🔥 Ultra-aggressive headers + creator client');
     return { userAgent, clientType: client, strategy: 'AggressiveHeaders' };
@@ -3687,7 +3749,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--sleep-requests', '2');
     args.push('--limit-rate', '1M');
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log('   🎧 Audio-only extraction');
     return { userAgent, clientType: client, strategy: 'AudioOnly' };
@@ -3711,7 +3773,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'X-YouTube-Client-Name:1');
     args.push('--add-header', 'X-YouTube-Client-Version:2.20231219.04.00');
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log(`   🎭 Multi-client: ${client}`);
     return { userAgent, clientType: client, strategy: 'MultiClient' };
@@ -3739,7 +3801,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     args.push('--add-header', 'DNT:1');
     args.push('--add-header', 'Connection:keep-alive');
     
-    addFreeProxy();
+    await addFreeProxy();
     
     console.log('   🕵️ Ultra-slow anonymization mode');
     return { userAgent, clientType: client, strategy: 'TOR-Anonymization' };
@@ -3826,7 +3888,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   args.push('--limit-rate', '750K');
   
   // Always use free proxy in desperation mode
-  addFreeProxy();
+  await addFreeProxy();
   
   console.log(`   💀 Client: ${randomClient}, Geo: ${randomGeo.country}`);
   console.log('   💀💀💀 EVERY BOT BYPASS METHOD ACTIVE 💀💀💀');
@@ -7037,7 +7099,7 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
@@ -7142,8 +7204,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
     
     // 🎯 COOKIE-LESS FIRST MODE: Force YouTube-validated proxy (if available)
-    if (cookiePath === null) {
-      const youtubeProxy = proxyManager.getProxyForYtdlp();
+    // 🔧 STABILITY FIX: Skip proxy if skipProxy is true (no-proxy fallback)
+    if (cookiePath === null && !skipProxy) {
+      const youtubeProxy = await proxyManager.getProxyForYtdlp();
       if (youtubeProxy) {
         // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
         downloadOptions.proxy = youtubeProxy;
@@ -7157,6 +7220,8 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       } else {
         console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
       }
+    } else if (skipProxy) {
+      console.log(`  🚫 Skipping proxy (no-proxy fallback mode)`);
     }
     
     // 🎯 Inject PO token for enhanced authentication (bypasses bot detection)
@@ -7230,6 +7295,34 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
+    // 🔧 STABILITY FIX: Detect timeout/connection errors first
+    const hasTimeoutError = fullError.includes('read timed out') ||
+                           fullError.includes('read timeout') ||
+                           fullError.includes('timeout') ||
+                           fullError.includes('timed out') ||
+                           fullError.includes('connection timed out') ||
+                           fullError.includes('socket timeout') ||
+                           fullError.includes('connection reset by peer') ||
+                           fullError.includes('connectionreseterror') ||
+                           fullError.includes('connection aborted') ||
+                           fullError.includes('econnreset') ||
+                           fullError.includes('protocol error');
+    
+    // 🔧 STABILITY FIX: Handle timeout errors (return special value for proxy rotation)
+    if (hasTimeoutError) {
+      console.log('  ⏱️  Timeout/connection error detected in youtube-dl-exec');
+      
+      // If proxy was used, return 'timeout' to trigger proxy rotation
+      if (downloadOptions.proxy && !skipProxy) {
+        console.log(`  🔄 Will rotate to next proxy on retry`);
+        return 'timeout';
+      } else {
+        // No proxy was used, or skipProxy was true - return 'timeout_no_proxy'
+        console.log(`  ⚠️ Timeout without proxy (or proxy was skipped)`);
+        return 'timeout_no_proxy';
+      }
+    }
+    
     // 🔥 CRITICAL: Explicit error detection with priority handling
     // Handles edge case: if BOTH "confirm your age" AND "confirm you're not a bot" appear,
     // prioritize bot detection (cookie is dead, needs rotation)
@@ -7250,16 +7343,16 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       throw new Error('COOKIE_BOT_DETECTION'); // Cookie rotation takes priority
     }
     
-    // Step 3: Check for explicit bot detection (only if NOT age-restricted phrase)
-    const hasBotDetectionError = hasBotDetectionPhrase ||
+    // Step 3: Check for explicit bot detection (only if NOT age-restricted phrase and NOT timeout)
+    const hasBotDetectionError = !hasTimeoutError && (hasBotDetectionPhrase ||
                                 (fullError.includes('login_required') && 
                                  !hasAgeRestrictionPhrase && 
                                  !fullError.includes('age') && 
                                  !fullError.includes('inappropriate') && 
-                                 !fullError.includes('confirm your age'));
+                                 !fullError.includes('confirm your age')));
     
-    // Step 4: Check for age-restricted (ONLY if NOT bot detection)
-    const hasAgeRestricted = !hasBotDetectionError && (
+    // Step 4: Check for age-restricted (ONLY if NOT bot detection and NOT timeout)
+    const hasAgeRestricted = !hasBotDetectionError && !hasTimeoutError && (
       hasAgeRestrictionPhrase ||
       fullError.includes('age-restricted') || 
       (fullError.includes('sign in to confirm your age') && (fullError.includes('inappropriate') || fullError.includes('video may be inappropriate'))) ||
@@ -7808,10 +7901,45 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       } else if (track.url && track.url.includes('youtube.com')) {
         // YouTube direct link
         let ytdlExecSuccess = false;
+        let retryCount = 0;
+        const maxProxyRetries = 3; // Try up to 3 different proxies
+        
         if (cookieLessFirst) {
           console.log(`  🎯 Cookie-less first mode: Using android_sdkless + YouTube-validated proxy (NO cookies)`);
-          // Force cookie-less mode (null = no cookies)
-          ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0);
+          
+          // 🔧 STABILITY FIX: Retry with proxy rotation on timeout
+          while (!ytdlExecSuccess && retryCount < maxProxyRetries) {
+            if (retryCount > 0) {
+              console.log(`  🔄 Retry ${retryCount}/${maxProxyRetries} with new proxy after timeout...`);
+            }
+            
+            // Force cookie-less mode (null = no cookies)
+            ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0);
+            
+            // If timeout, rotate proxy and retry
+            if (ytdlExecSuccess === 'timeout' || ytdlExecSuccess === 'timeout_no_proxy') {
+              retryCount++;
+              if (ytdlExecSuccess === 'timeout_no_proxy') {
+                // No more proxies - try without proxy
+                console.log(`  🚫 All proxies failed - trying without proxy...`);
+                ytdlExecSuccess = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, null, 0, true); // true = skip proxy
+                break;
+              }
+              // Wait a bit before retrying with new proxy
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              continue;
+            }
+            
+            // If success or other error, break
+            if (ytdlExecSuccess === true || ytdlExecSuccess === 'success') {
+              break;
+            }
+            
+            retryCount++;
+            if (retryCount < maxProxyRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          }
         } else {
           // Use smart cookie rotation (normal mode)
           ytdlExecSuccess = await smartRetryWithCookies(async (cookiePath, clientAttempt) => {
@@ -7819,7 +7947,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           }, 5);
         }
         
-          if (ytdlExecSuccess) {
+          if (ytdlExecSuccess === true || ytdlExecSuccess === 'success') {
             console.log(`✅ youtube-dl-exec SUCCESS (YouTube direct): ${track.name}`);
             successCount++;
             
@@ -8081,12 +8209,25 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       // Add enhanced methods with strategy cycling based on attempt number
       await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
       
-      // Extra bypass for downloads (more aggressive)
-      ytdlpArgs.push('--socket-timeout', '60'); // higher timeout over proxies
+      // 🔧 STABILITY FIX: Dynamic timeout based on song duration and proxy type
+      const timeoutConfig = calculateTimeoutForTrack(track, ytdlpArgs);
+      ytdlpArgs.push('--socket-timeout', timeoutConfig.socket);
+      console.log(`  ⏱️  Using dynamic timeout: socket=${timeoutConfig.socket}s, read=${timeoutConfig.read}s (song duration: ${track.duration || 'unknown'}s)`);
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
-      ytdlpArgs.push('--skip-unavailable-fragments');  // FIX: This is a flag, not a value option
-      ytdlpArgs.push('--http-chunk-size', '1M'); // smaller chunks reduce proxy timeouts
+      ytdlpArgs.push('--skip-unavailable-fragments');
+      ytdlpArgs.push('--http-chunk-size', '1M');
+      
+      // 🔧 STABILITY FIX: Add read timeout for Python requests (prevents "Read timed out" errors)
+      const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
+      if (extractorArgsIndex !== -1 && extractorArgsIndex + 1 < ytdlpArgs.length) {
+        const existingArgs = ytdlpArgs[extractorArgsIndex + 1];
+        if (!existingArgs.includes('read_timeout')) {
+          ytdlpArgs[extractorArgsIndex + 1] = `${existingArgs},youtube:read_timeout=${timeoutConfig.read}`;
+        }
+      } else {
+        ytdlpArgs.push('--extractor-args', `youtube:read_timeout=${timeoutConfig.read}`);
+      }
 
       // Force metadata tags from known track fields (overrides unknowns)
       const safeArtist = (track.artist || '').replace(/"/g, '\\"');
@@ -8157,12 +8298,25 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         console.log(`🔍 Modified for search compatibility: ${ytdlpArgs[clientArgIndex + 1]}`);
       }
       
-      // Extra bypass for downloads (more aggressive)
-      ytdlpArgs.push('--socket-timeout', '60');
+      // 🔧 STABILITY FIX: Dynamic timeout based on song duration and proxy type
+      const timeoutConfig = calculateTimeoutForTrack(track, ytdlpArgs);
+      ytdlpArgs.push('--socket-timeout', timeoutConfig.socket);
+      console.log(`  ⏱️  Using dynamic timeout: socket=${timeoutConfig.socket}s, read=${timeoutConfig.read}s (song duration: ${track.duration || 'unknown'}s)`);
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');
       ytdlpArgs.push('--http-chunk-size', '1M');
+      
+      // 🔧 STABILITY FIX: Add read timeout for Python requests
+      const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
+      if (extractorArgsIndex !== -1 && extractorArgsIndex + 1 < ytdlpArgs.length) {
+        const existingArgs = ytdlpArgs[extractorArgsIndex + 1];
+        if (!existingArgs.includes('read_timeout')) {
+          ytdlpArgs[extractorArgsIndex + 1] = `${existingArgs},youtube:read_timeout=${timeoutConfig.read}`;
+        }
+      } else {
+        ytdlpArgs.push('--extractor-args', `youtube:read_timeout=${timeoutConfig.read}`);
+      }
       
       // Force metadata tags from known track fields (overrides unknowns)
       const safeArtist2 = (track.artist || '').replace(/"/g, '\\"');
@@ -8179,14 +8333,66 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--no-playlist');
     }
     
+    // 🔧 STABILITY FIX: Retry logic with proxy rotation on timeout
+    let ytdlpResult = null;
+    let proxyRetryCount = 0;
+    const maxProxyRetries = 3; // Try up to 3 different proxies
+    
     try {
-      // Check for cancellation before starting
-      const downloadInfo = activeDownloads.get(downloadId);
-      if (!downloadInfo || downloadInfo.cancelled) {
-        return 'cancelled';
-      }
-      
-      const result = await new Promise((resolve, reject) => {
+      while (!ytdlpResult || (ytdlpResult === 'timeout' && proxyRetryCount < maxProxyRetries)) {
+        // Check for cancellation before starting
+        const downloadInfo = activeDownloads.get(downloadId);
+        if (!downloadInfo || downloadInfo.cancelled) {
+          return 'cancelled';
+        }
+        
+        // 🔧 STABILITY FIX: On timeout, rotate proxy before retry
+        if (ytdlpResult === 'timeout' && proxyRetryCount < maxProxyRetries) {
+          proxyRetryCount++;
+          console.log(`  🔄 Proxy timeout retry ${proxyRetryCount}/${maxProxyRetries} - rotating to next proxy...`);
+          
+          // Get current proxy and rotate
+          const proxyIndex = ytdlpArgs.findIndex(arg => arg === '--proxy');
+          const currentProxy = proxyIndex !== -1 && proxyIndex + 1 < ytdlpArgs.length ? ytdlpArgs[proxyIndex + 1] : null;
+          
+          if (currentProxy) {
+            const nextProxy = await proxyManager.getNextProxyForYtdlp(currentProxy, true);
+            if (nextProxy) {
+              ytdlpArgs[proxyIndex + 1] = nextProxy;
+              console.log(`  ✅ Rotated to new proxy: ${nextProxy.substring(0, 50)}...`);
+              // Recalculate timeout with new proxy
+              const timeoutConfig = calculateTimeoutForTrack(track, ytdlpArgs);
+              const socketTimeoutIndex = ytdlpArgs.findIndex(arg => arg === '--socket-timeout');
+              if (socketTimeoutIndex !== -1 && socketTimeoutIndex + 1 < ytdlpArgs.length) {
+                ytdlpArgs[socketTimeoutIndex + 1] = timeoutConfig.socket;
+              }
+              // Update read timeout in extractor args
+              const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
+              if (extractorArgsIndex !== -1 && extractorArgsIndex + 1 < ytdlpArgs.length) {
+                const existingArgs = ytdlpArgs[extractorArgsIndex + 1];
+                ytdlpArgs[extractorArgsIndex + 1] = existingArgs.replace(/youtube:read_timeout=\d+/, `youtube:read_timeout=${timeoutConfig.read}`);
+              }
+            } else {
+              console.log(`  🚫 No more proxies available - will try without proxy`);
+              // Remove proxy and try without it
+              if (proxyIndex !== -1) {
+                ytdlpArgs.splice(proxyIndex, 2);
+              }
+              ytdlpResult = 'timeout_no_proxy';
+              break;
+            }
+          } else {
+            // No proxy was used - try with longer timeout or give up
+            console.log(`  ⚠️ Timeout without proxy - may need different approach`);
+            ytdlpResult = 'timeout_no_proxy';
+            break;
+          }
+          
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        const result = await new Promise((resolve, reject) => {
         const ytdlpProcess = spawn(PYTHON_CMD, ytdlpArgs, {
           cwd: outputFolder,
           shell: false,
@@ -8425,7 +8631,20 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               
               const errorLower = errorOutput.toLowerCase();
               
-              // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
+              // 🔧 STABILITY FIX: Detect timeout/connection errors (separate from bot detection)
+              const hasTimeoutError = errorLower.includes('read timed out') ||
+                                     errorLower.includes('read timeout') ||
+                                     errorLower.includes('timeout') ||
+                                     errorLower.includes('timed out') ||
+                                     errorLower.includes('connection timed out') ||
+                                     errorLower.includes('socket timeout') ||
+                                     errorLower.includes('connection reset by peer') ||
+                                     errorLower.includes('connectionreseterror') ||
+                                     errorLower.includes('connection aborted') ||
+                                     errorLower.includes('econnreset') ||
+                                     errorLower.includes('protocol error');
+              
+              // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection and timeout)
               // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
               const hasAgeRestricted = errorLower.includes('age-restricted') || 
                                       (errorLower.includes('sign in to confirm your age') && errorLower.includes('inappropriate')) ||
@@ -8435,15 +8654,48 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                                       (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted')) ||
                                       (errorLower.includes('login_required') && (errorLower.includes('age') || errorLower.includes('inappropriate')));
               
-              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
+              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted and NOT timeout)
               // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
-              const hasBotDetectionError = !hasAgeRestricted && (
+              const hasBotDetectionError = !hasAgeRestricted && !hasTimeoutError && (
                                            errorLower.includes('sign in to confirm you\'re not a bot') ||
                                            errorLower.includes('sign in to confirm you are not a bot') ||
                                            (errorLower.includes('sign in to confirm') && errorLower.includes('bot')) ||
                                            (errorLower.includes('login_required') && !errorLower.includes('age') && !errorLower.includes('inappropriate')) ||
                                            (errorLower.includes('please sign in to continue') && !errorLower.includes('age') && !errorLower.includes('inappropriate'))
                                           );
+              
+              // 🔧 STABILITY FIX: Handle timeout/connection errors (proxy issue, not cookie issue)
+              if (hasTimeoutError) {
+                console.log('  ⏱️  Timeout/connection error detected - proxy may be slow/unreliable');
+                
+                // Get current proxy from args
+                const proxyIndex = ytdlpArgs.findIndex(arg => arg === '--proxy');
+                const currentProxy = proxyIndex !== -1 && proxyIndex + 1 < ytdlpArgs.length ? ytdlpArgs[proxyIndex + 1] : null;
+                
+                if (currentProxy) {
+                  console.log(`  🔄 Marking proxy as failed: ${currentProxy.substring(0, 50)}...`);
+                  
+                  // Mark proxy as failed and get next proxy
+                  const nextProxy = await proxyManager.getNextProxyForYtdlp(currentProxy, true);
+                  
+                  if (nextProxy) {
+                    console.log(`  ✅ Rotating to next proxy: ${nextProxy.substring(0, 50)}...`);
+                    // Resolve with 'timeout' to trigger retry with new proxy
+                    resolve('timeout');
+                    return;
+                  } else {
+                    console.log(`  ⚠️ No more proxies available - will try without proxy`);
+                    // Resolve with 'timeout_no_proxy' to trigger no-proxy fallback
+                    resolve('timeout_no_proxy');
+                    return;
+                  }
+                } else {
+                  // No proxy was used, but still got timeout - try with longer timeout
+                  console.log(`  ⚠️ Timeout without proxy - may need longer timeout or different approach`);
+                  resolve('timeout');
+                  return;
+                }
+              }
               
               if (hasAgeRestricted) {
                 console.log('  🔒 Age-restricted video detected - automatically searching for alternative...');
@@ -8599,6 +8851,24 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         });
       });
       
+      // 🔧 STABILITY FIX: Store result for retry logic
+      ytdlpResult = result;
+      
+      // If success, break the retry loop
+      if (result === 'success') {
+        break;
+      }
+      
+      // If timeout and we haven't exceeded retry count, continue loop to retry
+      if (result === 'timeout' && proxyRetryCount < maxProxyRetries) {
+        continue; // Continue while loop to retry with new proxy
+      }
+      
+      // If timeout_no_proxy or failed, break the retry loop
+      if (result === 'timeout_no_proxy' || result === 'failed' || result === 'error') {
+        break;
+      }
+      
       // 🚀 OPTIMIZATION: If search returned 0 items, retry with direct URL
       if (result === 'search_zero_items' && youtubeLink && !youtubeLinks[`retry_${track.id}`]) {
         console.log(`  🔄 Search returned 0 items, retrying with direct URL...`);
@@ -8640,11 +8910,26 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         }
         
         await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
-        ytdlpArgs.push('--socket-timeout', '60');
+        
+        // 🔧 STABILITY FIX: Dynamic timeout based on song duration
+        const timeoutConfig = calculateTimeoutForTrack(track, ytdlpArgs);
+        ytdlpArgs.push('--socket-timeout', timeoutConfig.socket);
+        console.log(`  ⏱️  Using dynamic timeout: socket=${timeoutConfig.socket}s, read=${timeoutConfig.read}s`);
         ytdlpArgs.push('--retries', '15');
         ytdlpArgs.push('--fragment-retries', '15');
         ytdlpArgs.push('--skip-unavailable-fragments');
         ytdlpArgs.push('--http-chunk-size', '1M');
+        
+        // Add read timeout
+        const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
+        if (extractorArgsIndex !== -1 && extractorArgsIndex + 1 < ytdlpArgs.length) {
+          const existingArgs = ytdlpArgs[extractorArgsIndex + 1];
+          if (!existingArgs.includes('read_timeout')) {
+            ytdlpArgs[extractorArgsIndex + 1] = `${existingArgs},youtube:read_timeout=${timeoutConfig.read}`;
+          }
+        } else {
+          ytdlpArgs.push('--extractor-args', `youtube:read_timeout=${timeoutConfig.read}`);
+        }
         
         const safeArtist = (track.artist || '').replace(/"/g, '\\"');
         const safeTitle = (track.name || '').replace(/"/g, '\\"');
@@ -8714,6 +8999,43 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               // Check for age-restricted in direct URL fallback
               const errorLower = directError.toLowerCase();
               
+              // 🔧 STABILITY FIX: Detect timeout/connection errors first
+              const hasTimeoutError = errorLower.includes('read timed out') ||
+                                     errorLower.includes('read timeout') ||
+                                     errorLower.includes('timeout') ||
+                                     errorLower.includes('timed out') ||
+                                     errorLower.includes('connection timed out') ||
+                                     errorLower.includes('socket timeout') ||
+                                     errorLower.includes('connection reset by peer') ||
+                                     errorLower.includes('connectionreseterror') ||
+                                     errorLower.includes('connection aborted') ||
+                                     errorLower.includes('econnreset') ||
+                                     errorLower.includes('protocol error');
+              
+              // 🔧 STABILITY FIX: Handle timeout errors in direct URL fallback
+              if (hasTimeoutError) {
+                console.log('  ⏱️  Timeout/connection error in direct URL fallback - proxy may be slow/unreliable');
+                const proxyIndex = ytdlpArgs.findIndex(arg => arg === '--proxy');
+                const currentProxy = proxyIndex !== -1 && proxyIndex + 1 < ytdlpArgs.length ? ytdlpArgs[proxyIndex + 1] : null;
+                
+                if (currentProxy) {
+                  console.log(`  🔄 Marking proxy as failed: ${currentProxy.substring(0, 50)}...`);
+                  const nextProxy = await proxyManager.getNextProxyForYtdlp(currentProxy, true);
+                  if (nextProxy) {
+                    console.log(`  ✅ Rotating to next proxy: ${nextProxy.substring(0, 50)}...`);
+                    resolve('timeout');
+                    return;
+                  } else {
+                    console.log(`  ⚠️ No more proxies available - will try without proxy`);
+                    resolve('timeout_no_proxy');
+                    return;
+                  }
+                } else {
+                  resolve('timeout');
+                  return;
+                }
+              }
+              
               // 🔥 PRIORITY: Check for age-restricted FIRST (before bot detection)
               // Age-restricted errors: "Sign in to confirm your age" + "inappropriate" OR explicit "age-restricted"
               const hasAgeRestricted = errorLower.includes('age-restricted') || 
@@ -8724,9 +9046,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
                                       (errorLower.includes('some formats may be missing') && errorLower.includes('age-restricted')) ||
                                       (errorLower.includes('login_required') && (errorLower.includes('age') || errorLower.includes('inappropriate')));
               
-              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted)
+              // 🔥 Check if failure was due to bot detection (ONLY if NOT age-restricted and NOT timeout)
               // Bot detection errors: "Sign in to confirm you're not a bot" or "LOGIN_REQUIRED" without age context
-              const hasBotDetectionError = !hasAgeRestricted && (
+              const hasBotDetectionError = !hasAgeRestricted && !hasTimeoutError && (
                                            errorLower.includes('sign in to confirm you\'re not a bot') ||
                                            errorLower.includes('sign in to confirm you are not a bot') ||
                                            (errorLower.includes('sign in to confirm') && errorLower.includes('bot')) ||
@@ -8890,10 +9212,14 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           searchProcess.on('error', () => resolve());
         });
       }
-      
+    } // End of while loop
     } catch (error) {
       console.error(`Error running yt-dlp for ${searchQuery}:`, error);
+      ytdlpResult = 'failed';
     }
+    
+    // 🔧 STABILITY FIX: Return final result
+    return ytdlpResult === 'success' ? true : false;
   }; // End of downloadSingleTrack function
   
   // Download tracks in parallel batches
