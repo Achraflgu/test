@@ -1210,6 +1210,18 @@ async function testCookies(cookiePath, skipProxy = false) {
 // 🎯 PO TOKEN GENERATION SYSTEM
 // ====================================
 // Generates YouTube PO tokens using pytubefix for enhanced authentication
+// 
+// 📝 PO Token Purpose:
+//   - PO tokens help bypass YouTube's bot detection mechanisms
+//   - They provide additional authentication that can improve download success rates
+//   - When used with cookies, they can help avoid rate limiting and bot detection errors
+//   - Downloads work fine without PO tokens, but they provide an optional enhancement
+// 
+// ⚡ Performance:
+//   - PO tokens are cached for 1 hour to avoid regeneration overhead
+//   - Generation timeout is 5 seconds (reduced from 30s) - downloads proceed even if generation fails
+//   - Injection timeout is 3 seconds - downloads don't wait more than 3s for PO token injection
+//   - PO token failures are silent - they don't block or delay downloads
 
 let poTokenCache = null;
 let poTokenExpiry = 0;
@@ -2042,14 +2054,18 @@ async function checkAndResumeRegeneration() {
     }
     
     // All downloads are completed/cancelled/failed - safe to resume
-    const cookies = await getWorkingCookiesFromPool();
+    // 🔧 FIX: Validate cookies first to detect and remove dead ones, then fill missing slots
+    console.log(`\n🔄 Downloads completed - validating cookie pool and resuming maintenance...`);
+    const validationResult = await validateCookiePool();
     
-    // If we have less than 5 cookies and downloads are idle, resume filling
-    if (cookies.length < COOKIE_POOL_SIZE) {
-      console.log(`\n🔄 Downloads completed - resuming pool maintenance: ${cookies.length}/${COOKIE_POOL_SIZE} cookies`);
+    // After validation, check if we need to fill missing slots
+    if (validationResult.valid < COOKIE_POOL_SIZE) {
+      console.log(`  📊 Pool status: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies - filling ${COOKIE_POOL_SIZE - validationResult.valid} missing slots...`);
       ensurePoolIsFull().catch((err) => {
         console.log(`  ⚠️ Failed to resume pool fill: ${err.message}`);
       });
+    } else {
+      console.log(`  ✅ Pool is full: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies`);
     }
   } catch (err) {
     // Silent fail - don't interrupt download completion
@@ -3076,20 +3092,24 @@ async function initializeAutoCookies() {
 // Runs every 5 minutes to check and fill missing slots (only when downloads are idle)
 setInterval(async () => {
   try {
-    const cookies = await getWorkingCookiesFromPool();
     const hasActive = hasActiveDownloads();
     
     // 🛡️ SAFETY: Only regenerate when downloads are idle OR when we have 0 cookies
+    const cookies = await getWorkingCookiesFromPool();
     if (hasActive && cookies.length >= 1) {
       console.log(`\n⏸️ [Scheduled Maintenance] Skipped: Downloads active (${activeDownloads.size}) with ${cookies.length} working cookie(s) - safe to continue`);
       return;
     }
     
-    if (cookies.length < COOKIE_POOL_SIZE) {
-      console.log(`\n🔄 [Scheduled Maintenance] Pool has ${cookies.length}/${COOKIE_POOL_SIZE} cookies - filling missing slots...`);
+    // 🔧 FIX: Validate cookies first to detect and remove dead ones, then fill missing slots
+    console.log(`\n🔄 [Scheduled Maintenance] Validating cookie pool...`);
+    const validationResult = await validateCookiePool();
+    
+    if (validationResult.valid < COOKIE_POOL_SIZE) {
+      console.log(`  📊 Pool status: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies - filling ${COOKIE_POOL_SIZE - validationResult.valid} missing slots...`);
       await ensurePoolIsFull();
     } else {
-      console.log(`\n✅ [Scheduled Maintenance] Pool is full: ${cookies.length}/${COOKIE_POOL_SIZE} cookies`);
+      console.log(`  ✅ [Scheduled Maintenance] Pool is full: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies`);
     }
   } catch (err) {
     console.log(`\n⚠️ [Scheduled Maintenance] Error: ${err.message}`);
