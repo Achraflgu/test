@@ -6235,6 +6235,13 @@ app.post('/api/download/cancel', (req, res) => {
     return res.status(404).json({ error: 'Download not found' });
   }
   
+  // 🔧 FIX: Don't allow cancelling already-completed downloads
+  // Completed downloads should remain available for ZIP download
+  if (downloadInfo.status === 'completed' || downloadInfo.status === 'partial') {
+    console.log(`⚠️  Cancel request ignored: Download ${downloadId} is already ${downloadInfo.status}`);
+    return res.json({ success: false, message: 'Download is already completed and cannot be cancelled' });
+  }
+  
   // 🔥 SECURITY: Verify that the requesting client is the one who started the download
   const downloadSocketId = downloadInfo.socketId;
   if (socketId && downloadSocketId && socketId !== downloadSocketId) {
@@ -6297,17 +6304,16 @@ app.post('/api/download/cancel', (req, res) => {
     message: '❌ Download cancelled by user'
   });
   
-  // Don't delete immediately - keep it marked as cancelled so running processes can check
-  // The processes will be cleaned up when they complete or are killed
-  // We'll set a timeout to clean up after a delay if processes don't respond
+  // 🔧 FIX: Don't delete immediately - keep cancelled downloads longer for potential retry
+  // Increased timeout to 5 minutes to allow ZIP download even after cancellation
   setTimeout(() => {
     const stillActive = activeDownloads.get(downloadId);
-    if (stillActive && stillActive.cancelled) {
+    if (stillActive && stillActive.cancelled && stillActive.status !== 'completed') {
       console.log(`🧹 Cleaning up cancelled download ${downloadId} after timeout`);
-  activeDownloads.delete(downloadId);
-  activeProcesses.delete(downloadId);
+      activeDownloads.delete(downloadId);
+      activeProcesses.delete(downloadId);
     }
-  }, 30000); // Clean up after 30 seconds if processes haven't stopped
+  }, 300000); // Clean up after 5 minutes (was 30 seconds)
   
   res.json({ success: true, message: 'Download cancelled' });
 });
@@ -10612,10 +10618,37 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
   console.log(`   Tracks count: ${downloadInfo.tracks?.length || 0}`);
   console.log(`   Output folder: ${downloadInfo.outputFolder}`);
 
-  // Allow both 'completed' and 'partial' status to show failed tracks
-  if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial') {
-    console.log(`❌ [ARCHIVE] Download not ready yet (status: ${downloadInfo.status})`);
+  // 🔧 FIX: Allow ZIP download even if status is 'cancelled' (download might have completed before cancellation)
+  // Check if files exist in output folder to determine if download actually completed
+  const outputFolderPath = downloadInfo.outputFolder;
+  let hasFiles = false;
+  
+  try {
+    const files = await fs.readdir(outputFolderPath);
+    const musicFiles = files.filter(f => 
+      f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
+    );
+    hasFiles = musicFiles.length > 0;
+    
+    if (hasFiles) {
+      console.log(`   ✅ Found ${musicFiles.length} file(s) in output folder`);
+    } else {
+      console.log(`   ⚠️  No music files found in output folder`);
+    }
+  } catch (e) {
+    console.warn(`   ⚠️  Could not check output folder: ${e.message}`);
+  }
+
+  // Allow download if: (1) status is completed/partial, OR (2) status is cancelled but files exist
+  if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial' && !hasFiles) {
+    console.log(`❌ [ARCHIVE] Download not ready yet (status: ${downloadInfo.status}, hasFiles: ${hasFiles})`);
     return res.status(400).json({ error: 'Download not completed yet' });
+  }
+  
+  // 🔧 FIX: If status is cancelled but files exist, treat it as completed for ZIP download
+  if (downloadInfo.status === 'cancelled' && hasFiles) {
+    console.log(`⚠️  Download status is 'cancelled' but files exist - allowing ZIP download`);
+    // Don't change status, just allow the download to proceed
   }
 
   // Set longer timeout for this specific request (unlimited size support)
