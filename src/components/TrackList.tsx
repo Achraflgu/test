@@ -589,13 +589,13 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                     setPlayerLoadProgress(100);
                     
                     if (event.target && typeof event.target.getDuration === 'function') {
-                      const duration = event.target.getDuration();
-                      if (duration && duration > 0 && duration !== Infinity) {
-                        setDuration(duration);
-                      }
+                    const duration = event.target.getDuration();
+                    if (duration && duration > 0 && duration !== Infinity) {
+                      setDuration(duration);
+                    }
                     }
                     if (event.target && typeof event.target.setVolume === 'function') {
-                      event.target.setVolume(volumeRef.current);
+                    event.target.setVolume(volumeRef.current);
                     }
                     if (isMutedRef.current && event.target && typeof event.target.mute === 'function') {
                       event.target.mute();
@@ -611,9 +611,9 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
                       playerState === (window as any).YT.PlayerState.PAUSED) {
                     try {
                       if (event.target && typeof event.target.getDuration === 'function') {
-                        const duration = event.target.getDuration();
-                        if (duration && duration > 0 && duration !== Infinity) {
-                          setDuration(duration);
+                    const duration = event.target.getDuration();
+                    if (duration && duration > 0 && duration !== Infinity) {
+                      setDuration(duration);
                         }
                       }
                     } catch (err) {
@@ -1426,11 +1426,11 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
               setPlayerLoadProgress(100);
               
               if (event.target && typeof event.target.getDuration === 'function') {
-                setDuration(event.target.getDuration());
+              setDuration(event.target.getDuration());
               }
               // Ensure volume is correctly set when playback starts
               if (event.target && typeof event.target.setVolume === 'function') {
-                event.target.setVolume(volumeRef.current);
+              event.target.setVolume(volumeRef.current);
               }
               if (isMutedRef.current && event.target && typeof event.target.mute === 'function') {
                 event.target.mute();
@@ -3232,6 +3232,14 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       return;
     }
 
+    // 🔧 FIX: Check if download is already completed - don't allow cancelling completed downloads
+    // Check if any selected tracks are completed
+    const hasCompletedTracks = tracks.some(t => t.selected && t.downloadStatus === 'completed');
+    if (hasCompletedTracks) {
+      toast.error('Cannot cancel: Download is already completed');
+      return;
+    }
+
     try {
       toast.info('⏳ Cancelling download...');
       
@@ -3252,6 +3260,12 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       toast.success('✅ Download cancelled successfully');
     } catch (error: any) {
       console.error('Failed to cancel download:', error);
+      // Check if error is because download is already completed
+      if (error.message && error.message.includes('already completed')) {
+        toast.info('Download is already completed');
+        setDownloading(false);
+        return;
+      }
       toast.error(`❌ Failed to cancel: ${error.message}`);
       
       // Force reset even if cancel fails

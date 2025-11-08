@@ -284,12 +284,14 @@ const Index = () => {
         e.preventDefault();
         e.returnValue = ''; // Modern browsers require this
         
-        // Cancel download on backend (fire and forget)
-        if (activeDownloadId) {
+        // 🔧 FIX: Only cancel if download is actually active (not completed)
+        // Server will reject cancellation if download is already completed, but we can avoid the request
+        if (activeDownloadId && isDownloading) {
           const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
           const currentSocket = getSocket();
           const socketId = currentSocket?.id || null;
           
+          // Fire and forget - server will reject if download is already completed
           fetch(`${API_URL}/api/download/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
