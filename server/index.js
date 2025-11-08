@@ -10351,18 +10351,34 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
             const emitSocket = clientSocket || socket || io; // Prefer clientSocket, then passed socket, then broadcast
             
-            if (clientSocket) {
-              console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
-              clientSocket.emit('download:complete', completeEventData);
-            } else if (socket && socket.connected !== false) {
-              console.log(`✅ Emitting to passed socket: ${socket.id}`);
-              socket.emit('download:complete', completeEventData);
-            } else {
-              console.log(`⚠️ No specific socket found - broadcasting to all clients`);
-              io.emit('download:complete', completeEventData);
-            }
-            
-            console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
+          if (clientSocket) {
+            console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
+            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
+            clientSocket.emit('download:complete', completeEventData);
+            // Also emit a confirmation event to verify socket is working
+            clientSocket.emit('download:status', {
+              downloadId,
+              status: 'completed',
+              message: `✅ Download complete! Click to download your file.`
+            });
+          } else if (socket && socket.connected !== false) {
+            console.log(`✅ Emitting to passed socket: ${socket.id}`);
+            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
+            socket.emit('download:complete', completeEventData);
+            // Also emit a confirmation event to verify socket is working
+            socket.emit('download:status', {
+              downloadId,
+              status: 'completed',
+              message: `✅ Download complete! Click to download your file.`
+            });
+          } else {
+            console.log(`⚠️ No specific socket found - broadcasting to all clients`);
+            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
+            io.emit('download:complete', completeEventData);
+          }
+          
+          console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
+          console.log(`   🔍 Debug: downloadInfo.status=${downloadInfo.status}, downloadUrl=${completeEventData.downloadUrl}`);
           } catch (emitError) {
             console.error(`❌ Error emitting download:complete: ${emitError.message}`);
             console.error(emitError.stack);
