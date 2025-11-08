@@ -2361,11 +2361,19 @@ async function ensurePoolIsFull() {
             
             if (!currentIndices.includes(slotIndex)) {
               // Still missing - but taking too long, clear and retry with backoff
-              console.log(`  🔓 Clearing slow regeneration for slot ${slotIndex + 1} (no progress for ${Math.floor(elapsed/1000)}s) - will retry with backoff`);
+              // 🔧 FIX: Don't increment failure count for slow progress (only for actual failures)
+              // This allows faster retries when regeneration is just slow, not failing
+              const currentFailureCount = slotFailureCounts.get(slotIndex) || 0;
+              console.log(`  🔓 Clearing slow regeneration for slot ${slotIndex + 1} (no progress for ${Math.floor(elapsed/1000)}s) - will retry (failure count: ${currentFailureCount})`);
               activeRegenerations.delete(slotIndex);
               regenerationStartTimes.delete(slotIndex);
-              slotFailureCounts.set(slotIndex, (slotFailureCounts.get(slotIndex) || 0) + 1);
-              slotLastRetryTimes.set(slotIndex, Date.now());
+              // Only increment failure count if it's been stuck for a while (3+ minutes)
+              // Otherwise, treat it as slow progress, not failure
+              if (elapsed > STUCK_TIMEOUT) {
+                slotFailureCounts.set(slotIndex, currentFailureCount + 1);
+              }
+              // Set retry time to allow immediate retry (or very short delay) for slow progress
+              slotLastRetryTimes.set(slotIndex, Date.now() - (MIN_RETRY_DELAY * 0.5)); // Allow retry after 30s instead of 60s
             } else {
               // Cookie exists! Just clear the lock (regeneration succeeded but lock wasn't cleared)
               console.log(`  🔓 Clearing orphaned lock for slot ${slotIndex + 1} (cookie exists but lock still active)`);
@@ -2392,10 +2400,22 @@ async function ensurePoolIsFull() {
             const timeSinceLastRetry = lastRetry ? Date.now() - lastRetry : Infinity;
             
             // Calculate retry delay based on failure count (exponential backoff)
-            const retryDelay = Math.min(MIN_RETRY_DELAY * Math.pow(2, Math.min(failureCount, 3)), 300000); // Max 5 minutes
+            // 🔧 FIX: Use shorter delays for low failure counts to allow faster recovery
+            let retryDelay;
+            if (failureCount === 0) {
+              retryDelay = 30000; // 30s for first retry
+            } else if (failureCount === 1) {
+              retryDelay = 60000; // 60s for second retry
+            } else {
+              retryDelay = Math.min(MIN_RETRY_DELAY * Math.pow(2, Math.min(failureCount - 1, 3)), 300000); // Max 5 minutes
+            }
             
             if (timeSinceLastRetry < retryDelay) {
               // Too soon to retry - skip for now
+              const waitTime = Math.ceil((retryDelay - timeSinceLastRetry) / 1000);
+              if (waitTime > 10) { // Only log if waiting more than 10s
+                // Don't log every time to avoid spam
+              }
               continue;
             }
             
