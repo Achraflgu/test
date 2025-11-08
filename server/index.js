@@ -1076,7 +1076,7 @@ async function testCookies(cookiePath, skipProxy = false) {
     if (!skipProxy) {
       // Try to get proxy (with retry if proxy manager not ready yet)
       for (let retry = 0; retry < 3; retry++) {
-        proxy = proxyManager.getProxyForYtdlp();
+        proxy = await proxyManager.getProxyForYtdlp();
         if (proxy) break;
         
         // If no proxy and we have Oxylabs credentials, wait a bit for initialization
@@ -1088,7 +1088,7 @@ async function testCookies(cookiePath, skipProxy = false) {
       }
     }
     
-    if (proxy && !skipProxy) {
+    if (proxy && !skipProxy && typeof proxy === 'string') {
       testArgs.push('--proxy', proxy);
       // Show which type of proxy is being used
       if (proxy.includes('oxylabs.io')) {
@@ -1110,12 +1110,12 @@ async function testCookies(cookiePath, skipProxy = false) {
     }
 
     // 🔧 OPTIMIZED: Calculate timeout before spawning process
-    const isOxylabs = proxy && proxy.includes('oxylabs.io');
-    const isScraperAPI = proxy && (proxy.includes('scraperapi') || proxy.includes('scraper-api'));
+    const isOxylabs = proxy && typeof proxy === 'string' && proxy.includes('oxylabs.io');
+    const isScraperAPI = proxy && typeof proxy === 'string' && (proxy.includes('scraperapi') || proxy.includes('scraper-api'));
     
     // Check if proxy is YouTube-validated
     let isYouTubeValidated = false;
-    if (proxy && !isOxylabs && !isScraperAPI && !skipProxy) {
+    if (proxy && typeof proxy === 'string' && !isOxylabs && !isScraperAPI && !skipProxy) {
       const stats = proxyManager.getStats();
       isYouTubeValidated = stats.youtubeWorking > 0;
     }
@@ -3528,13 +3528,13 @@ function calculateTimeoutForTrack(track, ytdlpArgs = []) {
   const proxy = ytdlpArgs[proxyIndex + 1];
   
   // 🔧 OPTIMIZED: Increased multipliers for slower proxies
-  if (proxy.includes('oxylabs.io')) {
+  if (proxy && typeof proxy === 'string' && proxy.includes('oxylabs.io')) {
     // Oxylabs: 1.8x timeout (was 1.5x) - slower but reliable, needs more time
     return { 
       socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.8)).toString(), 
       read: Math.min(180, Math.ceil(calculatedTimeout * 1.4)).toString() // Increased from 120
     };
-  } else if (proxy.includes('scraperapi')) {
+  } else if (proxy && typeof proxy === 'string' && proxy.includes('scraperapi')) {
     // ScraperAPI: 1.6x timeout (was 1.3x)
     return { 
       socket: Math.min(1200, Math.ceil(calculatedTimeout * 1.6)).toString(), 
@@ -3639,7 +3639,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     
     // 🎯 PRIORITY 1: Use proxy manager (handles Oxylabs > Free proxies automatically)
     const proxyFromManager = await proxyManager.getProxyForYtdlp();
-    if (proxyFromManager) {
+    if (proxyFromManager && typeof proxyFromManager === 'string') {
       proxy = proxyFromManager;
       if (proxyFromManager.includes('oxylabs.io')) {
       proxyType = 'Oxylabs Premium';
@@ -3666,7 +3666,7 @@ async function addYouTubeEnhancements(args, attempt = 0) {
         console.log(`   🎯 Using verified working proxy: ${proxy}`);
       } else {
         // Get a random proxy (might work)
-        proxy = proxyManager.getProxyForYtdlp();
+        proxy = await proxyManager.getProxyForYtdlp();
         proxyType = 'Free (Random)';
         if (proxy) {
           console.log(`   🌐 Using random proxy: ${proxy}`);
@@ -7450,11 +7450,13 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
         downloadOptions.proxy = youtubeProxy;
         console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
-        if (youtubeProxy.includes('oxylabs.io')) {
-          console.log(`     🌟 Oxylabs premium proxy (verified working with YouTube)`);
-        } else {
-          const shortProxy = youtubeProxy.length > 30 ? youtubeProxy.substring(0, 27) + '...' : youtubeProxy;
-          console.log(`     🎯 YouTube-validated proxy: ${shortProxy}`);
+        if (youtubeProxy && typeof youtubeProxy === 'string') {
+          if (youtubeProxy.includes('oxylabs.io')) {
+            console.log(`     🌟 Oxylabs premium proxy (verified working with YouTube)`);
+          } else {
+            const shortProxy = youtubeProxy.length > 30 ? youtubeProxy.substring(0, 27) + '...' : youtubeProxy;
+            console.log(`     🎯 YouTube-validated proxy: ${shortProxy}`);
+          }
         }
       } else {
         console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
@@ -10365,7 +10367,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
     let ytdlpArgs = '--extractor-args youtube:player_client=android --user-agent "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36" --sleep-requests 1 --retries 10';
     
     // Add proxy using proxy manager (handles Oxylabs > Free proxies automatically)
-    const proxy = proxyManager.getProxyForYtdlp();
+    const proxy = await proxyManager.getProxyForYtdlp();
     if (proxy) {
       ytdlpArgs += ` --proxy ${proxy} --no-check-certificate`;
       if (proxy.includes('oxylabs.io')) {
