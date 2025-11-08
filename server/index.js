@@ -1047,7 +1047,9 @@ async function replaceCookieInPool(index, newCookieContent) {
 
 // ⚡ ULTRA-STRICT cookie test - Tests ACTUAL audio extraction (not just metadata!)
 // This ensures cookies work for REAL downloads, not just API calls
-async function testCookies(cookiePath, skipProxy = false) {
+async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
+  const MAX_PROXY_RETRIES = 3; // Try up to 3 different proxies before trying without proxy
+  
   try {
     // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (the REAL test!)
     const testArgs = [
@@ -1104,7 +1106,7 @@ async function testCookies(cookiePath, skipProxy = false) {
       proxy = scraperProxy; // Set proxy variable for timeout calculation
       console.log(`  🌐 Testing cookie via ScraperAPI proxy`);
     } else if (skipProxy) {
-      console.log(`  🔄 Testing cookie WITHOUT proxy (fallback after proxy failures)`);
+      console.log(`  🔄 Testing cookie WITHOUT proxy (attempt ${retryCount + 1} - fallback after proxy failures)`);
     } else {
       console.log(`  ⚠️  No proxy available for cookie testing (will retry)`);
     }
@@ -1259,7 +1261,7 @@ async function testCookies(cookiePath, skipProxy = false) {
 
       // 🔧 FAST TIMEOUT: Use 30s timeout for all - mark slow proxies as dead
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
-      setTimeout(() => {
+      setTimeout(async () => {
         if (resolved) return;
         resolved = true;
         try { testProcess.kill('SIGKILL'); } catch {}
@@ -1276,7 +1278,24 @@ async function testCookies(cookiePath, skipProxy = false) {
           }
         }
         
-        resolveOnce({ status: 'fail', reason: 'timeout' });
+        // 🔄 RETRY: Try with different proxy (attempts 1-3) or without proxy (attempt 4)
+        if (retryCount < MAX_PROXY_RETRIES && !skipProxy) {
+          console.log(`  🔄 Retrying cookie test with different proxy (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...`);
+          
+          // Retry with a new proxy
+          const retryResult = await testCookies(cookiePath, false, retryCount + 1);
+          resolveOnce(retryResult);
+        } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
+          // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
+          console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...`);
+          
+          const retryResult = await testCookies(cookiePath, true, retryCount + 1);
+          resolveOnce(retryResult);
+        } else {
+          // Only give up after trying multiple proxies AND no-proxy
+          console.log(`  ❌ Cookie test timeout after ${retryCount + 1} attempts (including no-proxy) - giving up`);
+          resolveOnce({ status: 'fail', reason: 'timeout' });
+        }
       }, processTimeout);
     });
   } catch (err) {
@@ -2813,8 +2832,8 @@ async function regenerateSingleCookie(slotIndex) {
 
 // ⚡ ULTRA-STRICT COOKIE VALIDATION - Test actual audio extraction (30s timeout with proxy support)
 // This ensures cookies work for REAL downloads, not just metadata
-async function quickValidateCookie(cookiePath, index = null, retryCount = 0) {
-  const MAX_PROXY_RETRIES = 3; // Try up to 3 different proxies before giving up
+async function quickValidateCookie(cookiePath, index = null, retryCount = 0, skipProxy = false) {
+  const MAX_PROXY_RETRIES = 3; // Try up to 3 different proxies before trying without proxy
   
   try {
     // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (not just metadata!)
@@ -2839,13 +2858,17 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0) {
     
     // 🌐 ADD PROXY SUPPORT for cookie re-validation (use proxy if available)
     let usedProxy = null;
-    try {
-      const proxy = await proxyManager.getProxyForYtdlp();
-      if (proxy) {
-        usedProxy = proxy;
-        testArgs.push('--proxy', proxy);
-      }
-    } catch {}
+    if (!skipProxy) {
+      try {
+        const proxy = await proxyManager.getProxyForYtdlp();
+        if (proxy) {
+          usedProxy = proxy;
+          testArgs.push('--proxy', proxy);
+        }
+      } catch {}
+    } else {
+      console.log(`    🔄 Attempt ${retryCount + 1}: Testing WITHOUT proxy (fallback after proxy failures)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+    }
     
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
@@ -2921,16 +2944,22 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0) {
           proxyManager.markFailed(usedProxy);
         }
         
-        // 🔄 RETRY: Try again with a DIFFERENT proxy before giving up on the cookie
+        // 🔄 RETRY: Try with different proxy (attempts 1-3) or without proxy (attempt 4)
         if (retryCount < MAX_PROXY_RETRIES) {
           console.log(`    🔄 Retrying cookie test with different proxy (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           
           // Retry with a new proxy
-          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1);
+          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
+          resolve(retryResult);
+        } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
+          // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
+          console.log(`    🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          
+          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
           resolve(retryResult);
         } else {
-          // Only give up after trying multiple proxies
-          console.log(`    ❌ Cookie test timeout after ${MAX_PROXY_RETRIES + 1} proxy attempts - marking cookie as dead` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          // Only give up after trying multiple proxies AND no-proxy
+          console.log(`    ❌ Cookie test timeout after ${MAX_PROXY_RETRIES + 1} attempts (including no-proxy) - marking cookie as dead` + (index !== null ? ` [slot ${index + 1}]` : ''));
           resolve(false);
         }
       }, 30000);
