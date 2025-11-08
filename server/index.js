@@ -854,13 +854,44 @@ async function saveCookieToPool(cookieContent, index, options = {}) {
 
 async function getWorkingCookiesFromPool() {
   try {
+    await initCookiePool();
+    
     // Try Redis first (if available)
     if (isRedisAvailable()) {
       const redisCookies = await getAllCookiesFromRedis();
       if (redisCookies.length > 0) {
         console.log(`  🍪 Loaded ${redisCookies.length} cookies from Redis`);
+        
+        // 🔧 SYNC: If we have fewer than 5 cookies in Redis, check filesystem and migrate missing ones
+        if (redisCookies.length < COOKIE_POOL_SIZE) {
+          const files = await fs.readdir(COOKIE_POOL_DIR);
+          const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
+          const redisIndices = new Set(redisCookies.map(c => c.index));
+          
+          // Find cookies in filesystem that are not in Redis
+          for (const file of cookieFiles) {
+            try {
+              const index = parseInt(file.match(/cookie_(\d+)\.txt/)?.[1] || '0');
+              if (!redisIndices.has(index) && index < COOKIE_POOL_SIZE) {
+                const content = await fs.readFile(path.join(COOKIE_POOL_DIR, file), 'utf8');
+                // Migrate to Redis
+                await saveCookieToRedis(index, content, {
+                  quality: 'strong',
+                  created: new Date().toISOString(),
+                  migrated: true
+                });
+                console.log(`  🔄 Migrated cookie ${index + 1} from filesystem to Redis`);
+                redisCookies.push({
+                  index,
+                  path: path.join(COOKIE_POOL_DIR, file),
+                  content
+                });
+              }
+            } catch {}
+          }
+        }
+        
         // Also sync to filesystem for compatibility
-        await initCookiePool();
         // 🔥 FIX: Update path to filesystem path (not Redis key) - yt-dlp needs file path
         for (const cookie of redisCookies) {
           const cookiePath = path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
@@ -868,12 +899,18 @@ async function getWorkingCookiesFromPool() {
           // Update path to filesystem path (yt-dlp needs file path, not Redis key like "cookie_pool:0")
           cookie.path = cookiePath;
         }
+        
+        if (redisCookies.length < COOKIE_POOL_SIZE) {
+          console.log(`  ⚠️ Only ${redisCookies.length}/${COOKIE_POOL_SIZE} cookies in Redis - will generate missing ones`);
+        } else {
+          console.log(`  ✅ All ${COOKIE_POOL_SIZE} cookies loaded from Redis`);
+        }
+        
         return redisCookies;
       }
     }
     
     // Fallback to filesystem
-    await initCookiePool();
     const files = await fs.readdir(COOKIE_POOL_DIR);
     const cookieFiles = files.filter(f => f.startsWith('cookie_') && f.endsWith('.txt'));
     const cookies = [];
@@ -887,7 +924,20 @@ async function getWorkingCookiesFromPool() {
           content,
           index
         });
+        
+        // 🔧 SYNC: If Redis is available, save filesystem cookies to Redis
+        if (isRedisAvailable() && index < COOKIE_POOL_SIZE) {
+          await saveCookieToRedis(index, content, {
+            quality: 'strong',
+            created: new Date().toISOString(),
+            migrated: true
+          }).catch(() => {});
+        }
       } catch {}
+    }
+    
+    if (isRedisAvailable() && cookies.length > 0) {
+      console.log(`  🔄 Migrated ${cookies.length} cookies from filesystem to Redis`);
     }
     
     return cookies;
