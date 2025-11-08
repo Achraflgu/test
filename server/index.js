@@ -2982,7 +2982,7 @@ async function validateCookiePool() {
     
     const redisCount = redisCookies.length;
     const filesystemCount = validCookies.length - redisCount;
-    console.log(`  ✅ Cookie pool: ${validCookies.length}/${cookies.length} cookies (${redisCount} from Redis trusted, ${filesystemCount} filesystem trusted)`);
+    console.log(`  ✅ Cookie pool: ${validCookies.length}/${COOKIE_POOL_SIZE} cookies (${redisCount} from Redis, ${filesystemCount} from filesystem)`);
     
     // Update primary cookie if needed
     if (validCookies.length > 0) {
