@@ -2557,7 +2557,8 @@ async function validateCookiePool() {
       return { valid: 0, total: 0, needGeneration: true };
     }
     
-    // 🚀 SKIP VALIDATION FOR REDIS COOKIES - Trust them (validation is expensive and cookies die fast anyway)
+    // 🚀 TRUST ALL COOKIES - Don't remove based on validation tests (tests can be flaky/unreliable)
+    // Cookies will be removed only when they fail during actual downloads, not validation tests
     const redisCookies = cookies.filter(c => c.index !== undefined && c.content);
     const filesystemCookies = cookies.filter(c => !c.index || !c.content);
     
@@ -2583,37 +2584,32 @@ async function validateCookiePool() {
       }));
     }
     
-    // Only validate filesystem cookies (if any)
+    // 🔧 FIX: Trust filesystem cookies too - don't remove based on validation tests
+    // Validation tests can fail due to temporary issues (rate limiting, network, etc.)
+    // Cookies should only be removed when they fail during actual downloads
     if (filesystemCookies.length > 0) {
-      console.log(`  🧪 Validating ${filesystemCookies.length} filesystem cookie(s) (fast test)...`);
+      console.log(`  ✅ Trusting ${filesystemCookies.length} filesystem cookie(s) without validation (will test during actual downloads)`);
       
-      const validationPromises = filesystemCookies.map(async (cookie) => {
+      // Trust all filesystem cookies (don't validate and remove)
+      const trustedFilesystemCookies = filesystemCookies.map(cookie => {
         const index = parseInt(cookie.path.match(/cookie_(\d+)\.txt/)?.[1] || '0');
-        const isValid = await quickValidateCookie(cookie.path, index);
-        return { index, path: cookie.path, content: cookie.content, isValid, isRedisCookie: false };
+        return {
+          index,
+          path: cookie.path,
+          content: cookie.content,
+          isValid: true,
+          isRedisCookie: false
+        };
       });
       
-      const results = await Promise.all(validationPromises);
-      const validFilesystemCookies = results.filter(r => r.isValid);
-      const invalidFilesystemCookies = results.filter(r => !r.isValid);
-      
-      // Remove invalid filesystem cookies
-      for (const invalid of invalidFilesystemCookies) {
-        try {
-          await fs.unlink(invalid.path);
-          console.log(`  ❌ Removed dead cookie (slot ${invalid.index + 1})`);
-          cookieStats.delete(invalid.index);
-        } catch {}
-      }
-      
-      validCookies = [...validCookies, ...validFilesystemCookies];
+      validCookies = [...validCookies, ...trustedFilesystemCookies];
     }
     
     await saveCookiePoolMetadata();
     
     const redisCount = redisCookies.length;
-    const validatedCount = validCookies.length - redisCount;
-    console.log(`  ✅ Cookie pool: ${validCookies.length}/${cookies.length} cookies (${redisCount} from Redis trusted, ${validatedCount} filesystem validated)`);
+    const filesystemCount = validCookies.length - redisCount;
+    console.log(`  ✅ Cookie pool: ${validCookies.length}/${cookies.length} cookies (${redisCount} from Redis trusted, ${filesystemCount} filesystem trusted)`);
     
     // Update primary cookie if needed
     if (validCookies.length > 0) {
