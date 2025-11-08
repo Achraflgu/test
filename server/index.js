@@ -2813,7 +2813,9 @@ async function regenerateSingleCookie(slotIndex) {
 
 // ⚡ ULTRA-STRICT COOKIE VALIDATION - Test actual audio extraction (30s timeout with proxy support)
 // This ensures cookies work for REAL downloads, not just metadata
-async function quickValidateCookie(cookiePath, index = null) {
+async function quickValidateCookie(cookiePath, index = null, retryCount = 0) {
+  const MAX_PROXY_RETRIES = 3; // Try up to 3 different proxies before giving up
+  
   try {
     // 🎯 TEST WITH ACTUAL AUDIO EXTRACTION (not just metadata!)
     // This is the REAL test - if this fails, the cookie is dead
@@ -2836,9 +2838,11 @@ async function quickValidateCookie(cookiePath, index = null) {
     ];
     
     // 🌐 ADD PROXY SUPPORT for cookie re-validation (use proxy if available)
+    let usedProxy = null;
     try {
       const proxy = await proxyManager.getProxyForYtdlp();
       if (proxy) {
+        usedProxy = proxy;
         testArgs.push('--proxy', proxy);
       }
     } catch {}
@@ -2906,12 +2910,29 @@ async function quickValidateCookie(cookiePath, index = null) {
       });
       
       // TIMEOUT: 30s for actual extraction test (matching cookie test timeout)
-      setTimeout(() => {
+      setTimeout(async () => {
         if (resolved) return;
         resolved = true;
         try { testProcess.kill('SIGKILL'); } catch {}
-        console.log(`    ❌ Cookie test timeout - rejecting` + (index !== null ? ` [slot ${index + 1}]` : ''));
-        resolve(false);
+        
+        // 🔧 FIX: Timeout = PROXY PROBLEM, not cookie problem!
+        if (usedProxy && typeof usedProxy === 'string') {
+          console.log(`    ⏱️  Timeout with proxy - marking proxy as DEAD: ${usedProxy.substring(0, 30)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          proxyManager.markFailed(usedProxy);
+        }
+        
+        // 🔄 RETRY: Try again with a DIFFERENT proxy before giving up on the cookie
+        if (retryCount < MAX_PROXY_RETRIES) {
+          console.log(`    🔄 Retrying cookie test with different proxy (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          
+          // Retry with a new proxy
+          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1);
+          resolve(retryResult);
+        } else {
+          // Only give up after trying multiple proxies
+          console.log(`    ❌ Cookie test timeout after ${MAX_PROXY_RETRIES + 1} proxy attempts - marking cookie as dead` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          resolve(false);
+        }
       }, 30000);
     });
   } catch (err) {
@@ -10351,34 +10372,18 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             const clientSocket = clientSocketId ? io.sockets.sockets.get(clientSocketId) : null;
             const emitSocket = clientSocket || socket || io; // Prefer clientSocket, then passed socket, then broadcast
             
-          if (clientSocket) {
-            console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
-            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
-            clientSocket.emit('download:complete', completeEventData);
-            // Also emit a confirmation event to verify socket is working
-            clientSocket.emit('download:status', {
-              downloadId,
-              status: 'completed',
-              message: `✅ Download complete! Click to download your file.`
-            });
-          } else if (socket && socket.connected !== false) {
-            console.log(`✅ Emitting to passed socket: ${socket.id}`);
-            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
-            socket.emit('download:complete', completeEventData);
-            // Also emit a confirmation event to verify socket is working
-            socket.emit('download:status', {
-              downloadId,
-              status: 'completed',
-              message: `✅ Download complete! Click to download your file.`
-            });
-          } else {
-            console.log(`⚠️ No specific socket found - broadcasting to all clients`);
-            console.log(`   📦 Event data: downloadId=${completeEventData.downloadId}, downloadUrl=${completeEventData.downloadUrl}, totalSuccess=${completeEventData.totalSuccess}`);
-            io.emit('download:complete', completeEventData);
-          }
-          
-          console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
-          console.log(`   🔍 Debug: downloadInfo.status=${downloadInfo.status}, downloadUrl=${completeEventData.downloadUrl}`);
+            if (clientSocket) {
+              console.log(`✅ Emitting to specific client socket: ${clientSocketId}`);
+              clientSocket.emit('download:complete', completeEventData);
+            } else if (socket && socket.connected !== false) {
+              console.log(`✅ Emitting to passed socket: ${socket.id}`);
+              socket.emit('download:complete', completeEventData);
+            } else {
+              console.log(`⚠️ No specific socket found - broadcasting to all clients`);
+              io.emit('download:complete', completeEventData);
+            }
+            
+            console.log(`✅ download:complete event emitted successfully - file ready for immediate download`);
           } catch (emitError) {
             console.error(`❌ Error emitting download:complete: ${emitError.message}`);
             console.error(emitError.stack);
