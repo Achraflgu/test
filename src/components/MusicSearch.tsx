@@ -354,8 +354,8 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
       });
     } else {
       // Just add track - NEVER auto-play (Add button only)
-      onAddTracks([track]);
-      toast.success(`Added "${result.name}" to track list`);
+    onAddTracks([track]);
+    toast.success(`Added "${result.name}" to track list`);
     }
     
     // Remove from selection
@@ -387,11 +387,11 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
         }
       }
     } else {
-      if (newSelected.has(resultId)) {
-        newSelected.delete(resultId);
-      } else {
-        newSelected.add(resultId);
-      }
+    if (newSelected.has(resultId)) {
+      newSelected.delete(resultId);
+    } else {
+      newSelected.add(resultId);
+    }
     }
     
     setSelectedResults(newSelected);
@@ -524,15 +524,15 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
     <>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <div className="relative flex-1">
+        <div className="relative flex-1">
             <Search className="absolute left-2 sm:left-3 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search for songs, artists, albums..."
-              value={searchQuery}
-              onChange={(e) => handleQueryChange(e.target.value)}
-              onKeyPress={handleKeyPress}
-              onPaste={handlePaste}
+          <Input
+            type="text"
+            placeholder="Search for songs, artists, albums..."
+            value={searchQuery}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            onKeyPress={handleKeyPress}
+            onPaste={handlePaste}
               className={`pl-8 sm:pl-9 pr-10 sm:pr-12 text-sm sm:text-base h-10 sm:h-11 ${isInvalidUrl ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               disabled={isSearching || isListening}
               autoFocus
@@ -547,29 +547,29 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                   : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
               }`}
               title={isListening ? 'Stop voice search' : 'Voice search'}
-              disabled={isSearching}
+            disabled={isSearching}
             >
               <Mic className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${isListening ? 'animate-pulse' : ''}`} />
             </button>
-          </div>
+        </div>
           <Button 
             onClick={handleSearch} 
             disabled={isSearching || !searchQuery.trim() || isInvalidUrl}
             className="h-10 sm:h-11 w-full sm:w-auto px-4 sm:px-6"
           >
-            {isSearching ? (
-              <>
+          {isSearching ? (
+            <>
                 <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
                 <span className="hidden sm:inline">Searching...</span>
                 <span className="sm:hidden">Searching</span>
-              </>
-            ) : (
-              <>
+            </>
+          ) : (
+            <>
                 <Search className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                Search
-              </>
-            )}
-          </Button>
+              Search
+            </>
+          )}
+        </Button>
         </div>
 
         {/* Recent Searches - Always Visible as Pill Tags */}
@@ -708,8 +708,8 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
             </DialogTitle>
             <DialogDescription className="text-base font-medium flex items-center justify-between">
               <span>
-                {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'} found
-                {selectedResults.size > 0 && ` • ${selectedResults.size} selected`}
+              {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'} found
+              {selectedResults.size > 0 && ` • ${selectedResults.size} selected`}
               </span>
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 Ctrl+Enter: Add Selected • Ctrl+A: Select All • Shift+Click: Multi-select
@@ -835,14 +835,14 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                             <ExternalLink className="mr-1 h-4 w-4" />
                             <span className="hidden sm:inline text-xs">Open</span>
                           </Button>
-                          <Button 
-                            size="sm" 
+                        <Button 
+                          size="sm" 
                             onClick={() => handleAddTrack(result, false)}
-                            className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
+                          className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg transition-all"
                             title={isInPlaylist ? 'Already in playlist' : 'Add to list'}
                             disabled={isInPlaylist}
-                          >
-                            <Plus className="mr-1 h-4 w-4" />
+                        >
+                          <Plus className="mr-1 h-4 w-4" />
                             <span className="hidden sm:inline">Add</span>
                           </Button>
                           <Button 
@@ -855,7 +855,7 @@ export function MusicSearch({ onAddTracks, onAddTracksAndPlay, onCheckPlayingSta
                           >
                             <Zap className="mr-1 h-4 w-4" />
                             <span className="hidden sm:inline text-xs">Play</span>
-                          </Button>
+                        </Button>
                         </div>
                       </div>
                     </div>

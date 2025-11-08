@@ -378,13 +378,13 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
          setLoading(false);
        } else {
          // Playlist: Show confirmation dialog when there's existing data
-         if (hasExistingData) {
-           setPendingData({ playlist, tracks });
-           setShowConfirmDialog(true);
-           setLoading(false);
-         } else {
+      if (hasExistingData) {
+        setPendingData({ playlist, tracks });
+        setShowConfirmDialog(true);
+        setLoading(false);
+      } else {
            // No existing data, load playlist directly
-           onPlaylistLoaded(playlist, tracks, 'replace');
+        onPlaylistLoaded(playlist, tracks, 'replace');
            
            // Enhanced success toast for playlists
            toast.success(
@@ -405,17 +405,17 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
              </div>,
              { duration: 5000 }
            );
-           setLoading(false);
+        setLoading(false);
            setUrl("");
          }
-       }
+      }
     } catch (err: any) {
       if (err.name === 'AbortError') {
         toast.info('Loading cancelled');
       } else {
-        const errorMessage = err.message || "Failed to fetch music. Please try again.";
-        setError(errorMessage);
-        toast.error(`❌ ${errorMessage}`);
+      const errorMessage = err.message || "Failed to fetch music. Please try again.";
+      setError(errorMessage);
+      toast.error(`❌ ${errorMessage}`);
       }
       setLoading(false);
       setLoadingProgress({ tracksLoaded: 0, totalTracks: 0, status: 'complete' });
@@ -1138,15 +1138,15 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                 </div>
 
                 <AlertDialogFooter className="gap-2 p-0">
-                  <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
-                    Cancel
-                  </AlertDialogCancel>
+            <AlertDialogCancel onClick={handleCancelLoad} className="rounded-xl">
+              Cancel
+            </AlertDialogCancel>
                   
-                  <AlertDialogAction
-                    onClick={handleReplaceExisting}
+            <AlertDialogAction
+              onClick={handleReplaceExisting}
                     className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border border-destructive rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
                     Replace Existing Tracklist
                   </AlertDialogAction>
 
@@ -1157,13 +1157,13 @@ export const PlaylistInput = ({ onPlaylistLoaded, hasExistingData, existingPlayl
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Add Selected ({selectedTracks.size})
-                    </AlertDialogAction>
+            </AlertDialogAction>
                   ) : (
-                    <AlertDialogAction
-                      onClick={handleAppendToExisting}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
+            <AlertDialogAction
+              onClick={handleAppendToExisting}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
+            >
+              <Plus className="w-4 h-4 mr-2" />
                       Add All ({pendingData.tracks.filter(t => !isTrackDuplicate(t.id)).length})
                     </AlertDialogAction>
                   )}

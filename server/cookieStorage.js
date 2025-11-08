@@ -329,3 +329,115 @@ export async function getBackupPoolCount() {
   }
 }
 
+// ====================================
+// 🌐 YOUTUBE-WORKING PROXY PERSISTENCE
+// ====================================
+const PROXY_PREFIX = 'youtube_proxy:';
+const PROXY_LIST_KEY = 'youtube_proxy_list';
+const PROXY_METADATA_KEY = 'youtube_proxy_metadata';
+
+// Save YouTube-working proxies to Redis
+export async function saveYouTubeProxiesToRedis(proxies) {
+  if (!redis) return false;
+  
+  try {
+    // Save as a list (array) for easy retrieval
+    if (proxies.length === 0) {
+      await redis.del(PROXY_LIST_KEY);
+      return true;
+    }
+    
+    await redis.set(PROXY_LIST_KEY, JSON.stringify(proxies));
+    
+    // Also save metadata (timestamp, count)
+    const metadata = {
+      savedAt: Date.now(),
+      count: proxies.length,
+      lastValidated: Date.now()
+    };
+    await redis.set(PROXY_METADATA_KEY, JSON.stringify(metadata));
+    
+    console.log(`  💾 Saved ${proxies.length} YouTube-working proxies to Redis`);
+    return true;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to save YouTube proxies to Redis: ${err.message}`);
+    return false;
+  }
+}
+
+// Load YouTube-working proxies from Redis
+export async function loadYouTubeProxiesFromRedis() {
+  if (!redis) return [];
+  
+  try {
+    const data = await redis.get(PROXY_LIST_KEY);
+    if (!data) return [];
+    
+    // Handle both string and already-parsed arrays
+    let proxies;
+    if (typeof data === 'string') {
+      try {
+        proxies = JSON.parse(data);
+      } catch (parseErr) {
+        console.log(`  ⚠️ Invalid JSON in Redis proxy list: ${parseErr.message}`);
+        return [];
+      }
+    } else {
+      proxies = data;
+    }
+    
+    if (!Array.isArray(proxies)) {
+      console.log(`  ⚠️ Redis proxy data is not an array`);
+      return [];
+    }
+    
+    // Get metadata
+    let metadata = null;
+    try {
+      const metaData = await redis.get(PROXY_METADATA_KEY);
+      if (metaData) {
+        metadata = typeof metaData === 'string' ? JSON.parse(metaData) : metaData;
+      }
+    } catch {}
+    
+    if (proxies.length > 0) {
+      const age = metadata ? Date.now() - metadata.savedAt : 0;
+      const ageHours = Math.floor(age / (1000 * 60 * 60));
+      console.log(`  📥 Loaded ${proxies.length} YouTube-working proxies from Redis (saved ${ageHours}h ago)`);
+    }
+    
+    return proxies;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to load YouTube proxies from Redis: ${err.message}`);
+    return [];
+  }
+}
+
+// Update proxy metadata
+export async function updateProxyMetadata(metadata = {}) {
+  if (!redis) return false;
+  
+  try {
+    const existing = await redis.get(PROXY_METADATA_KEY);
+    let currentMetadata = {};
+    
+    if (existing) {
+      try {
+        currentMetadata = typeof existing === 'string' ? JSON.parse(existing) : existing;
+      } catch {}
+    }
+    
+    const updatedMetadata = {
+      ...currentMetadata,
+      ...metadata,
+      lastUpdated: Date.now()
+    };
+    
+    await redis.set(PROXY_METADATA_KEY, JSON.stringify(updatedMetadata));
+    return true;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to update proxy metadata: ${err.message}`);
+    return false;
+  }
+}
+

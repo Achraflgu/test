@@ -3232,14 +3232,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       return;
     }
 
-    // 🔧 FIX: Check if download is already completed - don't allow cancelling completed downloads
-    // Check if any selected tracks are completed
-    const hasCompletedTracks = tracks.some(t => t.selected && t.downloadStatus === 'completed');
-    if (hasCompletedTracks) {
-      toast.error('Cannot cancel: Download is already completed');
-      return;
-    }
-
     try {
       toast.info('⏳ Cancelling download...');
       
@@ -3260,12 +3252,6 @@ export const TrackList = ({ tracks: initialTracks, settings, playlistUrl = "", p
       toast.success('✅ Download cancelled successfully');
     } catch (error: any) {
       console.error('Failed to cancel download:', error);
-      // Check if error is because download is already completed
-      if (error.message && error.message.includes('already completed')) {
-        toast.info('Download is already completed');
-        setDownloading(false);
-        return;
-      }
       toast.error(`❌ Failed to cancel: ${error.message}`);
       
       // Force reset even if cancel fails

@@ -1,6 +1,12 @@
 // Proxy Manager - Premium (Oxylabs) + Free Proxies with validation
 import fetch from 'node-fetch';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { 
+  isRedisAvailable,
+  saveYouTubeProxiesToRedis,
+  loadYouTubeProxiesFromRedis,
+  updateProxyMetadata
+} from './cookieStorage.js';
 
 class ProxyManager {
   constructor() {
@@ -12,9 +18,11 @@ class ProxyManager {
     this.lastValidation = 0;
     this.lastYouTubeValidation = 0;
     this.FETCH_INTERVAL = 10 * 60 * 1000; // Refresh every 10 minutes
-    this.VALIDATION_INTERVAL = 5 * 60 * 1000; // Re-validate every 5 minutes
+    this.VALIDATION_INTERVAL = 10 * 60 * 1000; // Re-validate every 10 minutes
     this.isValidating = false;
     this.isValidatingYouTube = false;
+    this.MIN_YOUTUBE_PROXIES = 30; // 🎯 Minimum 30 YouTube-working proxies required
+    this.proxiesLoadedFromRedis = false; // Track if we've loaded from Redis
     
     // 🌟 OXYLABS Premium Proxy Configuration
     this.oxylabsConfig = null;
@@ -312,11 +320,31 @@ class ProxyManager {
     if (youtubeIndex > -1) {
       this.youtubeWorkingProxies.splice(youtubeIndex, 1);
       console.log(`  🗑️ Removed dead proxy from YouTube-validated list: ${proxy.substring(0, 20)}...`);
+      
+      // Save updated list to Redis
+      if (isRedisAvailable()) {
+        await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+      }
+      
+      // If below minimum, trigger refresh in background
+      if (this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
+        this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(() => {});
+      }
     }
   }
 
   // Get proxy formatted for yt-dlp (PRIORITY: Oxylabs-YouTube > YouTube-Validated > Validated > Free)
-  getProxyForYtdlp() {
+  // 🔧 STABILITY FIX: Auto-refresh if YouTube proxies < MIN_YOUTUBE_PROXIES (30)
+  async getProxyForYtdlp(autoRefresh = true) {
+    // 🎯 Check and maintain minimum 30 YouTube-working proxies
+    if (autoRefresh && this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
+      console.log(`  🔄 YouTube proxies low (${this.youtubeWorkingProxies.length}/${this.MIN_YOUTUBE_PROXIES}) - refreshing in background...`);
+      // Refresh in background (don't await to avoid blocking)
+      this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(err => {
+        console.log(`  ⚠️ Background proxy refresh failed: ${err.message}`);
+      });
+    }
+    
     // 🌟 PRIORITY 1: Oxylabs premium proxy (ONLY if it works with YouTube!)
     // If Oxylabs doesn't work with YouTube, skip it and use YouTube-validated proxies
     if (this.oxylabsConfig && this.oxylabsWorksWithYouTube) {
@@ -330,7 +358,7 @@ class ProxyManager {
       const randomIndex = Math.floor(Math.random() * this.youtubeWorkingProxies.length);
       const proxy = this.youtubeWorkingProxies[randomIndex];
       const shortProxy = proxy.length > 20 ? proxy.substring(0, 17) + '...' : proxy;
-      console.log(`   🎯 Using YouTube-validated proxy: ${shortProxy}`);
+      console.log(`   🎯 Using YouTube-validated proxy: ${shortProxy} (${this.youtubeWorkingProxies.length} available)`);
       return `http://${proxy}`;
     }
     
@@ -353,6 +381,29 @@ class ProxyManager {
     const shortProxy = proxy.length > 20 ? proxy.substring(0, 17) + '...' : proxy;
     console.log(`   ⚠️  Using untested free proxy: ${shortProxy}`);
     return `http://${proxy}`;
+  }
+  
+  // 🔧 STABILITY FIX: Get next proxy (for rotation on timeout)
+  async getNextProxyForYtdlp(currentProxy = null, autoRefresh = true) {
+    // If we have a current proxy, mark it as failed and get a different one
+    if (currentProxy) {
+      // Extract proxy host from URL
+      const proxyMatch = currentProxy.match(/http:\/\/([^\/]+)/);
+      if (proxyMatch) {
+        const proxyHost = proxyMatch[1];
+        this.markFailed(proxyHost);
+        console.log(`  🔄 Marked current proxy as failed, rotating to next...`);
+      }
+    }
+    
+    // Check and refresh if needed
+    if (autoRefresh && this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
+      console.log(`  🔄 YouTube proxies low (${this.youtubeWorkingProxies.length}/${this.MIN_YOUTUBE_PROXIES}) - refreshing...`);
+      await this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(() => {});
+    }
+    
+    // Get next proxy
+    return await this.getProxyForYtdlp(false); // false = don't trigger another refresh
   }
 
   // 🧪 Test if a single proxy works
@@ -566,9 +617,16 @@ class ProxyManager {
         }
       }
       
-      // Update YouTube-working proxies list
-      this.youtubeWorkingProxies = newYouTubeProxies;
+      // Merge new YouTube-working proxies with existing ones (avoid duplicates)
+      const existingProxies = new Set(this.youtubeWorkingProxies);
+      newYouTubeProxies.forEach(proxy => existingProxies.add(proxy));
+      this.youtubeWorkingProxies = Array.from(existingProxies);
       this.lastYouTubeValidation = Date.now();
+      
+      // Save to Redis after validation
+      if (isRedisAvailable() && this.youtubeWorkingProxies.length > 0) {
+        await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+      }
       
       console.log(`✅ YouTube proxy validation complete:`);
       console.log(`   ✓ YouTube-working: ${validated}`);
@@ -603,6 +661,174 @@ class ProxyManager {
     await this.validateProxies();
     
     return this.workingProxies;
+  }
+
+  // 🎯 Ensure minimum 30 YouTube-working proxies (called automatically)
+  async ensureMinimumYouTubeProxies(minCount = null) {
+    const targetCount = minCount || this.MIN_YOUTUBE_PROXIES;
+    
+    // Check if we already have enough
+    if (this.youtubeWorkingProxies.length >= targetCount) {
+      // Save to Redis if we have enough
+      if (isRedisAvailable() && this.youtubeWorkingProxies.length > 0) {
+        await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+      }
+      return this.youtubeWorkingProxies;
+    }
+    
+    // Skip if validation is already running
+    if (this.isValidatingYouTube) {
+      console.log(`⏳ YouTube proxy validation in progress (${this.youtubeWorkingProxies.length}/${targetCount})...`);
+      return this.youtubeWorkingProxies;
+    }
+    
+    const needed = targetCount - this.youtubeWorkingProxies.length;
+    console.log(`\n🔄 Ensuring minimum ${targetCount} YouTube-working proxies (currently: ${this.youtubeWorkingProxies.length}, needed: ${needed})...`);
+    
+    // First, ensure we have working proxies to test
+    if (this.workingProxies.length < needed * 2) {
+      console.log(`  📥 Need more working proxies first (${this.workingProxies.length} < ${needed * 2})...`);
+      
+      // Fetch and validate more proxies
+      if (!this.isValidating) {
+        await this.fetchProxies();
+        await this.validateProxies(null, 50, Math.max(200, needed * 3));
+      }
+    }
+    
+    // Now validate for YouTube (test more proxies to reach minimum)
+    const proxiesToTest = Math.max(needed * 3, 100); // Test 3x needed to account for failures
+    await this.validateProxiesForYouTube(null, 20, proxiesToTest);
+    
+    // If still not enough, fetch and test more
+    if (this.youtubeWorkingProxies.length < targetCount) {
+      console.log(`  ⚠️ Only ${this.youtubeWorkingProxies.length}/${targetCount} YouTube-working proxies found, fetching more...`);
+      
+      // Fetch fresh proxies
+      if (!this.isValidating) {
+        await this.fetchProxies();
+        await this.validateProxies(null, 50, 200);
+      }
+      
+      // Test more for YouTube
+      await this.validateProxiesForYouTube(null, 20, Math.max(200, needed * 4));
+    }
+    
+    // Save to Redis after validation
+    if (isRedisAvailable() && this.youtubeWorkingProxies.length > 0) {
+      await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+    }
+    
+    console.log(`✅ YouTube-working proxies: ${this.youtubeWorkingProxies.length}/${targetCount} (${this.youtubeWorkingProxies.length >= targetCount ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
+    
+    return this.youtubeWorkingProxies;
+  }
+  
+  // 🔄 Load saved proxies from Redis on startup
+  async loadProxiesFromRedis() {
+    if (this.proxiesLoadedFromRedis) {
+      return this.youtubeWorkingProxies;
+    }
+    
+    if (!isRedisAvailable()) {
+      console.log('  ⚠️ Redis not available - cannot load saved proxies');
+      this.proxiesLoadedFromRedis = true;
+      return [];
+    }
+    
+    try {
+      const savedProxies = await loadYouTubeProxiesFromRedis();
+      if (savedProxies && savedProxies.length > 0) {
+        console.log(`  📥 Loaded ${savedProxies.length} saved YouTube-working proxies from Redis`);
+        // Add to working proxies list (they'll be re-validated)
+        this.youtubeWorkingProxies = savedProxies;
+        this.proxiesLoadedFromRedis = true;
+        
+        // Re-validate saved proxies (they might be stale)
+        console.log(`  🔄 Re-validating ${savedProxies.length} saved proxies...`);
+        await this.revalidateSavedProxies();
+        
+        return this.youtubeWorkingProxies;
+      }
+    } catch (err) {
+      console.log(`  ⚠️ Failed to load proxies from Redis: ${err.message}`);
+    }
+    
+    this.proxiesLoadedFromRedis = true;
+    return [];
+  }
+  
+  // 🔄 Re-validate saved proxies (remove dead ones)
+  async revalidateSavedProxies() {
+    if (this.youtubeWorkingProxies.length === 0) return;
+    
+    if (this.isValidatingYouTube) {
+      return this.youtubeWorkingProxies;
+    }
+    
+    this.isValidatingYouTube = true;
+    
+    try {
+      console.log(`  🧪 Re-validating ${this.youtubeWorkingProxies.length} saved proxies...`);
+      const validProxies = [];
+      let validated = 0;
+      let failed = 0;
+      
+      // Test in batches of 20
+      const batchSize = 20;
+      for (let i = 0; i < this.youtubeWorkingProxies.length; i += batchSize) {
+        const batch = this.youtubeWorkingProxies.slice(i, i + batchSize);
+        
+        const results = await Promise.allSettled(
+          batch.map(async (proxy) => {
+            const works = await this.testProxyForYouTube(proxy, 10000); // Faster timeout for re-validation
+            return { proxy, works };
+          })
+        );
+        
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value.works) {
+            validated++;
+            validProxies.push(result.value.proxy);
+          } else {
+            failed++;
+          }
+        });
+        
+        // Small delay between batches
+        if (i + batchSize < this.youtubeWorkingProxies.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      const beforeCount = this.youtubeWorkingProxies.length;
+      this.youtubeWorkingProxies = validProxies;
+      const removedCount = beforeCount - validProxies.length;
+      this.lastYouTubeValidation = Date.now();
+      
+      console.log(`  ✅ Re-validation complete: ${validated} valid, ${failed} failed`);
+      if (removedCount > 0) {
+        console.log(`  🗑️ Removed ${removedCount} dead proxy/proxies from YouTube-working list`);
+      }
+      
+      // Save updated list to Redis
+      if (isRedisAvailable() && this.youtubeWorkingProxies.length > 0) {
+        await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+      }
+      
+      // If we have less than minimum, fetch more
+      if (this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
+        console.log(`  ⚠️ Only ${this.youtubeWorkingProxies.length}/${this.MIN_YOUTUBE_PROXIES} valid proxies - fetching more...`);
+        await this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES);
+      }
+      
+    } catch (err) {
+      console.log(`  ⚠️ Re-validation error: ${err.message}`);
+    } finally {
+      this.isValidatingYouTube = false;
+    }
+    
+    return this.youtubeWorkingProxies;
   }
 
   // Get stats

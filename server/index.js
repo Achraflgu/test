@@ -1067,18 +1067,18 @@ async function testCookies(cookiePath, skipProxy = false) {
       isYouTubeValidated = stats.youtubeWorking > 0;
     }
     
-    // 🔧 OPTIMIZED: Increased timeouts for cookie testing to reduce timeout failures
+    // 🔧 FAST TIMEOUT: 30 seconds for all proxy types (fast failure for slow proxies)
     let processTimeout;
     if (isOxylabs) {
-      processTimeout = 90000; // 90s for Oxylabs (was 45s)
+      processTimeout = 30000; // 30s for Oxylabs (reduced from 90s - fast failure)
     } else if (isScraperAPI) {
-      processTimeout = 75000; // 75s for ScraperAPI
+      processTimeout = 30000; // 30s for ScraperAPI (reduced from 75s - fast failure)
     } else if (isYouTubeValidated) {
-      processTimeout = 60000; // 60s for YouTube-validated (was 25s)
+      processTimeout = 30000; // 30s for YouTube-validated (reduced from 60s - fast failure)
     } else if (proxy && !skipProxy) {
-      processTimeout = 50000; // 50s for other proxies (was 20s)
+      processTimeout = 30000; // 30s for other proxies (reduced from 50s - fast failure)
     } else {
-      processTimeout = 30000; // 30s for no proxy (was 12s)
+      processTimeout = 30000; // 30s for no proxy
     }
 
     return await new Promise((resolve) => {
@@ -1158,24 +1158,27 @@ async function testCookies(cookiePath, skipProxy = false) {
                              normalizedError.includes('bot') ||
                              normalizedError.includes('login_required');
         
-        // 🛡️ DON'T MARK PROXY AS DEAD DURING COOKIE TESTS
-        // Cookie test failures are usually due to fake cookies, not bad proxies
-        // Only mark proxies as dead if it's clearly a proxy connection issue (timeout/connection error)
-        // NOT for YouTube errors during cookie testing (could be cookie issue, not proxy issue)
-        
-        // Only mark proxy as dead if it's a clear proxy connection problem (not YouTube errors)
-        if (proxy && isProxyIssue && (code === null || normalizedError.includes('connection') || normalizedError.includes('timeout'))) {
-          // Extract proxy IP:PORT from proxy string (format: http://IP:PORT)
+        // 🔧 FIX: Mark slow/unreliable proxies as DEAD when they timeout during cookie regeneration
+        // Timeout (code === null) = timer expired, no response = slow/unreliable proxy
+        if (proxy && code === null && !skipProxy) {
+          // Timeout occurred with proxy - proxy is too slow, mark as dead
           const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
           if (proxyMatch) {
             const proxyHost = proxyMatch[1];
-            // Mark proxy as failed (will remove from YouTube-validated list)
             proxyManager.markFailed(proxyHost);
-            console.log(`  🗑️ Marked proxy as DEAD (connection/timeout error): ${proxyHost.substring(0, 20)}...`);
+            const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated' : 'free proxy'));
+            console.log(`  🗑️ Marked proxy as DEAD (timeout after ${processTimeout/1000}s, no response - ${proxyType}): ${proxyHost.substring(0, 30)}...`);
+          }
+        } else if (proxy && isProxyIssue && code !== null && !skipProxy) {
+          // Connection error (not timeout) - also mark proxy as dead
+          const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (connection error): ${proxyHost.substring(0, 30)}...`);
           }
         }
-        // Note: We DON'T mark proxies as dead for YouTube errors during cookie testing
-        // because the error could be due to fake cookies, not a bad proxy
+        // Note: We DON'T mark proxies as dead for bot detection errors (cookie issues, not proxy issues)
         
         if (code === null) {
           console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
@@ -1201,7 +1204,7 @@ async function testCookies(cookiePath, skipProxy = false) {
         resolveOnce({ status: 'fail', reason: 'error' });
       });
 
-      // 🔧 OPTIMIZED: Use the same timeout for setTimeout as process timeout (calculated above)
+      // 🔧 FAST TIMEOUT: Use 30s timeout for all - mark slow proxies as dead
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(() => {
         if (resolved) return;
@@ -1209,6 +1212,17 @@ async function testCookies(cookiePath, skipProxy = false) {
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
         console.log(`  ❌ Cookie test timeout - rejecting (${processTimeout/1000}s limit, ${proxyType})`);
+        
+        // 🔧 MARK PROXY AS DEAD: If timeout occurred with proxy, mark it as dead (slow/unreliable)
+        if (proxy && !skipProxy) {
+          const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (timeout handler - ${proxyType}): ${proxyHost.substring(0, 30)}...`);
+          }
+        }
+        
         resolveOnce({ status: 'fail', reason: 'timeout' });
       }, processTimeout);
     });
@@ -11597,31 +11611,49 @@ startupSequence().then(async () => {
     console.log('✅ Free proxies enabled (fallback)');
     console.log('\n🌐 Initializing free proxy pool...');
     try {
-      // Step 1: Fetch proxies from sources
+      // Step 1: Load saved proxies from Redis (if available)
+      console.log('📥 Loading saved YouTube-working proxies from Redis...');
+      const savedProxies = await proxyManager.loadProxiesFromRedis();
+      if (savedProxies && savedProxies.length > 0) {
+        const stats = proxyManager.getStats();
+        console.log(`✅ Loaded ${stats.youtubeWorking} saved YouTube-working proxies from Redis`);
+      }
+      
+      // Step 2: Fetch proxies from sources (if we need more)
       await proxyManager.fetchProxies();
       const stats = proxyManager.getStats();
       console.log(`✅ Fetched ${stats.total} proxies from sources`);
       
-      // Step 2: Validate proxies (test first 100 to save time)
+      // Step 3: Validate proxies (test first 100 to save time)
       console.log('\n🧪 Testing proxies to find working ones...');
       await proxyManager.validateProxies(null, 50, 100);
       const validatedStats = proxyManager.getStats();
       console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
       
-      // 🎯 Step 2.5: Filter working proxies for YouTube compatibility (CRITICAL if Oxylabs doesn't work with YouTube)
+      // 🎯 Step 3.5: Filter working proxies for YouTube compatibility (CRITICAL if Oxylabs doesn't work with YouTube)
       if (validatedStats.working > 0) {
         console.log('\n🎯 Filtering proxies for YouTube compatibility...');
         await proxyManager.validateProxiesForYouTube(null, 20, 50); // Test 50 working proxies, 20 at a time
         const youtubeStats = proxyManager.getStats();
         console.log(`✅ YouTube-validated proxies: ${youtubeStats.youtubeWorking}/${youtubeStats.working} working with YouTube (${youtubeStats.youtubeValidationRate} success rate)`);
         
+        // 🔥 Ensure minimum 30 YouTube-working proxies (CRITICAL for stability)
+        if (youtubeStats.youtubeWorking < 30) {
+          console.log(`\n🔄 Ensuring minimum 30 YouTube-working proxies (currently: ${youtubeStats.youtubeWorking})...`);
+          await proxyManager.ensureMinimumYouTubeProxies(30);
+          const finalStats = proxyManager.getStats();
+          console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
+        }
+        
         // 🔥 If Oxylabs doesn't work with YouTube, ensure we have YouTube-validated proxies
         if (oxylabsReady && !proxyManager.oxylabsWorksWithYouTube) {
-          if (youtubeStats.youtubeWorking === 0) {
+          const currentStats = proxyManager.getStats();
+          if (currentStats.youtubeWorking === 0) {
             console.log('⚠️  WARNING: Oxylabs doesn\'t work with YouTube AND no YouTube-validated proxies found!');
             console.log('   🔄 Testing more proxies for YouTube compatibility...');
             // Test more proxies if we have none
             await proxyManager.validateProxiesForYouTube(null, 20, 100); // Test up to 100 proxies
+            await proxyManager.ensureMinimumYouTubeProxies(30); // Ensure minimum 30
             const retryStats = proxyManager.getStats();
             if (retryStats.youtubeWorking > 0) {
               console.log(`✅ Found ${retryStats.youtubeWorking} YouTube-working proxies after extended testing`);
@@ -11629,23 +11661,45 @@ startupSequence().then(async () => {
               console.log('⚠️  Still no YouTube-working proxies - cookie generation may fail');
             }
           } else {
-            console.log(`✅ YouTube-validated proxies ready: ${youtubeStats.youtubeWorking} proxies available for cookie generation`);
+            console.log(`✅ YouTube-validated proxies ready: ${currentStats.youtubeWorking} proxies available for cookie generation`);
           }
         }
       }
       
-      // Step 3: Start background validation task (re-validate every 5 minutes)
+      // Step 4: Start background validation task (re-validate every 10 minutes)
       setInterval(async () => {
         console.log('\n🔄 Background proxy validation starting...');
+        
+        // Step 1: Re-validate working proxies (removes dead ones)
         await proxyManager.ensureValidatedProxies();
         
-        // Also re-validate YouTube proxies if we have working proxies
+        // Step 2: Re-validate YouTube proxies (removes dead ones)
         const stats = proxyManager.getStats();
-        if (stats.working > 0) {
-          console.log('🎯 Re-validating YouTube proxies...');
-          await proxyManager.validateProxiesForYouTube(null, 20, 30); // Test 30 proxies, 20 at a time
+        if (stats.working > 0 || stats.youtubeWorking > 0) {
+          console.log('🎯 Re-validating YouTube proxies (removing dead ones)...');
+          
+          // Re-validate ALL existing YouTube-working proxies to remove dead ones
+          if (stats.youtubeWorking > 0) {
+            await proxyManager.revalidateSavedProxies();
+          }
+          
+          // Also test new working proxies for YouTube compatibility
+          if (stats.working > 0) {
+            await proxyManager.validateProxiesForYouTube(null, 20, 30); // Test 30 proxies, 20 at a time
+          }
+          
+          // Step 3: Ensure minimum 30 YouTube-working proxies (ALWAYS)
+          const youtubeStats = proxyManager.getStats();
+          if (youtubeStats.youtubeWorking < 30) {
+            console.log(`🔄 YouTube proxies below minimum (${youtubeStats.youtubeWorking}/30) - ensuring minimum 30...`);
+            await proxyManager.ensureMinimumYouTubeProxies(30);
+            const finalStats = proxyManager.getStats();
+            console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
+          } else {
+            console.log(`✅ YouTube-working proxies: ${youtubeStats.youtubeWorking}/30 (✅ SUFFICIENT)`);
+          }
         }
-      }, 5 * 60 * 1000); // Every 5 minutes
+      }, 10 * 60 * 1000); // Every 10 minutes
       
     } catch (error) {
       console.log('⚠️ Failed to load proxies:', error.message);
