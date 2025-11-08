@@ -2646,21 +2646,39 @@ async function regenerateSingleCookie(slotIndex) {
               }
               
               console.log(`  ✅ Cookie test passed - preserving content (${cookieData.cookieContent.length} chars) for slot ${slotIndex + 1}`);
-              return { 
+              const cookieResult = { 
                 content: cookieData.cookieContent, 
                 quality: 'strong',
                 visitorData: cookieData.visitorData
               };
+              console.log(`  🔍 DEBUG: Returning cookie result for slot ${slotIndex + 1}: quality=${cookieResult.quality}, hasContent=${!!cookieResult.content}, contentLength=${cookieResult.content.length}`);
+              return cookieResult;
             }
             // Reject weak cookies - we only want STRONG
+            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, rejecting`);
             return null;
           } catch (err) {
+            console.log(`  ⚠️ ERROR: Exception in cookie generation promise for slot ${slotIndex + 1} attempt ${attemptNum}: ${err.message}`);
+            console.log(`  🔍 Stack: ${err.stack}`);
             return null;
           }
         })());
       }
       
       const results = await Promise.all(generationPromises);
+      
+      // 🔧 DEBUG: Log all results to see what we got
+      console.log(`  🔍 DEBUG: Promise.all completed for slot ${slotIndex + 1} - got ${results.length} results`);
+      for (let i = 0; i < results.length; i++) {
+        if (results[i] === null) {
+          console.log(`    Result ${i + 1}: null`);
+        } else if (results[i] && results[i].quality) {
+          console.log(`    Result ${i + 1}: quality=${results[i].quality}, hasContent=${!!results[i].content}, contentLength=${results[i].content ? results[i].content.length : 0}`);
+        } else {
+          console.log(`    Result ${i + 1}: unexpected format - ${JSON.stringify(Object.keys(results[i] || {}))}`);
+        }
+      }
+      
       const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
       
       // 🔧 DEBUG: Log if we found strong cookies but they're not being saved
@@ -2674,6 +2692,8 @@ async function regenerateSingleCookie(slotIndex) {
             console.log(`  ✅ Strong cookie ${i + 1} has content (${cookie.content.length} chars)`);
           }
         }
+      } else {
+        console.log(`  ⚠️ DEBUG: No strong cookies found in results array (total results: ${results.length}, non-null: ${results.filter(r => r !== null).length})`);
       }
       
       // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
