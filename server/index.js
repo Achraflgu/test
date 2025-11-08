@@ -2136,6 +2136,12 @@ async function checkAndResumeRegeneration() {
     // This ensures regeneration can resume after downloads complete
     if (activeRegenerations.size > 0) {
       console.log(`  🔓 Clearing ${activeRegenerations.size} stuck regeneration lock(s) to allow resumption...`);
+      // Also clear corresponding start times to prevent orphaned entries
+      if (global['regenerationStartTimes']) {
+        for (const slotIndex of Array.from(activeRegenerations)) {
+          global['regenerationStartTimes'].delete(slotIndex);
+        }
+      }
       activeRegenerations.clear();
     }
     
@@ -2584,7 +2590,7 @@ async function regenerateSingleCookie(slotIndex) {
       const hasActiveNow = hasActiveDownloads();
       let waitingForStrongCookie = false;
       for (const [id, info] of activeDownloads.entries()) {
-        if (info.waitingForStrongCookie === true && info.status === 'waiting') {
+        if (info.waitingForStrongCookie === true) {
           waitingForStrongCookie = true;
           break;
         }
