@@ -6235,13 +6235,6 @@ app.post('/api/download/cancel', (req, res) => {
     return res.status(404).json({ error: 'Download not found' });
   }
   
-  // 🔧 FIX: Don't allow cancelling already-completed downloads
-  // Completed downloads should remain available for ZIP download
-  if (downloadInfo.status === 'completed' || downloadInfo.status === 'partial') {
-    console.log(`⚠️  Cancel request ignored: Download ${downloadId} is already ${downloadInfo.status}`);
-    return res.json({ success: false, message: 'Download is already completed and cannot be cancelled' });
-  }
-  
   // 🔥 SECURITY: Verify that the requesting client is the one who started the download
   const downloadSocketId = downloadInfo.socketId;
   if (socketId && downloadSocketId && socketId !== downloadSocketId) {
@@ -6304,16 +6297,17 @@ app.post('/api/download/cancel', (req, res) => {
     message: '❌ Download cancelled by user'
   });
   
-  // 🔧 FIX: Don't delete immediately - keep cancelled downloads longer for potential retry
-  // Increased timeout to 5 minutes to allow ZIP download even after cancellation
+  // Don't delete immediately - keep it marked as cancelled so running processes can check
+  // The processes will be cleaned up when they complete or are killed
+  // We'll set a timeout to clean up after a delay if processes don't respond
   setTimeout(() => {
     const stillActive = activeDownloads.get(downloadId);
-    if (stillActive && stillActive.cancelled && stillActive.status !== 'completed') {
+    if (stillActive && stillActive.cancelled) {
       console.log(`🧹 Cleaning up cancelled download ${downloadId} after timeout`);
-      activeDownloads.delete(downloadId);
-      activeProcesses.delete(downloadId);
+  activeDownloads.delete(downloadId);
+  activeProcesses.delete(downloadId);
     }
-  }, 300000); // Clean up after 5 minutes (was 30 seconds)
+  }, 30000); // Clean up after 30 seconds if processes haven't stopped
   
   res.json({ success: true, message: 'Download cancelled' });
 });
@@ -10618,37 +10612,10 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
   console.log(`   Tracks count: ${downloadInfo.tracks?.length || 0}`);
   console.log(`   Output folder: ${downloadInfo.outputFolder}`);
 
-  // 🔧 FIX: Allow ZIP download even if status is 'cancelled' (download might have completed before cancellation)
-  // Check if files exist in output folder to determine if download actually completed
-  const outputFolderPath = downloadInfo.outputFolder;
-  let hasFiles = false;
-  
-  try {
-    const files = await fs.readdir(outputFolderPath);
-    const musicFiles = files.filter(f => 
-      f.endsWith('.mp3') || f.endsWith('.flac') || f.endsWith('.ogg')
-    );
-    hasFiles = musicFiles.length > 0;
-    
-    if (hasFiles) {
-      console.log(`   ✅ Found ${musicFiles.length} file(s) in output folder`);
-    } else {
-      console.log(`   ⚠️  No music files found in output folder`);
-    }
-  } catch (e) {
-    console.warn(`   ⚠️  Could not check output folder: ${e.message}`);
-  }
-
-  // Allow download if: (1) status is completed/partial, OR (2) status is cancelled but files exist
-  if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial' && !hasFiles) {
-    console.log(`❌ [ARCHIVE] Download not ready yet (status: ${downloadInfo.status}, hasFiles: ${hasFiles})`);
+  // Allow both 'completed' and 'partial' status to show failed tracks
+  if (downloadInfo.status !== 'completed' && downloadInfo.status !== 'partial') {
+    console.log(`❌ [ARCHIVE] Download not ready yet (status: ${downloadInfo.status})`);
     return res.status(400).json({ error: 'Download not completed yet' });
-  }
-  
-  // 🔧 FIX: If status is cancelled but files exist, treat it as completed for ZIP download
-  if (downloadInfo.status === 'cancelled' && hasFiles) {
-    console.log(`⚠️  Download status is 'cancelled' but files exist - allowing ZIP download`);
-    // Don't change status, just allow the download to proceed
   }
 
   // Set longer timeout for this specific request (unlimited size support)
@@ -10721,150 +10688,187 @@ app.get('/api/download/archive/:downloadId', async (req, res) => {
     const folderName = path.basename(outputFolder);
     const zipFileName = `${folderName}.zip`;
     
-    // Build safe Content-Disposition header
-    const asciiName = zipFileName.replace(/[^\x20-\x7E]/g, '_');
-    const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A');
-    const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+    // 🔧 FIX: Pre-create ZIP file to get Content-Length and enable resume support
+    // Store ZIP files in a temp directory (will be cleaned up automatically)
+    const tempZipDir = path.join(__dirname, '.temp_zips');
+    await fs.mkdir(tempZipDir, { recursive: true }).catch(() => {});
+    const zipFilePath = path.join(tempZipDir, `${downloadId}_${zipFileName}`);
     
-    // 🔧 FIX: Calculate accurate ZIP size BEFORE creating (enables Content-Length header)
-    // ZIP with store=true has predictable overhead: ~76 bytes per file + 22 bytes fixed
-    let totalFileSize = 0;
-    const fileSizes = [];
-    
+    // Check if ZIP file already exists and is recent (within 1 hour)
+    let zipExists = false;
+    let zipStats = null;
     try {
-      for (const file of musicFiles) {
-        const filePath = path.join(outputFolder, file);
-        try {
-          const stats = await fs.stat(filePath);
-          totalFileSize += stats.size;
-          fileSizes.push({ name: file, size: stats.size });
-        } catch (e) {
-          console.warn(`Could not stat file ${file}:`, e.message);
+      zipStats = await fs.stat(zipFilePath);
+      const ageMs = Date.now() - zipStats.mtimeMs;
+      if (ageMs < 3600000) { // 1 hour
+        zipExists = true;
+        console.log(`✅ Found existing ZIP file (${(zipStats.size / 1024 / 1024 / 1024).toFixed(2)} GB, created ${Math.floor(ageMs / 1000)}s ago)`);
+      } else {
+        console.log(`⚠️  Existing ZIP file is too old (${Math.floor(ageMs / 60000)} minutes), will recreate`);
+        await fs.unlink(zipFilePath).catch(() => {});
+      }
+    } catch (e) {
+      // ZIP doesn't exist, will create it
+      zipExists = false;
+    }
+    
+    // Create ZIP file if it doesn't exist
+    if (!zipExists) {
+      console.log(`📦 Creating ZIP archive: ${zipFileName}...`);
+      console.log(`   This may take a few minutes for large playlists...`);
+      
+      // Calculate total size for progress tracking
+      let totalSize = 0;
+      try {
+        for (const file of musicFiles) {
+          const filePath = path.join(outputFolder, file);
+          try {
+            const stats = await fs.stat(filePath);
+            totalSize += stats.size;
+          } catch (e) {
+            console.warn(`Could not stat file ${file}:`, e.message);
+          }
         }
+        console.log(`📊 Total archive size estimate: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+      } catch (e) {
+        console.warn('Could not calculate total size:', e.message);
       }
       
-      // Calculate ZIP overhead (very accurate for store=true mode)
-      // Local file header: 30 bytes per file
-      // Central directory: 46 bytes per file  
-      // End of central directory: 22 bytes
-      // Filename in headers: average filename length per file
-      const avgFilenameLength = musicFiles.reduce((sum, f) => sum + f.length, 0) / musicFiles.length;
-      const zipOverhead = (musicFiles.length * (30 + 46 + avgFilenameLength * 2)) + 22;
-      const estimatedZipSize = totalFileSize + zipOverhead;
-      
-      console.log(`📊 Files total: ${(totalFileSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
-      console.log(`📊 ZIP overhead: ${(zipOverhead / 1024).toFixed(2)} KB`);
-      console.log(`📊 Estimated ZIP size: ${(estimatedZipSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
-      
-      // Set headers for optimal download manager support
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', contentDisposition);
-      res.setHeader('Content-Length', estimatedZipSize); // ✅ Accurate size estimate - enables progress bar and pause/resume
-      res.setHeader('Accept-Ranges', 'bytes'); // ✅ Enable resume (partial support)
-      res.setHeader('Cache-Control', 'no-cache');
-      // NOTE: Don't set Transfer-Encoding: chunked when Content-Length is set
-      
-      // Create archive optimized for music files (store=true = no compression)
+      // Create archive optimized for music files (already compressed formats)
       const archive = archiver('zip', {
-        store: true, // No compression - MP3 files are already compressed
-        forceLocalTime: true,
-        forceZip64: true, // Support files >4GB
-        highWaterMark: 1024 * 1024 * 16 // 16MB buffer for fast streaming
+        store: true, // ⚡ NO COMPRESSION - MP3/M4A files are already compressed!
+        forceLocalTime: true, // Better compatibility
+        forceZip64: true, // Enable ZIP64 for large files (>4GB support)
+        highWaterMark: 1024 * 1024 * 16 // 16MB buffer for faster streaming
       });
+      
+      // Create write stream to file
+      const output = fsSync.createWriteStream(zipFilePath);
+      archive.pipe(output);
       
       // Track progress
       let processedFiles = 0;
-      let bytesProcessed = 0;
-      const startTime = Date.now();
-      let lastLogTime = startTime;
       let entryCount = 0;
+      let lastLogTime = 0;
+      const LOG_INTERVAL = 2000; // Log every 2 seconds max
       
       archive.on('progress', (progress) => {
         processedFiles = progress?.entries?.processed || 0;
-        bytesProcessed = progress?.bytes?.processed || 0;
-        
-        // Log progress every 20 files or every 10 seconds
+        const bytesProcessed = progress?.bytes?.processed || 0;
         const now = Date.now();
-        if (processedFiles % 20 === 0 || now - lastLogTime > 10000) {
-          const percent = totalFileSize > 0 ? ((bytesProcessed / totalFileSize) * 100).toFixed(1) : '?';
-          const elapsed = ((now - startTime) / 1000).toFixed(1);
-          console.log(`📦 ZIP: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)}/${(totalFileSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%) - ${elapsed}s`);
+        
+        if (now - lastLogTime >= LOG_INTERVAL) {
+          const percent = totalSize > 0 && bytesProcessed > 0 ? ((bytesProcessed / totalSize) * 100).toFixed(1) : '?';
+          console.log(`📦 ZIP: ${processedFiles}/${musicFiles.length} files (${(bytesProcessed / 1024 / 1024 / 1024).toFixed(2)}/${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB - ${percent}%)`);
           lastLogTime = now;
         }
       });
       
       archive.on('entry', (entry) => {
         entryCount++;
-        if (entryCount === 1 || entryCount % 50 === 0 || entryCount === musicFiles.length) {
+        if (entryCount === 1 || entryCount % 20 === 0 || entryCount === musicFiles.length) {
           console.log(`📄 ZIP: ${entryCount}/${musicFiles.length} - ${entry.name.substring(0, 50)}`);
         }
       });
       
-      // Handle errors
       archive.on('error', (err) => {
-        console.error('Archive error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Archive creation failed', details: err.message });
-        } else {
-          res.destroy();
-        }
+        console.error('Archive creation error:', err);
+        try { fsSync.unlinkSync(zipFilePath); } catch {}
+        throw err;
       });
       
-      // Handle client disconnect gracefully
-      let clientDisconnected = false;
-      req.on('close', () => {
-        if (!archive.finalized) {
-          console.log('⚠️  Client disconnected during archive download');
-          clientDisconnected = true;
-          // Don't abort immediately - give it a moment (network hiccup recovery)
-          setTimeout(() => {
-            if (!archive.finalized) {
-              archive.abort();
-            }
-          }, 2000);
-        }
-      });
-      
-      // Pipe archive directly to response (streaming - fastest)
-      archive.pipe(res);
-      
-      // Add all files to archive
+      // Add all files from the output folder
       archive.directory(outputFolder, false);
       
-      // Finalize archive (starts streaming immediately)
+      // Finalize and wait for completion
       await archive.finalize();
-      
-      console.log(`✅ ZIP archive streaming: ${zipFileName} (${(estimatedZipSize / 1024 / 1024 / 1024).toFixed(2)} GB)`);
-      
-    } catch (e) {
-      console.warn('Could not calculate total size:', e.message);
-      // Fallback to chunked encoding if size calculation fails
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', contentDisposition);
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Transfer-Encoding', 'chunked');
-      res.setHeader('Accept-Ranges', 'bytes');
-      
-      const archive = archiver('zip', {
-        store: true,
-        forceLocalTime: true,
-        forceZip64: true,
-        highWaterMark: 1024 * 1024 * 16
+      await new Promise((resolve, reject) => {
+        output.on('close', () => {
+          resolve();
+        });
+        output.on('error', reject);
       });
       
-      archive.on('error', (err) => {
-        console.error('Archive error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Archive creation failed', details: err.message });
-        }
-      });
-      
-      archive.pipe(res);
-      archive.directory(outputFolder, false);
-      await archive.finalize();
-      
-      console.log(`📦 ZIP archive created and sent: ${zipFileName}`);
+      // Get final file stats
+      zipStats = await fs.stat(zipFilePath);
+      console.log(`✅ ZIP archive created: ${(zipStats.size / 1024 / 1024 / 1024).toFixed(2)} GB`);
     }
+    
+    // Now serve the pre-created ZIP file with proper headers for IDM support
+    zipStats = zipStats || await fs.stat(zipFilePath);
+    const fileSize = zipStats.size;
+    
+    // Build a safe Content-Disposition header
+    const asciiName = zipFileName.replace(/[^\x20-\x7E]/g, '_');
+    const encodedName = encodeURIComponent(zipFileName).replace(/\*/g, '%2A');
+    const contentDisposition = `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+    
+    // 🔧 FIX: Set proper headers for IDM compatibility (Content-Length + Range support)
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', contentDisposition);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Length', fileSize); // ✅ IDM needs this for file size and progress
+    res.setHeader('Accept-Ranges', 'bytes'); // ✅ Enable resume support
+    
+    // 🔧 FIX: Support Range requests for resume capability
+    const range = req.headers.range;
+    if (range) {
+      // Parse range header (e.g., "bytes=0-1023" or "bytes=1024-")
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = (end - start) + 1;
+      
+      console.log(`📥 Range request: bytes=${start}-${end} (${(chunkSize / 1024 / 1024).toFixed(2)} MB)`);
+      
+      res.status(206); // Partial Content
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+      
+      // Stream the requested range
+      const fileStream = fsSync.createReadStream(zipFilePath, { start, end });
+      fileStream.pipe(res);
+      
+      fileStream.on('error', (err) => {
+        console.error('File stream error:', err);
+        try { res.status(500).end('File stream error'); } catch {}
+      });
+      
+      return;
+    }
+    
+    // No range request - send full file
+    console.log(`📥 Sending ZIP file: ${(fileSize / 1024 / 1024 / 1024).toFixed(2)} GB`);
+    
+    // Stream the file with proper error handling
+    const fileStream = fsSync.createReadStream(zipFilePath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (err) => {
+      console.error('File stream error:', err);
+      try { res.status(500).end('File stream error'); } catch {}
+    });
+    
+    // Clean up old ZIP files (older than 24 hours) in background
+    setTimeout(async () => {
+      try {
+        const files = await fs.readdir(tempZipDir);
+        const now = Date.now();
+        for (const file of files) {
+          const filePath = path.join(tempZipDir, file);
+          try {
+            const stats = await fs.stat(filePath);
+            const ageMs = now - stats.mtimeMs;
+            if (ageMs > 86400000) { // 24 hours
+              await fs.unlink(filePath);
+              console.log(`🗑️  Cleaned up old ZIP file: ${file}`);
+            }
+          } catch {}
+        }
+      } catch {}
+    }, 1000);
+    
+    console.log(`📦 ZIP archive sent: ${zipFileName}`);
   } catch (error) {
     console.error('Error creating ZIP archive:', error);
     res.status(500).json({ error: 'Failed to create ZIP archive' });

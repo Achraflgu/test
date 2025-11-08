@@ -414,32 +414,26 @@ export const DownloadQueue = () => {
           const folderName = data.outputFolder ? data.outputFolder.split(/[/\\]/).pop() || 'Download' : 'Download';
           const downloadFilename = `${folderName}.zip`;
           
-          // 🔧 FIX: Auto-start download using direct link (best for download managers)
-          // This allows download managers (IDM) to properly detect file size and enable pause/resume
+          // Auto-start download using iframe method (works with IDM and regular browsers)
           console.log('📥 [DownloadQueue] Auto-triggering download:', fullDownloadUrl, downloadFilename);
           
-          // Create download link and trigger (works best with IDM and browsers)
-          // This allows download managers to handle the download properly with Content-Length header
-          const link = document.createElement('a');
-          link.href = fullDownloadUrl;
-          link.download = downloadFilename;
-          link.style.display = 'none';
-          document.body.appendChild(link);
+          // Create hidden iframe for download (IDM-compatible)
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = fullDownloadUrl;
+          document.body.appendChild(iframe);
           
-          // Trigger download
-          link.click();
-          
-          // Clean up after a delay
+          // Clean up iframe after download starts
           setTimeout(() => {
             try {
-              document.body.removeChild(link);
+              document.body.removeChild(iframe);
             } catch (e) {
               // Ignore cleanup errors
             }
-          }, 100);
+          }, 1000);
           
-          toast.success('📦 Download Started!', {
-            description: `Downloading ${downloadFilename}...`,
+          toast.success('📦 Download Complete!', {
+            description: `Your files are downloading automatically...`,
             duration: 3000,
           });
         } else {
