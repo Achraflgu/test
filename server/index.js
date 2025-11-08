@@ -2147,16 +2147,13 @@ async function checkAndResumeRegeneration() {
     
     // All downloads are completed/cancelled/failed - safe to resume
     // 🔧 FIX: Validate cookies first to detect and remove dead ones, then fill missing slots
+    // ⚠️ NOTE: validateCookiePool() already calls ensurePoolIsFull() if needed, so we don't need to call it again here
     console.log(`\n🔄 Downloads completed - validating cookie pool and resuming maintenance...`);
     const validationResult = await validateCookiePool();
     
-    // After validation, check if we need to fill missing slots
-    if (validationResult.valid < COOKIE_POOL_SIZE) {
-      console.log(`  📊 Pool status: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies - filling ${COOKIE_POOL_SIZE - validationResult.valid} missing slots...`);
-      ensurePoolIsFull().catch((err) => {
-        console.log(`  ⚠️ Failed to resume pool fill: ${err.message}`);
-      });
-    } else {
+    // validateCookiePool() already handles calling ensurePoolIsFull() if the pool is not full
+    // No need to call it again here to avoid duplicate calls
+    if (validationResult.valid >= COOKIE_POOL_SIZE) {
       console.log(`  ✅ Pool is full: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies`);
     }
   } catch (err) {
