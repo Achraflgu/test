@@ -2526,7 +2526,7 @@ async function regenerateSingleCookie(slotIndex) {
   }
 }
 
-// ⚡ ULTRA-STRICT COOKIE VALIDATION - Test actual audio extraction (10s timeout)
+// ⚡ ULTRA-STRICT COOKIE VALIDATION - Test actual audio extraction (30s timeout with proxy support)
 // This ensures cookies work for REAL downloads, not just metadata
 async function quickValidateCookie(cookiePath, index = null) {
   try {
@@ -2543,16 +2543,25 @@ async function quickValidateCookie(cookiePath, index = null) {
       '--no-playlist',
       '--quiet',
       '--no-warnings',
+      '--no-check-certificates',
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
       '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
     
+    // 🌐 ADD PROXY SUPPORT for cookie re-validation (use proxy if available)
+    try {
+      const proxy = await proxyManager.getProxyForYtdlp();
+      if (proxy) {
+        testArgs.push('--proxy', proxy);
+      }
+    } catch {}
+    
     return new Promise((resolve) => {
       const testProcess = spawn(PYTHON_CMD, testArgs, {
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 10000 // 10s timeout for actual extraction
+        timeout: 30000 // 30s timeout for actual extraction (matching cookie test timeout)
       });
       
       let errorOutput = '';
@@ -2611,14 +2620,14 @@ async function quickValidateCookie(cookiePath, index = null) {
         resolve(false);
       });
       
-      // STRICT TIMEOUT: 10s for actual extraction test
+      // TIMEOUT: 30s for actual extraction test (matching cookie test timeout)
       setTimeout(() => {
         if (resolved) return;
         resolved = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         console.log(`    ❌ Cookie test timeout - rejecting` + (index !== null ? ` [slot ${index + 1}]` : ''));
         resolve(false);
-      }, 10000);
+      }, 30000);
     });
   } catch (err) {
     return false;
@@ -2731,6 +2740,123 @@ async function validateCookiePool() {
   } catch (err) {
     console.log(`  ⚠️ Cookie pool validation error: ${err.message}`);
     return { valid: 0, total: 0, needGeneration: true };
+  }
+}
+
+// 🔄 Re-validate cookie pool (test cookies and remove dead ones) - ONLY when we have 5/5 cookies
+async function revalidateCookiePool() {
+  try {
+    const cookies = await getWorkingCookiesFromPool();
+    
+    // 🎯 ONLY re-validate if we have 5/5 cookies
+    if (cookies.length !== COOKIE_POOL_SIZE) {
+      console.log(`  ⏭️ Skipping re-validation: Only ${cookies.length}/${COOKIE_POOL_SIZE} cookies (re-validation only runs when pool is full)`);
+      return { valid: cookies.length, removed: 0, skipped: true };
+    }
+    
+    console.log(`\n🔄 Re-validating cookie pool (testing all ${COOKIE_POOL_SIZE} cookies)...`);
+    
+    const validCookies = [];
+    let validated = 0;
+    let failed = 0;
+    const removedIndices = [];
+    
+    // Test cookies with limited concurrency (test 2 at a time to avoid overwhelming)
+    const CONCURRENT_TESTS = 2;
+    for (let i = 0; i < cookies.length; i += CONCURRENT_TESTS) {
+      const batch = cookies.slice(i, i + CONCURRENT_TESTS);
+      
+      const batchPromises = batch.map(async (cookie) => {
+        try {
+          const cookiePath = cookie.path || path.join(COOKIE_POOL_DIR, `cookie_${cookie.index}.txt`);
+          const isValid = await quickValidateCookie(cookiePath, cookie.index);
+          
+          if (isValid) {
+            validated++;
+            validCookies.push(cookie);
+          } else {
+            failed++;
+            removedIndices.push(cookie.index);
+            
+            // Remove dead cookie from Redis
+            if (isRedisAvailable()) {
+              await deleteCookieFromRedis(cookie.index).catch(() => {});
+            }
+            
+            // Remove from filesystem
+            try {
+              await fs.unlink(cookiePath).catch(() => {});
+            } catch {}
+            
+            console.log(`  🗑️ Removed dead cookie from slot ${cookie.index + 1}`);
+          }
+          
+          return { cookie, isValid };
+        } catch (err) {
+          // If test fails, consider cookie as dead
+          failed++;
+          removedIndices.push(cookie.index);
+          console.log(`  🗑️ Removed dead cookie from slot ${cookie.index + 1} (test error)`);
+          
+          // Remove dead cookie from Redis
+          if (isRedisAvailable()) {
+            await deleteCookieFromRedis(cookie.index).catch(() => {});
+          }
+          
+          return { cookie, isValid: false };
+        }
+      });
+      
+      await Promise.all(batchPromises);
+      
+      // Small delay between batches to avoid overwhelming
+      if (i + CONCURRENT_TESTS < cookies.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // Save updated list to Redis
+    if (isRedisAvailable() && validCookies.length > 0) {
+      for (const cookie of validCookies) {
+        // Ensure cookie is in Redis
+        try {
+          const content = cookie.content || await fs.readFile(cookie.path, 'utf8');
+          if (content) {
+            await saveCookieToRedis(cookie.index, content, {
+              quality: 'strong',
+              created: new Date().toISOString(),
+              revalidated: true
+            }).catch(() => {});
+          }
+        } catch {}
+      }
+    }
+    
+    console.log(`  ✅ Re-validation complete: ${validated} valid, ${failed} failed`);
+    
+    // If we have less than 5 after re-validation, trigger generation (but check if already generating)
+    if (validCookies.length < COOKIE_POOL_SIZE) {
+      console.log(`  ⚠️ Only ${validCookies.length}/${COOKIE_POOL_SIZE} valid cookies after re-validation - triggering generation...`);
+      const hasActive = hasActiveDownloads();
+      
+      // 🛡️ ANTI-BUG: Don't trigger generation if it's already in progress
+      if (isGeneratingCookies || isFillingPool) {
+        console.log(`  ⏭️ Cookie generation already in progress - skipping duplicate trigger`);
+        return { valid: validCookies.length, removed: failed, skipped: false };
+      }
+      
+      if (!hasActive || validCookies.length === 0) {
+        // Safe to generate - no active downloads or we have 0 cookies
+        ensurePoolIsFull().catch(() => {});
+      } else {
+        console.log(`  ⏸️ Downloads active - will generate after downloads complete`);
+      }
+    }
+    
+    return { valid: validCookies.length, removed: failed, skipped: false };
+  } catch (err) {
+    console.log(`  ⚠️ Cookie re-validation error: ${err.message}`);
+    return { valid: 0, removed: 0, skipped: false };
   }
 }
 
@@ -3045,33 +3171,59 @@ async function initializeAutoCookies() {
       }
     }
     
-    // ✅ STEP 3: Validate existing cookies (quick validation during startup)
-    console.log('🔍 Validating existing cookie pool...');
-    const poolStatus = await validateCookiePool();
+    // ✅ STEP 3: Check cookie pool status
+    console.log('🔍 Checking cookie pool on startup...');
+    const cookies = await getWorkingCookiesFromPool();
+    
+    // ✅ STEP 3.5: Re-validate cookies on startup (ONLY if we have 5/5)
+    let poolStatus;
+    if (cookies.length === COOKIE_POOL_SIZE) {
+      // We have 5/5 cookies - re-validate them
+      console.log('🔄 Re-validating cookies on startup (testing all 5 cookies)...');
+      const revalidationResult = await revalidateCookiePool();
+      console.log(`  ✅ Re-validation: ${revalidationResult.valid} valid, ${revalidationResult.removed} removed`);
+      
+      poolStatus = { valid: revalidationResult.valid, total: revalidationResult.valid, needGeneration: revalidationResult.valid < COOKIE_POOL_SIZE };
+      
+      // If we have fewer than 5 after re-validation, generate missing ones (but check if already generating)
+      if (revalidationResult.valid < COOKIE_POOL_SIZE) {
+        // 🛡️ ANTI-BUG: Don't trigger generation if it's already in progress
+        if (!isGeneratingCookies && !isFillingPool) {
+          console.log(`  🔄 Only ${revalidationResult.valid}/${COOKIE_POOL_SIZE} cookies working - generating missing ones...`);
+          // Generate missing cookies (will respect download pause if active)
+          ensurePoolIsFull().catch(() => {});
+        } else {
+          console.log(`  ⏭️ Cookie generation already in progress - skipping duplicate trigger`);
+        }
+      }
+    } else {
+      // We have fewer than 5 cookies - skip re-validation, just generate missing ones
+      console.log(`  ⚠️ Only ${cookies.length}/${COOKIE_POOL_SIZE} cookies found - generating missing ones (skipping re-validation)`);
+      poolStatus = { valid: cookies.length, total: cookies.length, needGeneration: cookies.length < COOKIE_POOL_SIZE };
+      
+      // 🛡️ ANTI-BUG: Don't trigger generation if it's already in progress
+      if (!isGeneratingCookies && !isFillingPool && poolStatus.needGeneration) {
+        // Generate missing cookies (will respect download pause if active)
+        ensurePoolIsFull().catch(() => {});
+      } else if (isGeneratingCookies || isFillingPool) {
+        console.log(`  ⏭️ Cookie generation already in progress - skipping duplicate trigger`);
+      }
+    }
     
     console.log(`  📊 Pool status: ${poolStatus.valid}/${poolStatus.total} cookies validated as working`);
     
-    // ✅ STEP 4: If we have at least 1 working cookie, START SERVER NOW and fill pool in background
+    // ✅ STEP 4: If we have at least 1 working cookie, START SERVER NOW
     if (poolStatus.valid >= 1) {
       console.log(`  ✅ Found ${poolStatus.valid} working cookie(s) - server ready!`);
       
       // Update primary cookie from pool
       if (isRedisAvailable()) {
-        const cookies = await getAllCookiesFromRedis();
-        if (cookies.length > 0) {
-          await savePrimaryCookieToRedis(cookies[0].content);
-          await fs.writeFile(AUTO_COOKIE_PATH, cookies[0].content, 'utf8').catch(() => {});
+        const currentCookies = await getAllCookiesFromRedis();
+        if (currentCookies.length > 0) {
+          await savePrimaryCookieToRedis(currentCookies[0].content);
+          await fs.writeFile(AUTO_COOKIE_PATH, currentCookies[0].content, 'utf8').catch(() => {});
           console.log('  💾 Updated primary cookie from pool');
         }
-      }
-      
-      // Fill remaining slots in BACKGROUND (don't block startup)
-      if (poolStatus.valid < COOKIE_POOL_SIZE) {
-        console.log(`  🔄 Will fill remaining ${COOKIE_POOL_SIZE - poolStatus.valid} slot(s) in background...`);
-        // Background fill - will respect download pause mechanism
-        setTimeout(() => {
-          ensurePoolIsFull().catch(() => {});
-        }, 5000); // Wait 5s after startup, then fill
       }
       
       return AUTO_COOKIE_PATH;
@@ -3163,8 +3315,8 @@ async function initializeAutoCookies() {
 // ⚠️ MOVED TO STARTUP SEQUENCE - Must wait for proxy system to initialize first!
 // initializeAutoCookies() is now called AFTER proxy system is ready (see startupSequence)
 
-// 🎯 PERIODIC POOL MAINTENANCE - Ensure 5/5 cookies always available
-// Runs every 5 minutes to check and fill missing slots (only when downloads are idle)
+// 🎯 PERIODIC POOL MAINTENANCE - Re-validate cookies every 20 minutes (only when pool is full)
+// If pool is not full, generate missing cookies instead
 setInterval(async () => {
   try {
     const hasActive = hasActiveDownloads();
@@ -3176,20 +3328,28 @@ setInterval(async () => {
       return;
     }
     
-    // 🔧 FIX: Validate cookies first to detect and remove dead ones, then fill missing slots
-    console.log(`\n🔄 [Scheduled Maintenance] Validating cookie pool...`);
-    const validationResult = await validateCookiePool();
+    console.log(`\n🔄 [Scheduled Maintenance] Checking cookie pool...`);
     
-    if (validationResult.valid < COOKIE_POOL_SIZE) {
-      console.log(`  📊 Pool status: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies - filling ${COOKIE_POOL_SIZE - validationResult.valid} missing slots...`);
+    // 🔄 STEP 1: Re-validate cookies (ONLY if we have 5/5)
+    const revalidationResult = await revalidateCookiePool();
+    
+    // 🔄 STEP 2: If we have fewer than 5 cookies, generate missing ones (but check if already generating)
+    if (revalidationResult.valid < COOKIE_POOL_SIZE) {
+      // 🛡️ ANTI-BUG: Don't trigger generation if it's already in progress
+      if (isGeneratingCookies || isFillingPool) {
+        console.log(`  ⏭️ Cookie generation already in progress - skipping duplicate trigger`);
+        return;
+      }
+      
+      console.log(`  📊 Pool status: ${revalidationResult.valid}/${COOKIE_POOL_SIZE} cookies - filling ${COOKIE_POOL_SIZE - revalidationResult.valid} missing slots...`);
       await ensurePoolIsFull();
     } else {
-      console.log(`  ✅ [Scheduled Maintenance] Pool is full: ${validationResult.valid}/${COOKIE_POOL_SIZE} validated cookies`);
+      console.log(`  ✅ [Scheduled Maintenance] Pool is full: ${revalidationResult.valid}/${COOKIE_POOL_SIZE} validated cookies`);
     }
   } catch (err) {
     console.log(`\n⚠️ [Scheduled Maintenance] Error: ${err.message}`);
   }
-}, 5 * 60 * 1000); // Every 5 minutes
+}, 20 * 60 * 1000); // Every 20 minutes (changed from 5 minutes)
 
 // Monitor cookie health during downloads
 async function markCookiesAsWorking() {
