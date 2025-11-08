@@ -321,9 +321,9 @@ class ProxyManager {
       this.youtubeWorkingProxies.splice(youtubeIndex, 1);
       console.log(`  🗑️ Removed dead proxy from YouTube-validated list: ${proxy.substring(0, 20)}...`);
       
-      // Save updated list to Redis
+      // Save updated list to Redis (fire-and-forget, no await needed)
       if (isRedisAvailable()) {
-        await saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
+        saveYouTubeProxiesToRedis(this.youtubeWorkingProxies).catch(() => {});
       }
       
       // If below minimum, trigger refresh in background
