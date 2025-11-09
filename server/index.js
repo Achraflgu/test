@@ -751,8 +751,9 @@ async function extractBrowserCookies() {
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
-// Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
-const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (stable, publicly accessible video for cookie testing)
+// Use obscure test video to avoid heavy bot detection on popular videos
+// Popular videos like Rick Astley are heavily monitored and blocked by YouTube
+const TEST_VIDEO_ID = 'aqz-KE-bpKQ'; // Big Buck Bunny trailer (Creative Commons, less monitored, more likely to pass bot detection)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
