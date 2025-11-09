@@ -517,7 +517,7 @@ const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
-const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (stable, publicly accessible video)
+const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
@@ -1176,12 +1176,13 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           normalizedError.includes('please sign in to continue') ||
           normalizedError.includes('video unavailable') ||
           normalizedError.includes('unplayable');
-        
+
         // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
-        const hasFormatError = normalizedError.includes('requested format is not available') ||
-                              normalizedError.includes('format is not available') ||
-                              normalizedError.includes('no video formats found') ||
-                              normalizedError.includes('format not available');
+        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
+                               normalizedError.includes('requested format is not available') ||
+                               normalizedError.includes('format is not available') ||
+                               normalizedError.includes('no video formats found') ||
+                               normalizedError.includes('unable to extract video data');
 
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -1210,38 +1211,41 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         }
 
         // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-        if (hasFormatError && proxy && !skipProxy && code !== null) {
-          // Format error with proxy - likely proxy issue, mark as dead and retry
+        if (hasFormatError && !skipProxy && proxy) {
+          const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
+          console.log(`  ⚠️ Format error detected: ${errorPreview}...`);
+          console.log(`  🔄 Retrying with different proxy (format error - proxy issue suspected)...`);
+          
+          // Mark current proxy as dead (format error = proxy problem)
           const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
           if (proxyMatch) {
             const proxyHost = proxyMatch[1];
             proxyManager.markFailed(proxyHost);
-            const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated' : 'free proxy'));
-            console.log(`  🔧 Format error detected - marking proxy as DEAD (${proxyType}): ${proxyHost.substring(0, 30)}...`);
-            
-            // Retry with different proxy (up to MAX_PROXY_RETRIES)
-            if (retryCount < MAX_PROXY_RETRIES) {
-              console.log(`  🔄 Retrying with different proxy due to format error (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...`);
-              const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-              resolveOnce(retryResult);
-              return;
-            } else if (retryCount === MAX_PROXY_RETRIES) {
-              // All proxy attempts failed - try without proxy
-              console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies failed with format error - trying WITHOUT proxy...`);
-              const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-              resolveOnce(retryResult);
-              return;
-            }
+            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
           }
-        } else if (hasFormatError && !proxy && skipProxy) {
-          // Format error without proxy - cookie issue
-          console.log('  ❌ Cookie test FAILED (format error without proxy - cookie issue)');
-          resolveOnce({ status: 'fail', reason: 'format_error_cookie' });
+          
+          // Retry with different proxy (up to 2 proxy rotations)
+          if (retryCount < 2) {
+            const retryResult = await testCookies(cookiePath, false, retryCount + 1);
+            resolveOnce(retryResult);
+            return;
+          } else if (retryCount === 2) {
+            // After 2 proxy rotations, try without proxy
+            console.log(`  🔄 Format error persists after proxy rotation - trying WITHOUT proxy...`);
+            const retryResult = await testCookies(cookiePath, true, retryCount + 1);
+            resolveOnce(retryResult);
+            return;
+          }
+        } else if (hasFormatError && skipProxy) {
+          // Format error occurred without proxy = cookie/YouTube issue
+          console.log('  ❌ Cookie test FAILED (format error without proxy - cookie/YouTube issue)');
+          resolveOnce({ status: 'fail', reason: 'format_error' });
           return;
         }
 
         // Timeout or process error = fail
         // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
+        // Note: normalizedError is already declared above (line 1080)
         const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
         const isProxyIssue = normalizedError.includes('proxy') || 
                             normalizedError.includes('connection') ||
@@ -1279,9 +1283,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           }
         } else {
           console.log(`  ❌ Cookie test FAILED (code: ${code}, ${proxy ? 'with proxy' : 'no proxy'})`);
-          if (hasFormatError) {
-            console.log(`     🔍 Issue: FORMAT ERROR (may be proxy or cookie issue)`);
-          } else if (isProxyIssue) {
+          if (isProxyIssue) {
             console.log(`     🔍 Issue: PROXY problem (connection/timeout)`);
           } else if (isCookieIssue) {
             console.log(`     🔍 Issue: COOKIE problem (bot detection/login required)`);
@@ -1290,7 +1292,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           }
         }
         
-        resolveOnce({ status: 'fail', reason: code === null ? 'timeout' : (hasFormatError ? 'format_error' : 'process_error') });
+        resolveOnce({ status: 'fail', reason: code === null ? 'timeout' : 'process_error' });
       });
 
       testProcess.on('error', (err) => {
@@ -2932,6 +2934,7 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
         if (resolved) return;
         
         const normalizedError = errorOutput.toLowerCase();
+        
         // Check for bot detection errors
         const hasBotDetectionError = normalizedError.includes('sign in to confirm') || 
                                      normalizedError.includes('login_required') ||
@@ -2942,10 +2945,11 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
                                      normalizedError.includes('this video is unavailable');
         
         // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
-        const hasFormatError = normalizedError.includes('requested format is not available') ||
-                              normalizedError.includes('format is not available') ||
-                              normalizedError.includes('no video formats found') ||
-                              normalizedError.includes('format not available');
+        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
+                               normalizedError.includes('requested format is not available') ||
+                               normalizedError.includes('format is not available') ||
+                               normalizedError.includes('no video formats found') ||
+                               normalizedError.includes('unable to extract video data');
         
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -2961,57 +2965,61 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
         }
         
         // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
-        const isValid = !hasBotDetectionError && hasExtractedFile && code === 0;
+        const isValid = !hasBotDetectionError && !hasFormatError && hasExtractedFile && code === 0;
         
         // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-        if (hasFormatError && usedProxy && !skipProxy && code !== null) {
-          // Format error with proxy - likely proxy issue, mark as dead and retry
+        if (hasFormatError && !skipProxy && usedProxy) {
+          const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
+          console.log(`    ⚠️ Format error detected: ${errorPreview}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          console.log(`    🔄 Retrying with different proxy (format error - proxy issue suspected)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          
+          // Mark current proxy as dead (format error = proxy problem)
           if (typeof usedProxy === 'string') {
             const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
             if (proxyMatch) {
               const proxyHost = proxyMatch[1];
               proxyManager.markFailed(proxyHost);
-              console.log(`    🔧 Format error detected - marking proxy as DEAD: ${proxyHost.substring(0, 30)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-              
-              // Retry with different proxy (up to MAX_PROXY_RETRIES)
-              if (retryCount < MAX_PROXY_RETRIES) {
-                console.log(`    🔄 Retrying with different proxy due to format error (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-                resolved = true;
-                const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
-                resolve(retryResult);
-                return;
-              } else if (retryCount === MAX_PROXY_RETRIES) {
-                // All proxy attempts failed - try without proxy
-                console.log(`    🔄 All ${MAX_PROXY_RETRIES} proxies failed with format error - trying WITHOUT proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-                resolved = true;
-                const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
-                resolve(retryResult);
-                return;
-              }
+              console.log(`    🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
             }
           }
-        } else if (hasFormatError && !usedProxy && skipProxy) {
-          // Format error without proxy - cookie issue
-          console.log(`    ❌ Cookie test FAILED (format error without proxy - cookie issue)` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          resolved = true;
-          resolve(false);
+          
+          // Retry with different proxy (up to 2 proxy rotations)
+          if (retryCount < 2) {
+            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
+            if (!resolved) {
+              resolved = true;
+              resolve(retryResult);
+            }
+            return;
+          } else if (retryCount === 2) {
+            // After 2 proxy rotations, try without proxy
+            console.log(`    🔄 Format error persists after proxy rotation - trying WITHOUT proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
+            if (!resolved) {
+              resolved = true;
+              resolve(retryResult);
+            }
+            return;
+          }
+        } else if (hasFormatError && skipProxy) {
+          // Format error occurred without proxy = cookie/YouTube issue
+          console.log(`    ❌ Cookie test FAILED (format error without proxy - cookie/YouTube issue)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          if (!resolved) {
+            resolved = true;
+            resolve(false);
+          }
           return;
         }
         
-        if (!isValid) {
-          if (hasFormatError) {
-            console.log(`    ❌ Cookie test FAILED (format error)` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          } else if (hasBotDetectionError) {
-            console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        if (!resolved) {
+          resolved = true;
+          if (!isValid) {
+            console.log(`    ❌ Cookie test FAILED` + (hasBotDetectionError ? ' (bot detection)' : '') + (index !== null ? ` [slot ${index + 1}]` : ''));
           } else {
-            console.log(`    ❌ Cookie test FAILED (code: ${code})` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            console.log(`    ✅ Cookie test STRONG PASS (successfully extracted audio file)` + (index !== null ? ` [slot ${index + 1}]` : ''));
           }
-        } else {
-          console.log(`    ✅ Cookie test STRONG PASS (successfully extracted audio file)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          resolve(isValid);
         }
-        
-        resolved = true;
-        resolve(isValid);
       });
       
       testProcess.on('error', () => {
@@ -7761,12 +7769,13 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false, formatRetryCount = 0) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
   let expectedFilePath;
   let audioFormat;
+  let usedProxy = null;
   
   try {
     console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
@@ -7841,7 +7850,8 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       preferFreeFormats: true,
       noPlaylist: true,
       verbose: true,  // ✅ OPTION B: Enable verbose logging
-      print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
+      print: 'after_move:filepath',  // ✅ OPTION B: Print final file path
+      format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best' // 🔧 Flexible format fallback
     };
     
     // Add cookies if available
@@ -7867,12 +7877,18 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     
     // 🎯 COOKIE-LESS FIRST MODE: Force YouTube-validated proxy (if available)
     // 🔧 STABILITY FIX: Skip proxy if skipProxy is true (no-proxy fallback)
-    if (cookiePath === null && !skipProxy) {
+    // 🔧 FORMAT ERROR RETRY: Also get proxy for format error retries
+    if (!skipProxy) {
       const youtubeProxy = await proxyManager.getProxyForYtdlp();
       if (youtubeProxy) {
         // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
         downloadOptions.proxy = youtubeProxy;
-        console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
+        usedProxy = youtubeProxy;
+        if (cookiePath === null) {
+          console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
+        } else {
+          console.log(`  🌐 Using YouTube-validated proxy for download`);
+        }
         if (youtubeProxy && typeof youtubeProxy === 'string') {
           if (youtubeProxy.includes('oxylabs.io')) {
             console.log(`     🌟 Oxylabs premium proxy (verified working with YouTube)`);
@@ -7882,9 +7898,13 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
           }
         }
       } else {
-        console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
+        if (cookiePath === null) {
+          console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
+        } else {
+          console.log(`  ⚠️  No YouTube-validated proxy available for download`);
+        }
       }
-    } else if (skipProxy) {
+    } else {
       console.log(`  🚫 Skipping proxy (no-proxy fallback mode)`);
     }
     
@@ -7959,6 +7979,44 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
+    // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
+    const hasFormatError = fullError.includes('failed to extract any player response') ||
+                           fullError.includes('requested format is not available') ||
+                           fullError.includes('format is not available') ||
+                           fullError.includes('no video formats found') ||
+                           fullError.includes('unable to extract video data');
+    
+    // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
+    if (hasFormatError && !skipProxy && usedProxy) {
+      console.log(`  ⚠️ Format error detected: ${errorMessage.substring(0, 200)}...`);
+      console.log(`  🔄 Retrying with different proxy (format error - proxy issue suspected)...`);
+      
+      // Mark current proxy as dead (format error = proxy problem)
+      if (typeof usedProxy === 'string') {
+        const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
+        if (proxyMatch) {
+          const proxyHost = proxyMatch[1];
+          proxyManager.markFailed(proxyHost);
+          console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+        }
+      }
+      
+      // Retry with different proxy (up to 2 proxy rotations)
+      if (formatRetryCount < 2) {
+        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, false, formatRetryCount + 1);
+        return retryResult;
+      } else if (formatRetryCount === 2) {
+        // After 2 proxy rotations, try without proxy
+        console.log(`  🔄 Format error persists after proxy rotation - trying WITHOUT proxy...`);
+        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, true, formatRetryCount + 1);
+        return retryResult;
+      }
+    } else if (hasFormatError && skipProxy) {
+      // Format error occurred without proxy = cookie/YouTube issue
+      console.log(`  ❌ Format error without proxy (cookie/YouTube issue): ${errorMessage.substring(0, 200)}...`);
+      return false;
+    }
+    
     // 🔧 STABILITY FIX: Detect timeout/connection errors first
     const hasTimeoutError = fullError.includes('read timed out') ||
                            fullError.includes('read timeout') ||
@@ -7977,10 +8035,10 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       console.log('  ⏱️  Timeout/connection error detected in youtube-dl-exec');
       
       // If proxy was used, mark it as dead and return 'timeout' to trigger proxy rotation
-      if (downloadOptions.proxy && !skipProxy) {
+      if (usedProxy && !skipProxy) {
         // Extract proxy host and mark as dead
-        if (typeof downloadOptions.proxy === 'string') {
-          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
+        if (typeof usedProxy === 'string') {
+          const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
           if (proxyMatch) {
             const proxyHost = proxyMatch[1];
             proxyManager.markFailed(proxyHost);
