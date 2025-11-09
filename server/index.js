@@ -41,7 +41,18 @@ httpServer.timeout = 7200000; // 2 hours (in milliseconds)
 httpServer.keepAliveTimeout = 7200000; // 2 hours
 httpServer.headersTimeout = 7210000; // Slightly higher than keepAlive
 
-// Keep process alive for Koyeb/Vercel (will be replaced by graceful shutdown)
+// Keep process alive for Koyeb/Vercel
+process.on('SIGTERM', () => {
+  console.log('🔄 SIGTERM received, keeping process alive...');
+  // Don't exit, keep running
+  // Child processes with detached:true will continue independently
+});
+
+process.on('SIGINT', () => {
+  console.log('🔄 SIGINT received, keeping process alive...');
+  // Don't exit, keep running  
+  // Child processes with detached:true will continue independently
+});
 
 // CORS configuration - supports both local and production URLs
 const allowedOrigins = [
@@ -363,252 +374,6 @@ const activeDownloads = new Map();
 const activeProcesses = new Map();
 
 // ====================================
-// 🛡️ RESOURCE MANAGEMENT & OPTIMIZATION
-// ====================================
-// Prevents Railway auto-restarts from lag/pressure
-// ====================================
-
-// Resource limits for Railway stability
-const RESOURCE_LIMITS = {
-  MAX_CONCURRENT_DOWNLOADS: 4, // Reduced from unlimited for Railway stability
-  MAX_CONCURRENT_PROCESSES: 10, // Max child processes at once
-  MAX_MEMORY_MB: 512, // Warn if memory exceeds 512MB
-  MAX_PARALLEL_DOWNLOADS: 4, // Default parallel downloads (reduced from 8)
-  MAX_PARALLEL_COOKIE_GEN: 2, // Max parallel cookie generation (reduced from 3)
-  MAX_PARALLEL_PROXY_VALIDATION: 20, // Reduced from 50
-  MAX_ACTIVE_REQUESTS: 10, // Max concurrent API requests
-  PROCESS_CLEANUP_INTERVAL: 60000, // Cleanup every 60s
-  MEMORY_CHECK_INTERVAL: 30000, // Check memory every 30s
-  MAX_PROCESS_AGE_MS: 300000, // Kill processes older than 5 minutes
-  REQUEST_QUEUE_MAX: 20, // Max queued requests
-};
-
-// Request queue for throttling
-const requestQueue = [];
-let activeRequests = 0;
-let isProcessingQueue = false;
-
-// Process cleanup tracker
-const processStartTimes = new Map();
-
-// Memory monitoring
-let lastMemoryCheck = Date.now();
-let memoryWarnings = 0;
-
-// Resource monitoring function
-function checkResources() {
-  const memUsage = process.memoryUsage();
-  const memMB = memUsage.heapUsed / 1024 / 1024;
-  
-  // Check memory usage
-  if (memMB > RESOURCE_LIMITS.MAX_MEMORY_MB) {
-    memoryWarnings++;
-    console.log(`⚠️ High memory usage: ${memMB.toFixed(2)}MB (${memoryWarnings} warnings)`);
-    
-    // If memory is critically high, trigger cleanup
-    if (memMB > RESOURCE_LIMITS.MAX_MEMORY_MB * 1.5) {
-      console.log(`🚨 Critical memory usage: ${memMB.toFixed(2)}MB - triggering cleanup`);
-      cleanupResources();
-    }
-  }
-  
-  // Check active processes
-  const activeProcessCount = Array.from(activeProcesses.values()).reduce((sum, procs) => sum + procs.length, 0);
-  if (activeProcessCount > RESOURCE_LIMITS.MAX_CONCURRENT_PROCESSES) {
-    console.log(`⚠️ High process count: ${activeProcessCount} processes active`);
-  }
-  
-  // Check active downloads
-  if (activeDownloads.size > RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS) {
-    console.log(`⚠️ High download count: ${activeDownloads.size} downloads active`);
-  }
-  
-  lastMemoryCheck = Date.now();
-}
-
-// Cleanup old processes and resources
-function cleanupResources() {
-  const now = Date.now();
-  let cleaned = 0;
-  
-  // Cleanup old processes
-  for (const [downloadId, processes] of activeProcesses.entries()) {
-    const validProcesses = processes.filter(proc => {
-      const startTime = processStartTimes.get(proc.pid);
-      if (startTime && now - startTime > RESOURCE_LIMITS.MAX_PROCESS_AGE_MS) {
-        try {
-          if (!proc.killed) {
-            proc.kill('SIGTERM');
-            cleaned++;
-          }
-        } catch (err) {
-          // Process already dead
-        }
-        processStartTimes.delete(proc.pid);
-        return false;
-      }
-      return true;
-    });
-    
-    if (validProcesses.length === 0) {
-      activeProcesses.delete(downloadId);
-    } else {
-      activeProcesses.set(downloadId, validProcesses);
-    }
-  }
-  
-  // Cleanup completed downloads (older than 1 hour)
-  for (const [downloadId, info] of activeDownloads.entries()) {
-    if (info.completedAt && now - info.completedAt > 3600000) {
-      activeDownloads.delete(downloadId);
-      cleaned++;
-    }
-  }
-  
-  if (cleaned > 0) {
-    console.log(`🧹 Cleaned up ${cleaned} old resources`);
-  }
-  
-  // Force garbage collection if available
-  if (global.gc) {
-    global.gc();
-    console.log(`🗑️ Forced garbage collection`);
-  }
-}
-
-// Request throttling
-async function throttleRequest(fn) {
-  return new Promise((resolve, reject) => {
-    // If under limit, execute immediately
-    if (activeRequests < RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
-      activeRequests++;
-      fn()
-        .then(result => {
-          activeRequests--;
-          resolve(result);
-          processQueue();
-        })
-        .catch(err => {
-          activeRequests--;
-          reject(err);
-          processQueue();
-        });
-    } else {
-      // Queue the request
-      if (requestQueue.length >= RESOURCE_LIMITS.REQUEST_QUEUE_MAX) {
-        reject(new Error('Request queue full - server under heavy load'));
-        return;
-      }
-      requestQueue.push({ fn, resolve, reject });
-    }
-  });
-}
-
-// Process queued requests
-async function processQueue() {
-  if (isProcessingQueue || requestQueue.length === 0 || activeRequests >= RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
-    return;
-  }
-  
-  isProcessingQueue = true;
-  
-  while (requestQueue.length > 0 && activeRequests < RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
-    const { fn, resolve, reject } = requestQueue.shift();
-    activeRequests++;
-    
-    fn()
-      .then(result => {
-        activeRequests--;
-        resolve(result);
-      })
-      .catch(err => {
-        activeRequests--;
-        reject(err);
-      });
-  }
-  
-  isProcessingQueue = false;
-}
-
-// Track process start time
-function trackProcess(process) {
-  if (process && process.pid) {
-    processStartTimes.set(process.pid, Date.now());
-  }
-}
-
-// Remove process tracking
-function untrackProcess(process) {
-  if (process && process.pid) {
-    processStartTimes.delete(process.pid);
-  }
-}
-
-// Start resource monitoring
-setInterval(() => {
-  checkResources();
-}, RESOURCE_LIMITS.MEMORY_CHECK_INTERVAL);
-
-// Start process cleanup
-setInterval(() => {
-  cleanupResources();
-}, RESOURCE_LIMITS.PROCESS_CLEANUP_INTERVAL);
-
-// Graceful shutdown handler (replaces simple keep-alive)
-process.on('SIGTERM', () => {
-  console.log('🔄 SIGTERM received - starting graceful shutdown...');
-  
-  // Cleanup all processes
-  for (const [downloadId, processes] of activeProcesses.entries()) {
-    processes.forEach(proc => {
-      try {
-        if (!proc.killed) {
-          proc.kill('SIGTERM');
-        }
-      } catch (err) {
-        // Process already dead
-      }
-    });
-  }
-  
-  // Cleanup resources
-  cleanupResources();
-  
-  console.log('✅ Graceful shutdown complete - keeping process alive for Railway');
-  // Don't exit - Railway will handle process termination
-});
-
-process.on('SIGINT', () => {
-  console.log('🔄 SIGINT received - starting graceful shutdown...');
-  
-  // Cleanup all processes
-  for (const [downloadId, processes] of activeProcesses.entries()) {
-    processes.forEach(proc => {
-      try {
-        if (!proc.killed) {
-          proc.kill('SIGTERM');
-        }
-      } catch (err) {
-        // Process already dead
-      }
-    });
-  }
-  
-  // Cleanup resources
-  cleanupResources();
-  
-  console.log('✅ Graceful shutdown complete - keeping process alive for Railway');
-  // Don't exit - Railway will handle process termination
-});
-
-// Log resource limits on startup
-console.log('🛡️ Resource limits enabled:');
-console.log(`   Max concurrent downloads: ${RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS}`);
-console.log(`   Max concurrent processes: ${RESOURCE_LIMITS.MAX_CONCURRENT_PROCESSES}`);
-console.log(`   Max parallel downloads: ${RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS}`);
-console.log(`   Max memory warning: ${RESOURCE_LIMITS.MAX_MEMORY_MB}MB`);
-
-// ====================================
 // 🍪 COOKIE DETECTION SYSTEM
 // ====================================
 // Priority order:
@@ -751,9 +516,8 @@ async function extractBrowserCookies() {
 const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
-// Use obscure test video to avoid heavy bot detection on popular videos
-// Popular videos like Rick Astley are heavily monitored and blocked by YouTube
-const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Test video for cookie validation
+// Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
+const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
@@ -1296,13 +1060,12 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '64K', // Very low quality for fast testing
-      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
       '--no-playlist',
       '--quiet',
       '--no-warnings',
       '--no-check-certificates', // 🔒 Fix SSL certificate errors when using proxies
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
+      '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '3M' // Abort if too large (just testing)
     ];
@@ -1377,7 +1140,6 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
-      let timeoutHandled = false; // 🔧 CRITICAL: Track if timeout handler has processed (race condition fix)
 
       const resolveOnce = (value) => {
         if (resolved) return;
@@ -1390,7 +1152,6 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: processTimeout // Use dynamically calculated timeout
       });
-      trackProcess(testProcess); // Track process for cleanup
 
       testProcess.stdout.on('data', (data) => {
         stdoutData += data.toString();
@@ -1400,24 +1161,13 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         errorOutput += data.toString();
       });
 
+      // 🔧 FIX: Flag to prevent close handler from resolving when timeout triggers retry
+      let timeoutHandled = false;
+
       testProcess.on('close', async (code) => {
-        untrackProcess(testProcess); // Remove from tracking
-        
-        // 🔧 CRITICAL FIX: Check if timeout handler already processed this (race condition fix)
-        // If timeout handler is waiting for successful completion, prioritize STRONG PASS result
-        if (resolved && timeoutHandled) {
-          // Timeout handler already resolved - but check if we have a successful result that should take priority
-          const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
-          if (code === 0 && hasExtractedFile) {
-            // Process completed successfully but timeout handler already resolved with failure
-            // This is a race condition - the STRONG PASS result should take priority
-            console.log('  ⚠️ WARNING: Process completed successfully but timeout handler already resolved - STRONG PASS result was lost due to race condition');
-            console.log('  🔍 DEBUG: This indicates the timeout fired just before process completion');
-          }
-          return;
-        }
-        
         if (resolved) return;
+        // 🔧 FIX: If timeout handler is handling retry, don't resolve here - let retry handle it
+        if (timeoutHandled) return;
 
         const normalizedError = errorOutput.toLowerCase();
         const hasBotDetectionError =
@@ -1430,6 +1180,12 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           normalizedError.includes('please sign in to continue') ||
           normalizedError.includes('video unavailable') ||
           normalizedError.includes('unplayable');
+
+        // 🔧 NEW: Check for format extraction errors (YouTube API issues)
+        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
+                              normalizedError.includes('requested format is not available') ||
+                              normalizedError.includes('no formats found') ||
+                              normalizedError.includes('format is not available');
 
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -1451,26 +1207,42 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         }
 
         // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
-        // 🔧 CRITICAL: This MUST be processed even if timeout handler is waiting
         if (code === 0 && hasExtractedFile) {
-          console.log('  ✅✅✅ Cookie test STRONG PASS (successfully extracted audio file) - RETURNING SUCCESS');
-          console.log(`  🔍 DEBUG: STRONG PASS details - code: ${code}, hasExtractedFile: ${hasExtractedFile}, stdout length: ${stdoutData.length}, timeoutHandled: ${timeoutHandled}`);
-          const result = { status: 'strong', reason: 'success', cookiePath: cookiePath };
-          // 🔧 CRITICAL: Resolve immediately with STRONG PASS - this takes priority over timeout
-          resolveOnce(result);
+          console.log('  ✅ Cookie test STRONG PASS (successfully extracted audio file)');
+          resolveOnce({ status: 'strong' });
           return;
         }
 
-        // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
-        const hasFormatError = normalizedError.includes('requested format is not available') ||
-                              normalizedError.includes('failed to extract any player response') ||
-                              normalizedError.includes('format is not available') ||
-                              errorOutput.includes('Requested format is not available') ||
-                              errorOutput.includes('Failed to extract any player response');
-        
+        // 🔧 NEW: Handle format errors (YouTube API issues) with RETRY logic
+        if (hasFormatError) {
+          const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
+          console.log(`  ❌ Cookie test FORMAT ERROR: ${errorPreview}...`);
+          
+          // 🎯 REGENERATION MODE: 1 proxy retry, then cookie is dead
+          if (retryCount === 0 && !skipProxy) {
+            // First attempt with proxy failed - try with different proxy
+            console.log(`  🔄 Format error - trying with different proxy (regeneration mode)...`);
+            if (proxy) {
+              const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+              if (proxyMatch) {
+                const proxyHost = proxyMatch[1];
+                proxyManager.markFailed(proxyHost);
+                console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+              }
+            }
+            const retryResult = await testCookies(cookiePath, false, retryCount + 1);
+            resolveOnce(retryResult);
+            return;
+          } else {
+            // Retry with different proxy also failed - cookie is dead
+            console.log(`  ❌ Format error persists after proxy rotation - cookie is DEAD`);
+            resolveOnce({ status: 'fail', reason: 'format_error' });
+            return;
+          }
+        }
+
         // Timeout or process error = fail
         // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
-        // Note: normalizedError is already declared above (line 1080)
         const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
         const isProxyIssue = normalizedError.includes('proxy') || 
                             normalizedError.includes('connection') ||
@@ -1478,36 +1250,6 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         const isCookieIssue = normalizedError.includes('sign in') ||
                              normalizedError.includes('bot') ||
                              normalizedError.includes('login_required');
-        
-        // 🎯 FORMAT ERROR HANDLING: For cookie regeneration, only 1 retry with 1 rotated proxy
-        if (hasFormatError && code !== 0 && !skipProxy && retryCount === 0) {
-          console.log(`  ⚠️ Format error detected (proxy issue): ${errorPreview.substring(0, 100)}...`);
-          console.log(`  🔄 Retrying with different proxy (1 retry for cookie regeneration)...`);
-          
-          // Mark current proxy as dead (format error = proxy problem)
-          if (proxy && typeof proxy === 'string') {
-            const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
-            if (proxyMatch) {
-              const proxyHost = proxyMatch[1];
-              proxyManager.markFailed(proxyHost);
-              console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
-            }
-          }
-          
-          // Retry with different proxy (only 1 retry for regeneration)
-          const retryResult = await testCookies(cookiePath, false, 1);
-          if (retryResult && retryResult.status === 'strong') {
-            // Success with rotated proxy - first proxy had format error, mark it as dead (already done above)
-            console.log(`  ✅ Format error resolved with rotated proxy - first proxy was the issue`);
-            resolveOnce(retryResult);
-            return;
-          } else {
-            // Same format error with rotated proxy - cookie failed
-            console.log(`  ❌ Format error persists with rotated proxy - cookie failed`);
-            resolveOnce({ status: 'fail', reason: 'format_error' });
-            return;
-          }
-        }
         
         // 🔧 FIX: Mark slow/unreliable proxies as DEAD when they timeout during cookie regeneration
         // Timeout (code === null) = timer expired, no response = slow/unreliable proxy
@@ -1530,13 +1272,6 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           }
         }
         // Note: We DON'T mark proxies as dead for bot detection errors (cookie issues, not proxy issues)
-        
-        if (hasFormatError) {
-          console.log(`  ❌ Cookie test FAILED (format error, ${proxy ? 'with proxy' : 'no proxy'})`);
-          console.log(`     Error preview: ${errorPreview}...`);
-          resolveOnce({ status: 'fail', reason: 'format_error' });
-          return;
-        }
         
         if (code === null) {
           console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
@@ -1566,36 +1301,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(async () => {
         if (resolved) return;
-        
-        // 🔧 CRITICAL FIX: Check if process has already completed successfully BEFORE resolving with failure
-        // This prevents race condition where process completes just before timeout
-        const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
-        const normalizedError = errorOutput.toLowerCase();
-        const hasBotDetectionError =
-          normalizedError.includes('sign in to confirm') ||
-          normalizedError.includes('login_required') ||
-          normalizedError.includes("you're not a bot") ||
-          normalizedError.includes('confirm you are not a bot') ||
-          normalizedError.includes('consent required') ||
-          normalizedError.includes('captcha') ||
-          normalizedError.includes('please sign in to continue') ||
-          normalizedError.includes('video unavailable') ||
-          normalizedError.includes('unplayable');
-        
-        // 🔧 CRITICAL: If we have successful extraction, wait a bit for close handler to process it
-        // Don't resolve with failure if process is about to complete successfully
-        if (hasExtractedFile && !hasBotDetectionError) {
-          console.log(`  ⏳ Timeout reached but detected successful extraction in progress - waiting 500ms for process to complete...`);
-          timeoutHandled = true;
-          // Give the close handler a chance to process the successful result
-          await new Promise(resolve => setTimeout(resolve, 500));
-          // If still not resolved, the close handler should have processed it
-          if (resolved) return;
-          // If still not resolved after wait, process might have failed - continue with timeout handling
-        }
-        
-        if (resolved) return;
-        resolved = true;
+        // 🔧 FIX: Set timeoutHandled flag BEFORE killing process to prevent close handler from resolving
         timeoutHandled = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
@@ -1617,17 +1323,26 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           
           // Retry with a new proxy
           const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-          resolveOnce(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolveOnce(retryResult);
+          }
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...`);
           
           const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-          resolveOnce(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolveOnce(retryResult);
+          }
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`  ❌ Cookie test timeout after ${retryCount + 1} attempts (including no-proxy) - giving up`);
-          resolveOnce({ status: 'fail', reason: 'timeout' });
+          if (!resolved) {
+            resolved = true;
+            resolveOnce({ status: 'fail', reason: 'timeout' });
+          }
         }
       }, processTimeout);
     });
@@ -2054,8 +1769,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       const startTime = Date.now();
-      // Start with resource limit, but allow adaptive reduction for rate limiting
-      let PARALLEL_TESTS = RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN;
+      let PARALLEL_TESTS = 3; // Start with 3 parallel tests (reduced from 5 to avoid rate limiting)
       const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts)
       const MAX_TIME = 180000; // Safety limit: 3 minutes max
       const PHASE1_TIME = 90000; // Phase 1: Get 2-3 STRONG cookies quickly (90s max)
@@ -2257,20 +1971,10 @@ async function generateAndTestCookies(maxAttempts = 100) {
               const tempCookiePath = path.join(__dirname, `.temp_test_cookies_${Date.now()}_${i}.txt`);
               await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
               
-              // 🔧 CRITICAL: Read cookie content from file BEFORE deleting it (safety backup)
-              const cookieContentFromFile = await fs.readFile(tempCookiePath, 'utf8').catch(() => null);
-              
               // 🎯 Test cookies - try without proxy if all proxies are failing
               const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
               
-              // 🔧 CRITICAL: Preserve cookie content (use file backup if cookieData is missing)
-              let finalCookieContent = cookieData.cookieContent;
-              if (!finalCookieContent && cookieContentFromFile) {
-                console.log(`  🔧 WARNING: cookieData.cookieContent missing in generateAndTestCookies, using content from temp file`);
-                finalCookieContent = cookieContentFromFile;
-              }
-              
-              // Clean up temp file (only after we've preserved content)
+              // Clean up temp file
               await fs.unlink(tempCookiePath).catch(() => {});
               
               const isSuccess = testResult && testResult.status !== 'fail';
@@ -2278,7 +1982,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
                 success: isSuccess, 
                 quality: testResult?.status || 'fail',
                 attempt, 
-                cookieContent: finalCookieContent, // Use finalCookieContent (either from cookieData or file)
+                cookieContent: cookieData.cookieContent,
                 visitorData: cookieData.visitorData,
                 tempPath: tempCookiePath
               };
@@ -2357,32 +2061,7 @@ async function generateAndTestCookies(maxAttempts = 100) {
             
             const slotIndex = nextAvailableSlot;
             const cookieQuality = result.quality === 'weak' ? 'weak' : 'strong';
-            
-            // 🔧 CRITICAL: Validate cookie content before saving
-            if (!result.cookieContent || result.cookieContent.length === 0) {
-              console.log(`  ⚠️ ERROR: Cookie test passed but content is missing! Skipping save for slot ${slotIndex + 1}`);
-              console.log(`  🔍 Debug: result.quality=${result.quality}, result.cookieContent=${!!result.cookieContent}`);
-              continue; // Skip this result
-            }
-            
-            console.log(`  💾 Saving ${cookieQuality.toUpperCase()} cookie to slot ${slotIndex + 1} (${result.cookieContent.length} chars)...`);
-            const savedPath = await saveCookieToPool(result.cookieContent, slotIndex, { quality: cookieQuality });
-            
-            if (!savedPath) {
-              console.log(`  ⚠️ ERROR: saveCookieToPool returned null - cookie was not saved! (slot ${slotIndex + 1})`);
-              continue; // Skip this result
-            }
-            
-            // 🔧 VERIFY: Check if cookie was actually saved to Redis
-            if (isRedisAvailable()) {
-              const savedCookies = await getAllCookiesFromRedis();
-              const savedCookie = savedCookies.find(c => c.index === slotIndex);
-              if (savedCookie && savedCookie.content) {
-                console.log(`  ✅ VERIFIED: Cookie saved to Redis slot ${slotIndex + 1} (${savedCookie.content.length} chars)`);
-              } else {
-                console.log(`  ⚠️ WARNING: Cookie may not be in Redis - savedCookie=${!!savedCookie} (slot ${slotIndex + 1})`);
-              }
-            }
+            await saveCookieToPool(result.cookieContent, slotIndex, { quality: cookieQuality });
             
             if (cookieQuality === 'weak') {
               mediumCookiesFound++;
@@ -2971,11 +2650,10 @@ async function regenerateSingleCookie(slotIndex) {
     
     // 🎯 STEP 2: Generate new STRONG cookies (with rate limiting to avoid bot detection)
     const startTime = Date.now();
-    // 🔥 REDUCE PARALLELISM: If all cookies are failing, reduce to 1-2 to avoid rate limits
-    // Also respect RESOURCE_LIMITS for Railway stability
+    // 🔥 STABILITY OPTIMIZATION: Start with 2 parallel generations (reduced from 3) to avoid overwhelming Railway/system
+    // Further reduce to 1 if failures are high to prevent rate limiting and resource pressure
     const recentFailures = global['cookie_regeneration_failures'] || 0;
-    const adaptiveParallel = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN);
-    const PARALLEL_GENERATION = Math.min(adaptiveParallel, RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN); // Cap at resource limit
+    const PARALLEL_GENERATION = recentFailures > 10 ? 1 : 2; // Adaptive: 2→1 (optimized for stability)
     let attempts = 0;
     const maxAttempts = 30; // Reduced from 50 to avoid long loops
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
@@ -3024,68 +2702,28 @@ async function regenerateSingleCookie(slotIndex) {
             await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
             
             // 🎯 Try without proxy if all proxies are failing
-            // 🔧 CRITICAL: Read cookie content from file BEFORE testing (safety backup)
-            const cookieContentFromFile = await fs.readFile(tempCookiePath, 'utf8').catch(() => null);
-            if (!cookieContentFromFile) {
-              console.log(`  ⚠️ ERROR: Failed to read cookie file before testing! (slot ${slotIndex + 1}, attempt ${attemptNum})`);
-              await fs.unlink(tempCookiePath).catch(() => {});
-              return null;
-            }
-            
-            console.log(`  🔍 Testing cookie for slot ${slotIndex + 1} attempt ${attemptNum} (content: ${cookieContentFromFile.length} chars)...`);
             const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
+            await fs.unlink(tempCookiePath).catch(() => {});
             
-            // 🔧 CRITICAL: Only delete temp file AFTER we've confirmed the result and preserved content
             // ✅ Only accept STRONG cookies (not weak, not failed)
             if (testResult && testResult.status === 'strong') {
-              // 🔧 FIX: Use cookieContent from file as primary source (most reliable)
-              let finalCookieContent = cookieContentFromFile || cookieData.cookieContent;
-              if (!finalCookieContent) {
-                console.log(`  ⚠️ ERROR: Cookie test passed but content is missing! (slot ${slotIndex + 1}, attempt ${attemptNum})`);
-                console.log(`  🔍 Debug: cookieData.cookieContent=${!!cookieData.cookieContent}, cookieContentFromFile=${!!cookieContentFromFile}`);
-                await fs.unlink(tempCookiePath).catch(() => {});
+              // 🔧 FIX: Double-check cookie content is still available before returning
+              if (!cookieData.cookieContent) {
+                console.log(`  ⚠️ ERROR: Cookie test passed but content is missing!`);
                 return null;
               }
               
-              // 🔧 VERIFY: Double-check content before returning
-              if (finalCookieContent.length < 100) {
-                console.log(`  ⚠️ WARNING: Cookie content seems too short (${finalCookieContent.length} chars) - might be corrupted`);
-              }
-              
-              console.log(`  ✅✅✅ Cookie test STRONG PASS - IMMEDIATELY preserving content (${finalCookieContent.length} chars) for slot ${slotIndex + 1}`);
-              console.log(`  🔍 DEBUG: Cookie content preview (first 50 chars): ${finalCookieContent.substring(0, 50)}...`);
-              
+              console.log(`  ✅ Cookie test passed - preserving content (${cookieData.cookieContent.length} chars) for slot ${slotIndex + 1}`);
               const cookieResult = { 
-                content: finalCookieContent, // Use file content as primary source
+                content: cookieData.cookieContent, 
                 quality: 'strong',
-                visitorData: cookieData.visitorData,
-                slotIndex: slotIndex, // Include slot index for debugging
-                attemptNum: attemptNum // Include attempt number for debugging
+                visitorData: cookieData.visitorData
               };
-              
-              console.log(`  🔍 DEBUG: Returning STRONG cookie result for slot ${slotIndex + 1}:`);
-              console.log(`    - quality: ${cookieResult.quality}`);
-              console.log(`    - hasContent: ${!!cookieResult.content}`);
-              console.log(`    - contentLength: ${cookieResult.content ? cookieResult.content.length : 0}`);
-              console.log(`    - hasVisitorData: ${!!cookieResult.visitorData}`);
-              
-              // 🔧 CRITICAL: Verify file still exists before cleanup (should always exist at this point)
-              try {
-                await fs.access(tempCookiePath);
-                // Clean up temp file now that we've preserved the content
-                await fs.unlink(tempCookiePath).catch(() => {});
-              } catch (err) {
-                console.log(`  ⚠️ WARNING: Temp file already deleted or missing: ${err.message}`);
-              }
-              
+              console.log(`  🔍 DEBUG: Returning cookie result for slot ${slotIndex + 1}: quality=${cookieResult.quality}, hasContent=${!!cookieResult.content}, contentLength=${cookieResult.content.length}`);
               return cookieResult;
             }
-            
-            // Test failed - clean up temp file
-            await fs.unlink(tempCookiePath).catch(() => {});
-            
             // Reject weak cookies - we only want STRONG
-            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, reason=${testResult ? testResult.reason : 'unknown'}, rejecting`);
+            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, rejecting`);
             return null;
           } catch (err) {
             console.log(`  ⚠️ ERROR: Exception in cookie generation promise for slot ${slotIndex + 1} attempt ${attemptNum}: ${err.message}`);
@@ -3109,53 +2747,21 @@ async function regenerateSingleCookie(slotIndex) {
         }
       }
       
-      const strongCookies = results.filter(r => {
-        // 🔧 CRITICAL: Filter out cookies that don't have content, even if they have quality='strong'
-        if (!r) {
-          return false;
-        }
-        if (r.quality !== 'strong') {
-          return false;
-        }
-        if (!r.content || typeof r.content !== 'string' || r.content.length === 0) {
-          console.log(`  ⚠️ WARNING: Filtering out strong cookie with no/invalid content for slot ${slotIndex + 1}`);
-          console.log(`    - r exists: ${!!r}`);
-          console.log(`    - r.quality: ${r.quality}`);
-          console.log(`    - r.content type: ${typeof r.content}`);
-          console.log(`    - r.content length: ${r.content ? r.content.length : 'N/A'}`);
-          return false;
-        }
-        // 🔧 VERIFY: Check minimum content length (cookies should be at least 100 chars)
-        if (r.content.length < 100) {
-          console.log(`  ⚠️ WARNING: Strong cookie content seems too short (${r.content.length} chars) - might be corrupted, filtering out`);
-          return false;
-        }
-        return true;
-      });
+      const strongCookies = results.filter(r => r !== null && r.quality === 'strong'); // Only STRONG cookies
       
       // 🔧 DEBUG: Log if we found strong cookies but they're not being saved
       if (strongCookies.length > 0) {
-        console.log(`  🎉🎉🎉 Found ${strongCookies.length} STRONG cookie(s) with VALID content - IMMEDIATELY saving to slot ${slotIndex + 1}...`);
+        console.log(`  ✅ Found ${strongCookies.length} STRONG cookie(s) - saving to slot ${slotIndex + 1}...`);
         for (let i = 0; i < strongCookies.length; i++) {
           const cookie = strongCookies[i];
           if (!cookie || !cookie.content) {
             console.log(`  ⚠️ WARNING: Strong cookie ${i + 1} is missing content!`);
           } else {
-            console.log(`  ✅✅✅ Strong cookie ${i + 1} VALIDATED - content: ${cookie.content.length} chars, slot: ${cookie.slotIndex || 'N/A'}, attempt: ${cookie.attemptNum || 'N/A'} - READY TO SAVE NOW`);
+            console.log(`  ✅ Strong cookie ${i + 1} has content (${cookie.content.length} chars)`);
           }
         }
       } else {
-        const nonNullResults = results.filter(r => r !== null);
-        const strongButNoContent = results.filter(r => r && r.quality === 'strong' && (!r.content || r.content.length === 0));
-        const strongButTooShort = results.filter(r => r && r.quality === 'strong' && r.content && r.content.length > 0 && r.content.length < 100);
-        console.log(`  ⚠️ DEBUG: No VALID strong cookies found in results array:`);
-        console.log(`    - Total results: ${results.length}`);
-        console.log(`    - Non-null results: ${nonNullResults.length}`);
-        console.log(`    - Strong but no content: ${strongButNoContent.length}`);
-        console.log(`    - Strong but too short: ${strongButTooShort.length}`);
-        if (nonNullResults.length > 0) {
-          console.log(`    - Non-null result qualities: ${nonNullResults.map(r => r.quality).join(', ')}`);
-        }
+        console.log(`  ⚠️ DEBUG: No strong cookies found in results array (total results: ${results.length}, non-null: ${results.filter(r => r !== null).length})`);
       }
       
       // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
@@ -3191,73 +2797,22 @@ async function regenerateSingleCookie(slotIndex) {
         // ✅ STEP 3: Replace failed cookie slot with FIRST strong cookie
         const firstStrongCookie = strongCookies[0];
         
-        // 🔧 CRITICAL: Validate cookie content before saving
-        if (!firstStrongCookie) {
-          console.log(`  ❌❌❌ ERROR: firstStrongCookie is null/undefined for slot ${slotIndex + 1} - CANNOT SAVE`);
-        } else if (!firstStrongCookie.content || typeof firstStrongCookie.content !== 'string' || firstStrongCookie.content.length === 0) {
-          console.log(`  ❌❌❌ ERROR: Strong cookie found but content is missing or invalid! (slot ${slotIndex + 1})`);
-          console.log(`  🔍 Debug: firstStrongCookie keys = ${JSON.stringify(Object.keys(firstStrongCookie))}`);
-          console.log(`  🔍 Debug: firstStrongCookie.quality = ${firstStrongCookie.quality}`);
-          console.log(`  🔍 Debug: firstStrongCookie.content type = ${typeof firstStrongCookie.content}`);
-          console.log(`  🔍 Debug: firstStrongCookie.content = ${firstStrongCookie.content ? `exists (${firstStrongCookie.content.length} chars)` : 'MISSING'}`);
-          console.log(`  🔍 Debug: firstStrongCookie.slotIndex = ${firstStrongCookie.slotIndex}`);
-          console.log(`  🔍 Debug: firstStrongCookie.attemptNum = ${firstStrongCookie.attemptNum}`);
-        } else if (firstStrongCookie.content.length < 100) {
-          console.log(`  ❌❌❌ ERROR: Strong cookie content too short (${firstStrongCookie.content.length} chars) - might be corrupted, CANNOT SAVE`);
+        // 🔧 FIX: Validate cookie content before saving
+        if (!firstStrongCookie || !firstStrongCookie.content) {
+          console.log(`  ⚠️ ERROR: Strong cookie found but content is missing! Skipping save.`);
+          console.log(`  🔍 Debug: firstStrongCookie = ${JSON.stringify(firstStrongCookie ? Object.keys(firstStrongCookie) : 'null')}`);
         } else {
           try {
-            console.log(`  💾💾💾 IMMEDIATELY Saving STRONG cookie to slot ${slotIndex + 1}...`);
-            console.log(`    - Content length: ${firstStrongCookie.content.length} chars`);
-            console.log(`    - Quality: ${firstStrongCookie.quality}`);
-            console.log(`    - Source slot: ${firstStrongCookie.slotIndex || 'N/A'}`);
-            console.log(`    - Source attempt: ${firstStrongCookie.attemptNum || 'N/A'}`);
-            console.log(`    - Content preview: ${firstStrongCookie.content.substring(0, 100)}...`);
-            
             const savedPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
             if (savedPath) {
               // This replaces the failed cookie at slotIndex
-              console.log(`  ✅✅✅ SUCCESS: Cookie slot ${slotIndex + 1} replaced with new STRONG cookie (saved to: ${savedPath})`);
-              
-              // 🔧 VERIFY: Check if cookie was actually saved to Redis IMMEDIATELY
-              if (isRedisAvailable()) {
-                // Wait a tiny bit for Redis write to complete
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                const savedCookies = await getAllCookiesFromRedis();
-                const savedCookie = savedCookies.find(c => c.index === slotIndex);
-                if (savedCookie && savedCookie.content) {
-                  if (savedCookie.content === firstStrongCookie.content || savedCookie.content.length === firstStrongCookie.content.length) {
-                    console.log(`  ✅✅✅ VERIFIED: Cookie successfully saved to Redis slot ${slotIndex + 1} (${savedCookie.content.length} chars) - CONTENT MATCHES`);
-                  } else {
-                    console.log(`  ⚠️ WARNING: Cookie in Redis but content length mismatch (saved: ${firstStrongCookie.content.length}, Redis: ${savedCookie.content.length})`);
-                  }
-                } else {
-                  console.log(`  ❌❌❌ ERROR: Cookie NOT FOUND in Redis after save! (slot ${slotIndex + 1})`);
-                  console.log(`    - savedCookie exists: ${!!savedCookie}`);
-                  console.log(`    - savedCookie has content: ${!!(savedCookie && savedCookie.content)}`);
-                  console.log(`    - Total cookies in Redis: ${savedCookies.length}`);
-                  console.log(`    - Redis cookie indices: ${savedCookies.map(c => c.index).join(', ')}`);
-                  
-                  // 🔧 RETRY: Try saving again
-                  console.log(`  🔄 Retrying save to Redis...`);
-                  const retryPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
-                  if (retryPath) {
-                    console.log(`  ✅ Retry save successful (${retryPath})`);
-                  } else {
-                    console.log(`  ❌ Retry save failed`);
-                  }
-                }
-              } else {
-                console.log(`  ⚠️ Redis not available - cookie saved to filesystem only`);
-              }
+              console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie`);
             } else {
-              console.log(`  ❌❌❌ ERROR: saveCookieToPool returned null - cookie was NOT saved! (slot ${slotIndex + 1})`);
-              console.log(`    - This is a CRITICAL error - STRONG cookie was lost!`);
+              console.log(`  ⚠️ ERROR: saveCookieToPool returned null - cookie was not saved!`);
             }
           } catch (saveErr) {
-            console.log(`  ❌❌❌ ERROR: Exception while saving cookie to pool: ${saveErr.message} (slot ${slotIndex + 1})`);
+            console.log(`  ⚠️ ERROR: Failed to save cookie to pool: ${saveErr.message}`);
             console.log(`  🔍 Stack: ${saveErr.stack}`);
-            console.log(`    - This is a CRITICAL error - STRONG cookie was lost due to exception!`);
           }
         }
         
@@ -3340,13 +2895,12 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '128K', // Low quality for fast testing
-      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
       '--no-playlist',
       '--quiet',
       '--no-warnings',
       '--no-check-certificates',
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
+      '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
@@ -3370,7 +2924,6 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 30000 // 30s timeout for actual extraction (matching cookie test timeout)
       });
-      trackProcess(testProcess); // Track process for cleanup
       
       let errorOutput = '';
       let stdoutData = '';
@@ -3384,19 +2937,13 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
         errorOutput += data.toString();
       });
       
+      // 🔧 FIX: Flag to prevent close handler from resolving when timeout triggers retry
+      let timeoutHandled = false;
+
       testProcess.on('close', async (code) => {
-        untrackProcess(testProcess); // Remove from tracking
         if (resolved) return;
-        resolved = true;
-        
-        const normalizedError = errorOutput.toLowerCase();
-        
-        // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
-        const hasFormatError = normalizedError.includes('requested format is not available') ||
-                              normalizedError.includes('failed to extract any player response') ||
-                              normalizedError.includes('format is not available') ||
-                              errorOutput.includes('Requested format is not available') ||
-                              errorOutput.includes('Failed to extract any player response');
+        // 🔧 FIX: If timeout handler is handling retry, don't resolve here - let retry handle it
+        if (timeoutHandled) return;
         
         // Check for bot detection errors
         const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
@@ -3406,6 +2953,13 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
                                      errorOutput.includes('UNPLAYABLE') ||
                                      errorOutput.includes('Video unavailable') ||
                                      errorOutput.includes('This video is unavailable');
+        
+        // 🔧 NEW: Check for format extraction errors (YouTube API issues)
+        const normalizedError = errorOutput.toLowerCase();
+        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
+                              normalizedError.includes('requested format is not available') ||
+                              normalizedError.includes('no formats found') ||
+                              normalizedError.includes('format is not available');
         
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -3420,63 +2974,51 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
           }
         }
         
-        // 🎯 FORMAT ERROR HANDLING: For cookie re-validation, 2 retries with 2 rotated proxies
-        if (hasFormatError && code !== 0 && !skipProxy && retryCount < 2) {
+        // 🔧 NEW: Handle format errors with proxy rotation (2 retries with proxies, then 1 without)
+        if (hasFormatError) {
           const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
-          console.log(`    ⚠️ Format error detected (proxy issue): ${errorPreview.substring(0, 100)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          console.log(`    🔄 Retrying with different proxy (attempt ${retryCount + 2}/3)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          console.log(`    ❌ Cookie test FORMAT ERROR: ${errorPreview}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           
-          // Mark current proxy as dead (format error = proxy problem)
+          // Mark proxy as dead if format error occurred
           if (usedProxy && typeof usedProxy === 'string') {
-            const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
-            if (proxyMatch) {
-              const proxyHost = proxyMatch[1];
-              proxyManager.markFailed(proxyHost);
-              console.log(`    🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-            }
+            proxyManager.markFailed(usedProxy);
+            console.log(`    🗑️ Marked proxy as DEAD (format error): ${usedProxy.substring(0, 30)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           }
           
-          // Retry with different proxy (up to 2 retries for re-validation)
-          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
-          if (retryResult) {
-            // Success with rotated proxy - first proxy had format error
-            console.log(`    ✅ Format error resolved with rotated proxy - first proxy was the issue` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          // 🎯 DOWNLOAD/REVALIDATION MODE: 2 proxy retries, then 1 without proxy
+          if (retryCount < 2 && !skipProxy) {
+            // Try with different proxy
+            console.log(`    🔄 Format error - trying with different proxy (attempt ${retryCount + 2}/4)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolved = true;
+            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
+            resolve(retryResult);
+            return;
+          } else if (retryCount === 2 && !skipProxy) {
+            // Try without proxy (4th attempt)
+            console.log(`    🔄 Format error after 2 proxies - trying WITHOUT proxy (final attempt)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolved = true;
+            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
             resolve(retryResult);
             return;
           } else {
-            // Still failing with rotated proxy - continue to next retry or no-proxy
-            console.log(`    ⚠️ Format error persists with rotated proxy - trying next proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          }
-        }
-        
-        // If format error after 2 proxy retries, try without proxy
-        if (hasFormatError && code !== 0 && !skipProxy && retryCount >= 2) {
-          console.log(`    🔄 All proxy retries failed with format error - trying WITHOUT proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
-          if (retryResult) {
-            // Success without proxy - proxies had format error, cookie is fine
-            console.log(`    ✅ Format error resolved without proxy - proxies were the issue` + (index !== null ? ` [slot ${index + 1}]` : ''));
-            resolve(retryResult);
-            return;
-          } else {
-            // Failed even without proxy - cookie issue
-            console.log(`    ❌ Format error persists even without proxy - cookie failed` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            // All attempts failed - cookie is dead
+            console.log(`    ❌ Format error persists after all retries - cookie is DEAD` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolved = true;
             resolve(false);
             return;
           }
         }
         
         // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
-        const isValid = !hasBotDetectionError && !hasFormatError && hasExtractedFile && code === 0;
+        const isValid = !hasBotDetectionError && hasExtractedFile && code === 0;
         
-        if (hasFormatError) {
-          console.log(`    ❌ Cookie test FAILED (format error)` + (index !== null ? ` [slot ${index + 1}]` : ''));
-        } else if (!isValid) {
+        if (!isValid) {
           console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
         } else {
           console.log(`    ✅ Cookie test STRONG PASS (valid JSON with title/id)` + (index !== null ? ` [slot ${index + 1}]` : ''));
         }
         
+        resolved = true;
         resolve(isValid);
       });
       
@@ -3489,7 +3031,8 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       // TIMEOUT: 30s for actual extraction test (matching cookie test timeout)
       setTimeout(async () => {
         if (resolved) return;
-        resolved = true;
+        // 🔧 FIX: Set timeoutHandled flag BEFORE killing process to prevent close handler from resolving
+        timeoutHandled = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         
         // 🔧 FIX: Timeout = PROXY PROBLEM, not cookie problem!
@@ -3504,17 +3047,26 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
           
           // Retry with a new proxy
           const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
-          resolve(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolve(retryResult);
+          }
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`    🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           
           const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
-          resolve(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolve(retryResult);
+          }
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`    ❌ Cookie test timeout after ${MAX_PROXY_RETRIES + 1} attempts (including no-proxy) - marking cookie as dead` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          resolve(false);
+          if (!resolved) {
+            resolved = true;
+            resolve(false);
+          }
         }
       }, 30000);
     });
@@ -7300,17 +6852,6 @@ app.post('/api/download/start', async (req, res) => {
     }
   }
 
-  // 🛡️ Check concurrent download limit
-  if (activeDownloads.size >= RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS) {
-    const errorMsg = `Server is at maximum concurrent download limit (${RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS}). Please wait for current downloads to complete.`;
-    console.log(`⚠️ ${errorMsg}`);
-    return res.status(429).json({ 
-      ok: false, 
-      error: errorMsg,
-      downloadId 
-    });
-  }
-  
   // Store download info
   activeDownloads.set(downloadId, {
     playlistUrl: effectivePlaylistUrl,
@@ -7319,9 +6860,7 @@ app.post('/api/download/start', async (req, res) => {
     outputFolder,
     status: 'starting',
     progress: {},
-    socketId, // Store which client initiated this download
-    completedAt: null, // Will be set when download completes
-    startTime: Date.now()
+    socketId // Store which client initiated this download
   });
 
   res.json({ downloadId, outputFolder });
@@ -8240,7 +7779,7 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false, formatErrorRetryCount = 0) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
@@ -8344,18 +7883,14 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     applyClientProfileToOptions(downloadOptions, profile);
     console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
     
-    // 🎯 PROXY SUPPORT: Use YouTube-validated proxy for both cookie-less and cookie-based downloads
+    // 🎯 COOKIE-LESS FIRST MODE: Force YouTube-validated proxy (if available)
     // 🔧 STABILITY FIX: Skip proxy if skipProxy is true (no-proxy fallback)
-    if (!skipProxy) {
+    if (cookiePath === null && !skipProxy) {
       const youtubeProxy = await proxyManager.getProxyForYtdlp();
       if (youtubeProxy) {
         // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
         downloadOptions.proxy = youtubeProxy;
-        if (cookiePath === null) {
-          console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
-        } else {
-          console.log(`  🌐 Using YouTube-validated proxy for cookie-based download`);
-        }
+        console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
         if (youtubeProxy && typeof youtubeProxy === 'string') {
           if (youtubeProxy.includes('oxylabs.io')) {
             console.log(`     🌟 Oxylabs premium proxy (verified working with YouTube)`);
@@ -8365,13 +7900,9 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
           }
         }
       } else {
-        if (cookiePath === null) {
-          console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
-        } else {
-          console.log(`  ⚠️  No YouTube-validated proxy available for cookie-based download`);
-        }
+        console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
       }
-    } else {
+    } else if (skipProxy) {
       console.log(`  🚫 Skipping proxy (no-proxy fallback mode)`);
     }
     
@@ -8446,76 +7977,11 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
-    const hasFormatError = fullError.includes('requested format is not available') ||
-                          fullError.includes('failed to extract any player response') ||
-                          fullError.includes('format is not available') ||
-                          errorMessage.includes('Requested format is not available') ||
-                          errorMessage.includes('Failed to extract any player response');
-    
-    // 🎯 FORMAT ERROR HANDLING: For downloads, 2 retries with 2 rotated proxies, then no-proxy
-    if (hasFormatError) {
-      // If we're already trying without proxy and still get format error, it's a cookie issue
-      if (skipProxy) {
-        console.log(`  ❌ Format error persists even without proxy - cookie issue or other problem`);
-        console.log(`  ❌ Format error: ${errorMessage.substring(0, 200)}...`);
-        return false;
-      }
-      
-      // If we've tried 2 proxies and still get format error, try without proxy
-      if (formatErrorRetryCount >= 2) {
-        console.log(`  🔄 All ${formatErrorRetryCount} proxy retries failed with format error - trying WITHOUT proxy...`);
-        
-        // Mark current proxy as dead (format error = proxy problem)
-        if (downloadOptions.proxy && typeof downloadOptions.proxy === 'string') {
-          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
-          if (proxyMatch) {
-            const proxyHost = proxyMatch[1];
-            proxyManager.markFailed(proxyHost);
-            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
-          }
-        }
-        
-        // Retry without proxy (4th attempt)
-        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, true, formatErrorRetryCount);
-        if (retryResult === true) {
-          // Success without proxy - proxies had format error, cookie is fine
-          console.log(`  ✅ Format error resolved without proxy - proxies were the issue`);
-          return true;
-        } else {
-          // Failed even without proxy - cookie issue or other problem
-          console.log(`  ❌ Format error persists even without proxy - cookie issue or other problem`);
-          return false;
-        }
-      }
-      
-      // If format error and we haven't tried 2 proxies yet, retry with different proxy
-      if (formatErrorRetryCount < 2) {
-        console.log(`  ⚠️ Format error detected (proxy issue): ${errorMessage.substring(0, 200)}...`);
-        console.log(`  🔄 Retrying with different proxy (attempt ${formatErrorRetryCount + 2}/3)...`);
-        
-        // Mark current proxy as dead (format error = proxy problem)
-        if (downloadOptions.proxy && typeof downloadOptions.proxy === 'string') {
-          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
-          if (proxyMatch) {
-            const proxyHost = proxyMatch[1];
-            proxyManager.markFailed(proxyHost);
-            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
-          }
-        }
-        
-        // Retry with different proxy (up to 2 retries for downloads)
-        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, false, formatErrorRetryCount + 1);
-        if (retryResult === true) {
-          // Success with rotated proxy - first proxy had format error
-          console.log(`  ✅ Format error resolved with rotated proxy - first proxy was the issue`);
-          return true;
-        } else {
-          // Still failing - retry logic will continue in next call
-          return retryResult;
-        }
-      }
-    }
+    // 🔧 NEW: Detect format extraction errors (YouTube API issues)
+    const hasFormatError = fullError.includes('failed to extract any player response') ||
+                          fullError.includes('requested format is not available') ||
+                          fullError.includes('no formats found') ||
+                          fullError.includes('format is not available');
     
     // 🔧 STABILITY FIX: Detect timeout/connection errors first
     const hasTimeoutError = fullError.includes('read timed out') ||
@@ -8529,6 +7995,30 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
                            fullError.includes('connection aborted') ||
                            fullError.includes('econnreset') ||
                            fullError.includes('protocol error');
+    
+    // 🔧 NEW: Handle format extraction errors (YouTube API issues) with proxy rotation
+    if (hasFormatError) {
+      console.log('  ❌ Format extraction error detected in youtube-dl-exec');
+      
+      // If proxy was used, mark it as dead and return 'format_error' to trigger proxy rotation
+      if (downloadOptions.proxy && !skipProxy) {
+        // Extract proxy host and mark as dead
+        if (typeof downloadOptions.proxy === 'string') {
+          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (format error in download): ${proxyHost.substring(0, 30)}...`);
+          }
+        }
+        console.log(`  🔄 Will retry with different proxy`);
+        return 'format_error';
+      } else {
+        // No proxy was used, or skipProxy was true - return 'format_error_no_proxy'
+        console.log(`  ⚠️ Format error without proxy (or proxy was skipped)`);
+        return 'format_error_no_proxy';
+      }
+    }
     
     // 🔧 STABILITY FIX: Handle timeout errors (return special value for proxy rotation)
     if (hasTimeoutError) {
@@ -8871,11 +8361,9 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
   console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
-  // Use threads from settings (1-16, default reduced for Railway stability)
-  // Cap at MAX_PARALLEL_DOWNLOADS to prevent resource exhaustion
-  const requestedThreads = settings.threads || RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS;
-  const parallelDownloads = Math.min(requestedThreads, RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS);
-  console.log(`⚡ Using ${parallelDownloads} parallel downloads (capped at ${RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS} for stability)`);
+  // Use threads from settings (1-16, default 8)
+  const parallelDownloads = settings.threads || 8;
+  console.log(`⚡ Using ${parallelDownloads} parallel downloads (from settings)`);
   
   // Get list of already downloaded files
   const files = await fs.readdir(outputFolder);
@@ -9174,14 +8662,32 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
               break;
             }
             
+            // 🔧 NEW: If format error occurred: proxy is dead, retry with different proxy
+            if (ytdlExecSuccess === 'format_error') {
+              console.log(`  ❌ Format extraction error detected - proxy is dead, retrying with different proxy`);
+              retryCount++;
+              
+              // Don't wait on last retry (will try without proxy)
+              if (retryCount < maxProxyRetries) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1s between retries
+              }
+              continue;
+            }
+            
+            // If format_error_no_proxy - tried without proxy and still failed
+            if (ytdlExecSuccess === 'format_error_no_proxy') {
+              console.log(`  ❌ Format extraction error even without proxy - YouTube API issue`);
+              break;
+            }
+            
             // If success or other error, break
             if (ytdlExecSuccess === true || ytdlExecSuccess === 'success') {
               console.log(`  ✅ Download succeeded on attempt ${retryCount + 1}`);
               break;
             }
             
-            // Other error (not timeout) - break and try next method
-            console.log(`  ⚠️  Non-timeout error - trying next download method`);
+            // Other error (not timeout/format) - break and try next method
+            console.log(`  ⚠️  Non-timeout/format error - trying next download method`);
             break;
           }
         } else {
@@ -10579,15 +10085,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       message: '🎯 Trying cookie-less download first (fast attempt)...'
     });
     
-    // 🎯 COOKIE-LESS DOWNLOADS: How do downloads work without cookies?
-    // When cookies are unavailable (0/5), the system uses alternative methods:
-    // 1. yt-dlp with android_sdkless client (no cookies needed, uses API key extraction)
-    // 2. YouTubei.js library (direct API access without browser cookies)
-    // 3. Piped API (public proxy service for YouTube)
-    // 4. Invidious API (public proxy service for YouTube)
-    // These methods bypass YouTube's bot detection by using different clients/APIs
-    // If ALL cookie-less methods fail, we wait for cookie regeneration and retry with cookies
-    
     // Set flag to indicate we're trying cookie-less first
     downloadInfo.triedCookieLessFirst = true;
     downloadInfo.waitingForStrongCookie = false;
@@ -10710,9 +10207,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           console.log(`✅ All tracks downloaded successfully!`);
           // 🚀 IMMEDIATE COMPLETION: Emit completion event right away (don't wait for cookies)
           downloadInfo.status = 'completed';
-          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
-          downloadInfo.cookieLessAttemptInProgress = false; // 🔧 FIX: Clear cookie-less flag on success
-          downloadInfo.waitingForStrongCookie = false; // 🔧 FIX: Clear waiting flag on success
           downloadInfo.totalSuccess = musicFilesAfter.length;
           downloadInfo.totalFailed = tracks.length - musicFilesAfter.length;
           downloadInfo.attempts = attempt;
@@ -11997,7 +11491,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                   console.log('✅ ALL TRACKS VERIFIED - Download complete!\n');
                   const successfulTracks = tracks.length;
                   downloadInfo.status = 'completed';
-          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
                   downloadInfo.totalSuccess = successfulTracks;
                   downloadInfo.totalFailed = 0;
                   downloadInfo.attempts = attempt;
@@ -12051,7 +11544,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             // Give up - these tracks are not available on YouTube
             const successfulTracks = tracks.length - remaining;
             downloadInfo.status = 'completed';
-          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
             downloadInfo.totalSuccess = successfulTracks;
             downloadInfo.totalFailed = remaining;
             downloadInfo.attempts = attempt;
@@ -12096,7 +11588,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             
             if (downloadInfo) {
               downloadInfo.status = 'completed';
-          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
               downloadInfo.totalSuccess = successfulTracks;
               downloadInfo.totalFailed = remaining;
               downloadInfo.attempts = attempt;
@@ -12136,7 +11627,6 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const downloadInfo = activeDownloads.get(downloadId);
           if (downloadInfo) {
             downloadInfo.status = 'completed';
-          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
             downloadInfo.totalSuccess = totalSuccess;
             downloadInfo.totalFailed = totalFailed;
             downloadInfo.attempts = attempt;
@@ -13034,6 +12524,67 @@ startupSequence().then(async () => {
       console.log('⚠️ Auto-update disabled (AUTO_UPDATE=false)');
     }
   });
+  
+  // 🔧 GRACEFUL SHUTDOWN: Handle termination signals to prevent Railway auto-restarts
+  const gracefulShutdown = (signal) => {
+    console.log(`\n🛑 ${signal} received - Starting graceful shutdown...`);
+    
+    // Stop accepting new connections
+    httpServer.close(() => {
+      console.log('✅ HTTP server closed');
+      
+      // Clean up resources
+      console.log('🧹 Cleaning up resources...');
+      
+      // Clear active downloads
+      if (activeDownloads.size > 0) {
+        console.log(`  🚫 Cancelling ${activeDownloads.size} active download(s)...`);
+        activeDownloads.clear();
+      }
+      
+      // Clear regeneration locks
+      if (activeRegenerations.size > 0) {
+        console.log(`  🚫 Cancelling ${activeRegenerations.size} active regeneration(s)...`);
+        activeRegenerations.clear();
+      }
+      
+      // Clear global timers/maps
+      if (global['regenerationStartTimes']) {
+        global['regenerationStartTimes'].clear();
+      }
+      if (global['slotFailureCounts']) {
+        global['slotFailureCounts'].clear();
+      }
+      if (global['slotLastRetryTimes']) {
+        global['slotLastRetryTimes'].clear();
+      }
+      
+      console.log('✅ Cleanup complete - Shutting down gracefully');
+      process.exit(0);
+    });
+    
+    // Force shutdown after 30 seconds if graceful shutdown hangs
+    setTimeout(() => {
+      console.error('⚠️ Graceful shutdown timeout - forcing exit');
+      process.exit(1);
+    }, 30000);
+  };
+  
+  // Listen for termination signals
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  
+  // 🔧 MEMORY OPTIMIZATION: Periodic garbage collection hint (for large downloads)
+  if (global.gc) {
+    setInterval(() => {
+      if (activeDownloads.size === 0) {
+        // Only run GC when no downloads are active to avoid performance impact
+        global.gc();
+        console.log('♻️ Memory garbage collection triggered (idle state)');
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
+  }
+  
 }).catch((error) => {
   console.error('❌ Fatal startup error:', error);
   console.error('   Stack:', error.stack);
