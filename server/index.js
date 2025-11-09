@@ -517,7 +517,7 @@ const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
-const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
+const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (stable, publicly accessible video for cookie testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
@@ -1141,6 +1141,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
+      let formatErrorHandled = false; // 🔧 FIX: Flag to prevent timeout handler from interfering with format error retries
 
       const resolveOnce = (value) => {
         if (resolved) return;
@@ -1164,6 +1165,8 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
 
       testProcess.on('close', async (code) => {
         if (resolved) return;
+        // 🔧 FIX: If format error handler is processing retry, don't resolve here - let retry handle it
+        if (formatErrorHandled) return;
 
         const normalizedError = errorOutput.toLowerCase();
         const hasBotDetectionError =
@@ -1204,6 +1207,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         }
 
         // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
+        // 🔧 FIX: Check success BEFORE format errors (success takes priority)
         if (code === 0 && hasExtractedFile) {
           console.log('  ✅ Cookie test STRONG PASS (successfully extracted audio file)');
           resolveOnce({ status: 'strong' });
@@ -1211,7 +1215,11 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         }
 
         // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-        if (hasFormatError && !skipProxy && proxy) {
+        // ⚠️ Only handle format errors if test didn't succeed (code !== 0 or !hasExtractedFile)
+        if (hasFormatError && !skipProxy && proxy && code !== 0) {
+          // 🔧 FIX: Set flag BEFORE starting retry to prevent timeout handler from interfering
+          formatErrorHandled = true;
+          
           const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
           console.log(`  ⚠️ Format error detected: ${errorPreview}...`);
           console.log(`  🔄 Retrying with different proxy (format error - proxy issue suspected)...`);
@@ -1227,12 +1235,14 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           // Retry with different proxy (up to 2 proxy rotations)
           if (retryCount < 2) {
             const retryResult = await testCookies(cookiePath, false, retryCount + 1);
+            // 🔧 FIX: Always resolve with retry result (resolveOnce checks resolved flag internally)
             resolveOnce(retryResult);
             return;
           } else if (retryCount === 2) {
             // After 2 proxy rotations, try without proxy
             console.log(`  🔄 Format error persists after proxy rotation - trying WITHOUT proxy...`);
             const retryResult = await testCookies(cookiePath, true, retryCount + 1);
+            // 🔧 FIX: Always resolve with retry result (resolveOnce checks resolved flag internally)
             resolveOnce(retryResult);
             return;
           }
@@ -1304,7 +1314,9 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(async () => {
         if (resolved) return;
-        resolved = true;
+        // 🔧 FIX: If format error handler is processing retry, don't interfere with timeout handler
+        if (formatErrorHandled) return;
+        
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
         console.log(`  ❌ Cookie test timeout - rejecting (${processTimeout/1000}s limit, ${proxyType})`);
@@ -1323,15 +1335,21 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         if (retryCount < MAX_PROXY_RETRIES && !skipProxy) {
           console.log(`  🔄 Retrying cookie test with different proxy (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...`);
           
-          // Retry with a new proxy
+          // Retry with a new proxy - let resolveOnce handle the resolved flag
           const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-          resolveOnce(retryResult);
+          // 🔧 FIX: resolveOnce will set resolved flag and resolve - check if not already resolved
+          if (!resolved) {
+            resolveOnce(retryResult);
+          }
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...`);
           
           const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-          resolveOnce(retryResult);
+          // 🔧 FIX: resolveOnce will set resolved flag and resolve - check if not already resolved
+          if (!resolved) {
+            resolveOnce(retryResult);
+          }
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`  ❌ Cookie test timeout after ${retryCount + 1} attempts (including no-proxy) - giving up`);
@@ -2697,6 +2715,9 @@ async function regenerateSingleCookie(slotIndex) {
             const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
             await fs.unlink(tempCookiePath).catch(() => {});
             
+            // 🔍 DEBUG: Log test result to understand what we're getting
+            console.log(`  🔍 DEBUG: testCookies returned for slot ${slotIndex + 1} attempt ${attemptNum}:`, JSON.stringify(testResult));
+            
             // ✅ Only accept STRONG cookies (not weak, not failed)
             if (testResult && testResult.status === 'strong') {
               // 🔧 FIX: Double-check cookie content is still available before returning
@@ -2715,7 +2736,7 @@ async function regenerateSingleCookie(slotIndex) {
               return cookieResult;
             }
             // Reject weak cookies - we only want STRONG
-            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, rejecting`);
+            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, reason=${testResult ? (testResult.reason || 'none') : 'null'}, rejecting`);
             return null;
           } catch (err) {
             console.log(`  ⚠️ ERROR: Exception in cookie generation promise for slot ${slotIndex + 1} attempt ${attemptNum}: ${err.message}`);
