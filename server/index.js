@@ -752,7 +752,7 @@ const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
-const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
+const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (stable, publicly accessible video for cookie testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
