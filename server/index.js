@@ -1321,28 +1321,19 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         if (retryCount < MAX_PROXY_RETRIES && !skipProxy) {
           console.log(`  🔄 Retrying cookie test with different proxy (attempt ${retryCount + 2}/${MAX_PROXY_RETRIES + 1})...`);
           
-          // Retry with a new proxy
+          // Retry with a new proxy - resolveOnce handles the resolved check internally
           const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-          if (!resolved) {
-            resolved = true;
-            resolveOnce(retryResult);
-          }
+          resolveOnce(retryResult);
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...`);
           
           const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-          if (!resolved) {
-            resolved = true;
-            resolveOnce(retryResult);
-          }
+          resolveOnce(retryResult);
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`  ❌ Cookie test timeout after ${retryCount + 1} attempts (including no-proxy) - giving up`);
-          if (!resolved) {
-            resolved = true;
-            resolveOnce({ status: 'fail', reason: 'timeout' });
-          }
+          resolveOnce({ status: 'fail', reason: 'timeout' });
         }
       }, processTimeout);
     });
