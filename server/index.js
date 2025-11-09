@@ -753,7 +753,7 @@ const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use obscure test video to avoid heavy bot detection on popular videos
 // Popular videos like Rick Astley are heavily monitored and blocked by YouTube
-const TEST_VIDEO_ID = 'aqz-KE-bpKQ'; // Big Buck Bunny trailer (Creative Commons, less monitored, more likely to pass bot detection)
+const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Test video for cookie validation
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
@@ -1296,12 +1296,13 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '64K', // Very low quality for fast testing
+      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
       '--no-playlist',
       '--quiet',
       '--no-warnings',
       '--no-check-certificates', // 🔒 Fix SSL certificate errors when using proxies
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '3M' // Abort if too large (just testing)
     ];
@@ -3339,12 +3340,13 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '128K', // Low quality for fast testing
+      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
       '--no-playlist',
       '--quiet',
       '--no-warnings',
       '--no-check-certificates',
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
@@ -10577,6 +10579,15 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       message: '🎯 Trying cookie-less download first (fast attempt)...'
     });
     
+    // 🎯 COOKIE-LESS DOWNLOADS: How do downloads work without cookies?
+    // When cookies are unavailable (0/5), the system uses alternative methods:
+    // 1. yt-dlp with android_sdkless client (no cookies needed, uses API key extraction)
+    // 2. YouTubei.js library (direct API access without browser cookies)
+    // 3. Piped API (public proxy service for YouTube)
+    // 4. Invidious API (public proxy service for YouTube)
+    // These methods bypass YouTube's bot detection by using different clients/APIs
+    // If ALL cookie-less methods fail, we wait for cookie regeneration and retry with cookies
+    
     // Set flag to indicate we're trying cookie-less first
     downloadInfo.triedCookieLessFirst = true;
     downloadInfo.waitingForStrongCookie = false;
@@ -10700,6 +10711,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           // 🚀 IMMEDIATE COMPLETION: Emit completion event right away (don't wait for cookies)
           downloadInfo.status = 'completed';
           downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
+          downloadInfo.cookieLessAttemptInProgress = false; // 🔧 FIX: Clear cookie-less flag on success
+          downloadInfo.waitingForStrongCookie = false; // 🔧 FIX: Clear waiting flag on success
           downloadInfo.totalSuccess = musicFilesAfter.length;
           downloadInfo.totalFailed = tracks.length - musicFilesAfter.length;
           downloadInfo.attempts = attempt;
