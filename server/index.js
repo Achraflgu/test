@@ -517,7 +517,7 @@ const COOKIE_METADATA_PATH = path.join(__dirname, '.cookie_metadata.json');
 const AUTO_COOKIE_PATH = path.join(__dirname, '.auto_generated_cookies.txt');
 const COOKIE_POOL_DIR = path.join(__dirname, '.cookie_pool'); // Pool of 5 working cookies
 // Use short test video for faster cookie testing (19 seconds, oldest YouTube video)
-const TEST_VIDEO_ID = 'jNQXAC9IVRw'; // Me at the zoo (short video, perfect for fast testing)
+const TEST_VIDEO_ID = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (stable, publicly accessible video for cookie testing)
 
 // Lock to prevent concurrent cookie generation
 let isGeneratingCookies = false;
@@ -1065,7 +1065,8 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       '--no-warnings',
       '--no-check-certificates', // 🔒 Fix SSL certificate errors when using proxies
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android',
+      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 FIX: Flexible format fallback
+      '--extractor-args', 'youtube:player_client=android,web', // 🔧 FIX: Multiple client fallbacks
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '3M' // Abort if too large (just testing)
     ];
@@ -1140,6 +1141,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
+      let timeoutHandled = false; // 🔧 FIX: Flag to prevent close handler from resolving when timeout triggers retry
 
       const resolveOnce = (value) => {
         if (resolved) return;
@@ -1189,16 +1191,20 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           }
         }
 
-        if (hasBotDetectionError) {
-          console.log('  ❌ Cookie test FAILED (bot detection)');
-          resolveOnce({ status: 'fail', reason: 'bot' });
-          return;
-        }
-
-        // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
+        // 🔧 FIX: Prioritize successful completions - always resolve immediately on STRONG PASS
+        // This prevents the timeout handler from interfering with successful results
         if (code === 0 && hasExtractedFile) {
           console.log('  ✅ Cookie test STRONG PASS (successfully extracted audio file)');
           resolveOnce({ status: 'strong' });
+          return;
+        }
+
+        // 🔧 FIX: If timeout handler is handling retry, don't resolve failures here - let retry handle it
+        if (timeoutHandled) return;
+
+        if (hasBotDetectionError) {
+          console.log('  ❌ Cookie test FAILED (bot detection)');
+          resolveOnce({ status: 'fail', reason: 'bot' });
           return;
         }
 
@@ -1262,8 +1268,11 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       // 🔧 FAST TIMEOUT: Use 30s timeout for all - mark slow proxies as dead
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(async () => {
-        if (resolved) return;
-        resolved = true;
+        if (resolved) return; // Process already completed successfully - don't interfere
+        
+        // 🔧 FIX: Set timeoutHandled flag BEFORE killing process to prevent close handler from resolving failures
+        // Note: Successful completions (STRONG PASS) are handled before this check in the close handler
+        timeoutHandled = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
         console.log(`  ❌ Cookie test timeout - rejecting (${processTimeout/1000}s limit, ${proxyType})`);
@@ -1284,17 +1293,26 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           
           // Retry with a new proxy
           const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-          resolveOnce(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolveOnce(retryResult);
+          }
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`  🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...`);
           
           const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-          resolveOnce(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolveOnce(retryResult);
+          }
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`  ❌ Cookie test timeout after ${retryCount + 1} attempts (including no-proxy) - giving up`);
-          resolveOnce({ status: 'fail', reason: 'timeout' });
+          if (!resolved) {
+            resolved = true;
+            resolveOnce({ status: 'fail', reason: 'timeout' });
+          }
         }
       }, processTimeout);
     });
@@ -2851,7 +2869,8 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       '--no-warnings',
       '--no-check-certificates',
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--extractor-args', 'youtube:player_client=android',
+      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 FIX: Flexible format fallback
+      '--extractor-args', 'youtube:player_client=android,web', // 🔧 FIX: Multiple client fallbacks
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
@@ -2879,6 +2898,7 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       let errorOutput = '';
       let stdoutData = '';
       let resolved = false;
+      let timeoutHandled = false; // 🔧 FIX: Flag to prevent close handler from resolving when timeout triggers retry
       
       testProcess.stdout.on('data', (data) => {
         stdoutData += data.toString();
@@ -2890,7 +2910,6 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       
       testProcess.on('close', async (code) => {
         if (resolved) return;
-        resolved = true;
         
         // Check for bot detection errors
         const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
@@ -2914,16 +2933,23 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
           }
         }
         
+        // 🔧 FIX: Prioritize successful completions - always resolve immediately on success
         // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
         const isValid = !hasBotDetectionError && hasExtractedFile && code === 0;
         
-        if (!isValid) {
-          console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
-        } else {
+        if (isValid) {
           console.log(`    ✅ Cookie test STRONG PASS (valid JSON with title/id)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          resolved = true;
+          resolve(true);
+          return;
         }
         
-        resolve(isValid);
+        // 🔧 FIX: If timeout handler is handling retry, don't resolve failures here - let retry handle it
+        if (timeoutHandled) return;
+        
+        resolved = true;
+        console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        resolve(false);
       });
       
       testProcess.on('error', () => {
@@ -2934,8 +2960,11 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       
       // TIMEOUT: 30s for actual extraction test (matching cookie test timeout)
       setTimeout(async () => {
-        if (resolved) return;
-        resolved = true;
+        if (resolved) return; // Process already completed successfully - don't interfere
+        
+        // 🔧 FIX: Set timeoutHandled flag BEFORE killing process to prevent close handler from resolving failures
+        // Note: Successful completions are handled before this check in the close handler
+        timeoutHandled = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         
         // 🔧 FIX: Timeout = PROXY PROBLEM, not cookie problem!
@@ -2950,17 +2979,26 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
           
           // Retry with a new proxy
           const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
-          resolve(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolve(retryResult);
+          }
         } else if (retryCount === MAX_PROXY_RETRIES && !skipProxy) {
           // 🔧 4TH ATTEMPT: Try WITHOUT proxy after all proxies failed
           console.log(`    🔄 All ${MAX_PROXY_RETRIES} proxies timed out - trying WITHOUT proxy (final attempt)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           
           const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
-          resolve(retryResult);
+          if (!resolved) {
+            resolved = true;
+            resolve(retryResult);
+          }
         } else {
           // Only give up after trying multiple proxies AND no-proxy
           console.log(`    ❌ Cookie test timeout after ${MAX_PROXY_RETRIES + 1} attempts (including no-proxy) - marking cookie as dead` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          resolve(false);
+          if (!resolved) {
+            resolved = true;
+            resolve(false);
+          }
         }
       }, 30000);
     });
