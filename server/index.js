@@ -1434,8 +1434,10 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
 
         // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
         if (code === 0 && hasExtractedFile) {
-          console.log('  ✅ Cookie test STRONG PASS (successfully extracted audio file)');
-          resolveOnce({ status: 'strong' });
+          console.log('  ✅✅✅ Cookie test STRONG PASS (successfully extracted audio file) - RETURNING SUCCESS');
+          console.log(`  🔍 DEBUG: STRONG PASS details - code: ${code}, hasExtractedFile: ${hasExtractedFile}, stdout length: ${stdoutData.length}`);
+          const result = { status: 'strong', reason: 'success', cookiePath: cookiePath };
+          resolveOnce(result);
           return;
         }
 
@@ -2972,20 +2974,22 @@ async function regenerateSingleCookie(slotIndex) {
             await fs.writeFile(tempCookiePath, cookieData.cookieContent, 'utf8');
             
             // 🎯 Try without proxy if all proxies are failing
-            // 🔧 CRITICAL: Read cookie content from file BEFORE deleting it (safety backup)
+            // 🔧 CRITICAL: Read cookie content from file BEFORE testing (safety backup)
             const cookieContentFromFile = await fs.readFile(tempCookiePath, 'utf8').catch(() => null);
+            if (!cookieContentFromFile) {
+              console.log(`  ⚠️ ERROR: Failed to read cookie file before testing! (slot ${slotIndex + 1}, attempt ${attemptNum})`);
+              await fs.unlink(tempCookiePath).catch(() => {});
+              return null;
+            }
+            
+            console.log(`  🔍 Testing cookie for slot ${slotIndex + 1} attempt ${attemptNum} (content: ${cookieContentFromFile.length} chars)...`);
             const testResult = await testCookies(tempCookiePath, tryWithoutProxy);
             
             // 🔧 CRITICAL: Only delete temp file AFTER we've confirmed the result and preserved content
             // ✅ Only accept STRONG cookies (not weak, not failed)
             if (testResult && testResult.status === 'strong') {
-              // 🔧 FIX: Use cookieContent from file as backup if cookieData.cookieContent is missing
-              let finalCookieContent = cookieData.cookieContent;
-              if (!finalCookieContent && cookieContentFromFile) {
-                console.log(`  🔧 WARNING: cookieData.cookieContent missing, using content from temp file for slot ${slotIndex + 1}`);
-                finalCookieContent = cookieContentFromFile;
-              }
-              
+              // 🔧 FIX: Use cookieContent from file as primary source (most reliable)
+              let finalCookieContent = cookieContentFromFile || cookieData.cookieContent;
               if (!finalCookieContent) {
                 console.log(`  ⚠️ ERROR: Cookie test passed but content is missing! (slot ${slotIndex + 1}, attempt ${attemptNum})`);
                 console.log(`  🔍 Debug: cookieData.cookieContent=${!!cookieData.cookieContent}, cookieContentFromFile=${!!cookieContentFromFile}`);
@@ -2993,16 +2997,37 @@ async function regenerateSingleCookie(slotIndex) {
                 return null;
               }
               
-              console.log(`  ✅ Cookie test STRONG PASS - preserving content (${finalCookieContent.length} chars) for slot ${slotIndex + 1}`);
-              const cookieResult = { 
-                content: finalCookieContent, // Use finalCookieContent (either from cookieData or file)
-                quality: 'strong',
-                visitorData: cookieData.visitorData
-              };
-              console.log(`  🔍 DEBUG: Returning cookie result for slot ${slotIndex + 1}: quality=${cookieResult.quality}, hasContent=${!!cookieResult.content}, contentLength=${cookieResult.content ? cookieResult.content.length : 0}`);
+              // 🔧 VERIFY: Double-check content before returning
+              if (finalCookieContent.length < 100) {
+                console.log(`  ⚠️ WARNING: Cookie content seems too short (${finalCookieContent.length} chars) - might be corrupted`);
+              }
               
-              // Clean up temp file now that we've preserved the content
-              await fs.unlink(tempCookiePath).catch(() => {});
+              console.log(`  ✅✅✅ Cookie test STRONG PASS - IMMEDIATELY preserving content (${finalCookieContent.length} chars) for slot ${slotIndex + 1}`);
+              console.log(`  🔍 DEBUG: Cookie content preview (first 50 chars): ${finalCookieContent.substring(0, 50)}...`);
+              
+              const cookieResult = { 
+                content: finalCookieContent, // Use file content as primary source
+                quality: 'strong',
+                visitorData: cookieData.visitorData,
+                slotIndex: slotIndex, // Include slot index for debugging
+                attemptNum: attemptNum // Include attempt number for debugging
+              };
+              
+              console.log(`  🔍 DEBUG: Returning STRONG cookie result for slot ${slotIndex + 1}:`);
+              console.log(`    - quality: ${cookieResult.quality}`);
+              console.log(`    - hasContent: ${!!cookieResult.content}`);
+              console.log(`    - contentLength: ${cookieResult.content ? cookieResult.content.length : 0}`);
+              console.log(`    - hasVisitorData: ${!!cookieResult.visitorData}`);
+              
+              // 🔧 CRITICAL: Verify file still exists before cleanup (should always exist at this point)
+              try {
+                await fs.access(tempCookiePath);
+                // Clean up temp file now that we've preserved the content
+                await fs.unlink(tempCookiePath).catch(() => {});
+              } catch (err) {
+                console.log(`  ⚠️ WARNING: Temp file already deleted or missing: ${err.message}`);
+              }
+              
               return cookieResult;
             }
             
@@ -3010,7 +3035,7 @@ async function regenerateSingleCookie(slotIndex) {
             await fs.unlink(tempCookiePath).catch(() => {});
             
             // Reject weak cookies - we only want STRONG
-            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, rejecting`);
+            console.log(`  🔍 DEBUG: Test result for slot ${slotIndex + 1} attempt ${attemptNum}: status=${testResult ? testResult.status : 'null'}, reason=${testResult ? testResult.reason : 'unknown'}, rejecting`);
             return null;
           } catch (err) {
             console.log(`  ⚠️ ERROR: Exception in cookie generation promise for slot ${slotIndex + 1} attempt ${attemptNum}: ${err.message}`);
@@ -3036,9 +3061,23 @@ async function regenerateSingleCookie(slotIndex) {
       
       const strongCookies = results.filter(r => {
         // 🔧 CRITICAL: Filter out cookies that don't have content, even if they have quality='strong'
-        if (!r || r.quality !== 'strong') return false;
-        if (!r.content || r.content.length === 0) {
-          console.log(`  ⚠️ WARNING: Filtering out strong cookie with no content for slot ${slotIndex + 1}`);
+        if (!r) {
+          return false;
+        }
+        if (r.quality !== 'strong') {
+          return false;
+        }
+        if (!r.content || typeof r.content !== 'string' || r.content.length === 0) {
+          console.log(`  ⚠️ WARNING: Filtering out strong cookie with no/invalid content for slot ${slotIndex + 1}`);
+          console.log(`    - r exists: ${!!r}`);
+          console.log(`    - r.quality: ${r.quality}`);
+          console.log(`    - r.content type: ${typeof r.content}`);
+          console.log(`    - r.content length: ${r.content ? r.content.length : 'N/A'}`);
+          return false;
+        }
+        // 🔧 VERIFY: Check minimum content length (cookies should be at least 100 chars)
+        if (r.content.length < 100) {
+          console.log(`  ⚠️ WARNING: Strong cookie content seems too short (${r.content.length} chars) - might be corrupted, filtering out`);
           return false;
         }
         return true;
@@ -3046,17 +3085,27 @@ async function regenerateSingleCookie(slotIndex) {
       
       // 🔧 DEBUG: Log if we found strong cookies but they're not being saved
       if (strongCookies.length > 0) {
-        console.log(`  ✅ Found ${strongCookies.length} STRONG cookie(s) with content - saving to slot ${slotIndex + 1}...`);
+        console.log(`  🎉🎉🎉 Found ${strongCookies.length} STRONG cookie(s) with VALID content - IMMEDIATELY saving to slot ${slotIndex + 1}...`);
         for (let i = 0; i < strongCookies.length; i++) {
           const cookie = strongCookies[i];
           if (!cookie || !cookie.content) {
             console.log(`  ⚠️ WARNING: Strong cookie ${i + 1} is missing content!`);
           } else {
-            console.log(`  ✅ Strong cookie ${i + 1} has content (${cookie.content.length} chars) - READY TO SAVE`);
+            console.log(`  ✅✅✅ Strong cookie ${i + 1} VALIDATED - content: ${cookie.content.length} chars, slot: ${cookie.slotIndex || 'N/A'}, attempt: ${cookie.attemptNum || 'N/A'} - READY TO SAVE NOW`);
           }
         }
       } else {
-        console.log(`  ⚠️ DEBUG: No strong cookies with content found in results array (total results: ${results.length}, non-null: ${results.filter(r => r !== null).length}, strong but no content: ${results.filter(r => r && r.quality === 'strong' && (!r.content || r.content.length === 0)).length})`);
+        const nonNullResults = results.filter(r => r !== null);
+        const strongButNoContent = results.filter(r => r && r.quality === 'strong' && (!r.content || r.content.length === 0));
+        const strongButTooShort = results.filter(r => r && r.quality === 'strong' && r.content && r.content.length > 0 && r.content.length < 100);
+        console.log(`  ⚠️ DEBUG: No VALID strong cookies found in results array:`);
+        console.log(`    - Total results: ${results.length}`);
+        console.log(`    - Non-null results: ${nonNullResults.length}`);
+        console.log(`    - Strong but no content: ${strongButNoContent.length}`);
+        console.log(`    - Strong but too short: ${strongButTooShort.length}`);
+        if (nonNullResults.length > 0) {
+          console.log(`    - Non-null result qualities: ${nonNullResults.map(r => r.quality).join(', ')}`);
+        }
       }
       
       // 🔥 RATE LIMITING: If all cookies failed, wait before next batch
@@ -3094,36 +3143,71 @@ async function regenerateSingleCookie(slotIndex) {
         
         // 🔧 CRITICAL: Validate cookie content before saving
         if (!firstStrongCookie) {
-          console.log(`  ⚠️ ERROR: firstStrongCookie is null/undefined for slot ${slotIndex + 1}`);
-        } else if (!firstStrongCookie.content || firstStrongCookie.content.length === 0) {
-          console.log(`  ⚠️ ERROR: Strong cookie found but content is missing or empty! (slot ${slotIndex + 1})`);
+          console.log(`  ❌❌❌ ERROR: firstStrongCookie is null/undefined for slot ${slotIndex + 1} - CANNOT SAVE`);
+        } else if (!firstStrongCookie.content || typeof firstStrongCookie.content !== 'string' || firstStrongCookie.content.length === 0) {
+          console.log(`  ❌❌❌ ERROR: Strong cookie found but content is missing or invalid! (slot ${slotIndex + 1})`);
           console.log(`  🔍 Debug: firstStrongCookie keys = ${JSON.stringify(Object.keys(firstStrongCookie))}`);
           console.log(`  🔍 Debug: firstStrongCookie.quality = ${firstStrongCookie.quality}`);
+          console.log(`  🔍 Debug: firstStrongCookie.content type = ${typeof firstStrongCookie.content}`);
           console.log(`  🔍 Debug: firstStrongCookie.content = ${firstStrongCookie.content ? `exists (${firstStrongCookie.content.length} chars)` : 'MISSING'}`);
+          console.log(`  🔍 Debug: firstStrongCookie.slotIndex = ${firstStrongCookie.slotIndex}`);
+          console.log(`  🔍 Debug: firstStrongCookie.attemptNum = ${firstStrongCookie.attemptNum}`);
+        } else if (firstStrongCookie.content.length < 100) {
+          console.log(`  ❌❌❌ ERROR: Strong cookie content too short (${firstStrongCookie.content.length} chars) - might be corrupted, CANNOT SAVE`);
         } else {
           try {
-            console.log(`  💾 Saving STRONG cookie to slot ${slotIndex + 1} (${firstStrongCookie.content.length} chars)...`);
+            console.log(`  💾💾💾 IMMEDIATELY Saving STRONG cookie to slot ${slotIndex + 1}...`);
+            console.log(`    - Content length: ${firstStrongCookie.content.length} chars`);
+            console.log(`    - Quality: ${firstStrongCookie.quality}`);
+            console.log(`    - Source slot: ${firstStrongCookie.slotIndex || 'N/A'}`);
+            console.log(`    - Source attempt: ${firstStrongCookie.attemptNum || 'N/A'}`);
+            console.log(`    - Content preview: ${firstStrongCookie.content.substring(0, 100)}...`);
+            
             const savedPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
             if (savedPath) {
               // This replaces the failed cookie at slotIndex
-              console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie (saved to: ${savedPath})`);
+              console.log(`  ✅✅✅ SUCCESS: Cookie slot ${slotIndex + 1} replaced with new STRONG cookie (saved to: ${savedPath})`);
               
-              // 🔧 VERIFY: Check if cookie was actually saved to Redis
+              // 🔧 VERIFY: Check if cookie was actually saved to Redis IMMEDIATELY
               if (isRedisAvailable()) {
+                // Wait a tiny bit for Redis write to complete
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 const savedCookies = await getAllCookiesFromRedis();
                 const savedCookie = savedCookies.find(c => c.index === slotIndex);
                 if (savedCookie && savedCookie.content) {
-                  console.log(`  ✅ VERIFIED: Cookie saved to Redis slot ${slotIndex + 1} (${savedCookie.content.length} chars)`);
+                  if (savedCookie.content === firstStrongCookie.content || savedCookie.content.length === firstStrongCookie.content.length) {
+                    console.log(`  ✅✅✅ VERIFIED: Cookie successfully saved to Redis slot ${slotIndex + 1} (${savedCookie.content.length} chars) - CONTENT MATCHES`);
+                  } else {
+                    console.log(`  ⚠️ WARNING: Cookie in Redis but content length mismatch (saved: ${firstStrongCookie.content.length}, Redis: ${savedCookie.content.length})`);
+                  }
                 } else {
-                  console.log(`  ⚠️ WARNING: Cookie may not be in Redis - savedCookie=${!!savedCookie}`);
+                  console.log(`  ❌❌❌ ERROR: Cookie NOT FOUND in Redis after save! (slot ${slotIndex + 1})`);
+                  console.log(`    - savedCookie exists: ${!!savedCookie}`);
+                  console.log(`    - savedCookie has content: ${!!(savedCookie && savedCookie.content)}`);
+                  console.log(`    - Total cookies in Redis: ${savedCookies.length}`);
+                  console.log(`    - Redis cookie indices: ${savedCookies.map(c => c.index).join(', ')}`);
+                  
+                  // 🔧 RETRY: Try saving again
+                  console.log(`  🔄 Retrying save to Redis...`);
+                  const retryPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
+                  if (retryPath) {
+                    console.log(`  ✅ Retry save successful (${retryPath})`);
+                  } else {
+                    console.log(`  ❌ Retry save failed`);
+                  }
                 }
+              } else {
+                console.log(`  ⚠️ Redis not available - cookie saved to filesystem only`);
               }
             } else {
-              console.log(`  ⚠️ ERROR: saveCookieToPool returned null - cookie was not saved! (slot ${slotIndex + 1})`);
+              console.log(`  ❌❌❌ ERROR: saveCookieToPool returned null - cookie was NOT saved! (slot ${slotIndex + 1})`);
+              console.log(`    - This is a CRITICAL error - STRONG cookie was lost!`);
             }
           } catch (saveErr) {
-            console.log(`  ⚠️ ERROR: Failed to save cookie to pool: ${saveErr.message} (slot ${slotIndex + 1})`);
+            console.log(`  ❌❌❌ ERROR: Exception while saving cookie to pool: ${saveErr.message} (slot ${slotIndex + 1})`);
             console.log(`  🔍 Stack: ${saveErr.stack}`);
+            console.log(`    - This is a CRITICAL error - STRONG cookie was lost due to exception!`);
           }
         }
         
