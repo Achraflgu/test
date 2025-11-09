@@ -484,7 +484,7 @@ class ProxyManager {
   }
 
   // 🔍 Validate multiple proxies in parallel
-  async validateProxies(proxiesToTest = null, maxConcurrent = 50, maxToValidate = 100) {
+  async validateProxies(proxiesToTest = null, maxConcurrent = 20, maxToValidate = 100) {
     if (this.isValidating) {
       console.log('⏭️  Proxy validation already in progress - skipping');
       return this.workingProxies;

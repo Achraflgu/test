@@ -41,18 +41,7 @@ httpServer.timeout = 7200000; // 2 hours (in milliseconds)
 httpServer.keepAliveTimeout = 7200000; // 2 hours
 httpServer.headersTimeout = 7210000; // Slightly higher than keepAlive
 
-// Keep process alive for Koyeb/Vercel
-process.on('SIGTERM', () => {
-  console.log('🔄 SIGTERM received, keeping process alive...');
-  // Don't exit, keep running
-  // Child processes with detached:true will continue independently
-});
-
-process.on('SIGINT', () => {
-  console.log('🔄 SIGINT received, keeping process alive...');
-  // Don't exit, keep running  
-  // Child processes with detached:true will continue independently
-});
+// Keep process alive for Koyeb/Vercel (will be replaced by graceful shutdown)
 
 // CORS configuration - supports both local and production URLs
 const allowedOrigins = [
@@ -372,6 +361,252 @@ const activeDownloads = new Map();
 // Store active processes for cancellation
 // Each downloadId maps to an array of processes (can have multiple processes per download)
 const activeProcesses = new Map();
+
+// ====================================
+// 🛡️ RESOURCE MANAGEMENT & OPTIMIZATION
+// ====================================
+// Prevents Railway auto-restarts from lag/pressure
+// ====================================
+
+// Resource limits for Railway stability
+const RESOURCE_LIMITS = {
+  MAX_CONCURRENT_DOWNLOADS: 4, // Reduced from unlimited for Railway stability
+  MAX_CONCURRENT_PROCESSES: 10, // Max child processes at once
+  MAX_MEMORY_MB: 512, // Warn if memory exceeds 512MB
+  MAX_PARALLEL_DOWNLOADS: 4, // Default parallel downloads (reduced from 8)
+  MAX_PARALLEL_COOKIE_GEN: 2, // Max parallel cookie generation (reduced from 3)
+  MAX_PARALLEL_PROXY_VALIDATION: 20, // Reduced from 50
+  MAX_ACTIVE_REQUESTS: 10, // Max concurrent API requests
+  PROCESS_CLEANUP_INTERVAL: 60000, // Cleanup every 60s
+  MEMORY_CHECK_INTERVAL: 30000, // Check memory every 30s
+  MAX_PROCESS_AGE_MS: 300000, // Kill processes older than 5 minutes
+  REQUEST_QUEUE_MAX: 20, // Max queued requests
+};
+
+// Request queue for throttling
+const requestQueue = [];
+let activeRequests = 0;
+let isProcessingQueue = false;
+
+// Process cleanup tracker
+const processStartTimes = new Map();
+
+// Memory monitoring
+let lastMemoryCheck = Date.now();
+let memoryWarnings = 0;
+
+// Resource monitoring function
+function checkResources() {
+  const memUsage = process.memoryUsage();
+  const memMB = memUsage.heapUsed / 1024 / 1024;
+  
+  // Check memory usage
+  if (memMB > RESOURCE_LIMITS.MAX_MEMORY_MB) {
+    memoryWarnings++;
+    console.log(`⚠️ High memory usage: ${memMB.toFixed(2)}MB (${memoryWarnings} warnings)`);
+    
+    // If memory is critically high, trigger cleanup
+    if (memMB > RESOURCE_LIMITS.MAX_MEMORY_MB * 1.5) {
+      console.log(`🚨 Critical memory usage: ${memMB.toFixed(2)}MB - triggering cleanup`);
+      cleanupResources();
+    }
+  }
+  
+  // Check active processes
+  const activeProcessCount = Array.from(activeProcesses.values()).reduce((sum, procs) => sum + procs.length, 0);
+  if (activeProcessCount > RESOURCE_LIMITS.MAX_CONCURRENT_PROCESSES) {
+    console.log(`⚠️ High process count: ${activeProcessCount} processes active`);
+  }
+  
+  // Check active downloads
+  if (activeDownloads.size > RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS) {
+    console.log(`⚠️ High download count: ${activeDownloads.size} downloads active`);
+  }
+  
+  lastMemoryCheck = Date.now();
+}
+
+// Cleanup old processes and resources
+function cleanupResources() {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  // Cleanup old processes
+  for (const [downloadId, processes] of activeProcesses.entries()) {
+    const validProcesses = processes.filter(proc => {
+      const startTime = processStartTimes.get(proc.pid);
+      if (startTime && now - startTime > RESOURCE_LIMITS.MAX_PROCESS_AGE_MS) {
+        try {
+          if (!proc.killed) {
+            proc.kill('SIGTERM');
+            cleaned++;
+          }
+        } catch (err) {
+          // Process already dead
+        }
+        processStartTimes.delete(proc.pid);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validProcesses.length === 0) {
+      activeProcesses.delete(downloadId);
+    } else {
+      activeProcesses.set(downloadId, validProcesses);
+    }
+  }
+  
+  // Cleanup completed downloads (older than 1 hour)
+  for (const [downloadId, info] of activeDownloads.entries()) {
+    if (info.completedAt && now - info.completedAt > 3600000) {
+      activeDownloads.delete(downloadId);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned up ${cleaned} old resources`);
+  }
+  
+  // Force garbage collection if available
+  if (global.gc) {
+    global.gc();
+    console.log(`🗑️ Forced garbage collection`);
+  }
+}
+
+// Request throttling
+async function throttleRequest(fn) {
+  return new Promise((resolve, reject) => {
+    // If under limit, execute immediately
+    if (activeRequests < RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
+      activeRequests++;
+      fn()
+        .then(result => {
+          activeRequests--;
+          resolve(result);
+          processQueue();
+        })
+        .catch(err => {
+          activeRequests--;
+          reject(err);
+          processQueue();
+        });
+    } else {
+      // Queue the request
+      if (requestQueue.length >= RESOURCE_LIMITS.REQUEST_QUEUE_MAX) {
+        reject(new Error('Request queue full - server under heavy load'));
+        return;
+      }
+      requestQueue.push({ fn, resolve, reject });
+    }
+  });
+}
+
+// Process queued requests
+async function processQueue() {
+  if (isProcessingQueue || requestQueue.length === 0 || activeRequests >= RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
+    return;
+  }
+  
+  isProcessingQueue = true;
+  
+  while (requestQueue.length > 0 && activeRequests < RESOURCE_LIMITS.MAX_ACTIVE_REQUESTS) {
+    const { fn, resolve, reject } = requestQueue.shift();
+    activeRequests++;
+    
+    fn()
+      .then(result => {
+        activeRequests--;
+        resolve(result);
+      })
+      .catch(err => {
+        activeRequests--;
+        reject(err);
+      });
+  }
+  
+  isProcessingQueue = false;
+}
+
+// Track process start time
+function trackProcess(process) {
+  if (process && process.pid) {
+    processStartTimes.set(process.pid, Date.now());
+  }
+}
+
+// Remove process tracking
+function untrackProcess(process) {
+  if (process && process.pid) {
+    processStartTimes.delete(process.pid);
+  }
+}
+
+// Start resource monitoring
+setInterval(() => {
+  checkResources();
+}, RESOURCE_LIMITS.MEMORY_CHECK_INTERVAL);
+
+// Start process cleanup
+setInterval(() => {
+  cleanupResources();
+}, RESOURCE_LIMITS.PROCESS_CLEANUP_INTERVAL);
+
+// Graceful shutdown handler (replaces simple keep-alive)
+process.on('SIGTERM', () => {
+  console.log('🔄 SIGTERM received - starting graceful shutdown...');
+  
+  // Cleanup all processes
+  for (const [downloadId, processes] of activeProcesses.entries()) {
+    processes.forEach(proc => {
+      try {
+        if (!proc.killed) {
+          proc.kill('SIGTERM');
+        }
+      } catch (err) {
+        // Process already dead
+      }
+    });
+  }
+  
+  // Cleanup resources
+  cleanupResources();
+  
+  console.log('✅ Graceful shutdown complete - keeping process alive for Railway');
+  // Don't exit - Railway will handle process termination
+});
+
+process.on('SIGINT', () => {
+  console.log('🔄 SIGINT received - starting graceful shutdown...');
+  
+  // Cleanup all processes
+  for (const [downloadId, processes] of activeProcesses.entries()) {
+    processes.forEach(proc => {
+      try {
+        if (!proc.killed) {
+          proc.kill('SIGTERM');
+        }
+      } catch (err) {
+        // Process already dead
+      }
+    });
+  }
+  
+  // Cleanup resources
+  cleanupResources();
+  
+  console.log('✅ Graceful shutdown complete - keeping process alive for Railway');
+  // Don't exit - Railway will handle process termination
+});
+
+// Log resource limits on startup
+console.log('🛡️ Resource limits enabled:');
+console.log(`   Max concurrent downloads: ${RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS}`);
+console.log(`   Max concurrent processes: ${RESOURCE_LIMITS.MAX_CONCURRENT_PROCESSES}`);
+console.log(`   Max parallel downloads: ${RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS}`);
+console.log(`   Max memory warning: ${RESOURCE_LIMITS.MAX_MEMORY_MB}MB`);
 
 // ====================================
 // 🍪 COOKIE DETECTION SYSTEM
@@ -1065,8 +1300,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       '--no-warnings',
       '--no-check-certificates', // 🔒 Fix SSL certificate errors when using proxies
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
-      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
+      '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '3M' // Abort if too large (just testing)
     ];
@@ -1153,6 +1387,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: processTimeout // Use dynamically calculated timeout
       });
+      trackProcess(testProcess); // Track process for cleanup
 
       testProcess.stdout.on('data', (data) => {
         stdoutData += data.toString();
@@ -1163,6 +1398,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       });
 
       testProcess.on('close', async (code) => {
+        untrackProcess(testProcess); // Remove from tracking
         if (resolved) return;
 
         const normalizedError = errorOutput.toLowerCase();
@@ -1176,13 +1412,6 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           normalizedError.includes('please sign in to continue') ||
           normalizedError.includes('video unavailable') ||
           normalizedError.includes('unplayable');
-
-        // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
-        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
-                               normalizedError.includes('requested format is not available') ||
-                               normalizedError.includes('format is not available') ||
-                               normalizedError.includes('no video formats found') ||
-                               normalizedError.includes('unable to extract video data');
 
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -1210,39 +1439,13 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           return;
         }
 
-        // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-        if (hasFormatError && !skipProxy && proxy) {
-          const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
-          console.log(`  ⚠️ Format error detected: ${errorPreview}...`);
-          console.log(`  🔄 Retrying with different proxy (format error - proxy issue suspected)...`);
-          
-          // Mark current proxy as dead (format error = proxy problem)
-          const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
-          if (proxyMatch) {
-            const proxyHost = proxyMatch[1];
-            proxyManager.markFailed(proxyHost);
-            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
-          }
-          
-          // Retry with different proxy (up to 2 proxy rotations)
-          if (retryCount < 2) {
-            const retryResult = await testCookies(cookiePath, false, retryCount + 1);
-            resolveOnce(retryResult);
-            return;
-          } else if (retryCount === 2) {
-            // After 2 proxy rotations, try without proxy
-            console.log(`  🔄 Format error persists after proxy rotation - trying WITHOUT proxy...`);
-            const retryResult = await testCookies(cookiePath, true, retryCount + 1);
-            resolveOnce(retryResult);
-            return;
-          }
-        } else if (hasFormatError && skipProxy) {
-          // Format error occurred without proxy = cookie/YouTube issue
-          console.log('  ❌ Cookie test FAILED (format error without proxy - cookie/YouTube issue)');
-          resolveOnce({ status: 'fail', reason: 'format_error' });
-          return;
-        }
-
+        // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
+        const hasFormatError = normalizedError.includes('requested format is not available') ||
+                              normalizedError.includes('failed to extract any player response') ||
+                              normalizedError.includes('format is not available') ||
+                              errorOutput.includes('Requested format is not available') ||
+                              errorOutput.includes('Failed to extract any player response');
+        
         // Timeout or process error = fail
         // 🔍 Better error diagnostics to identify if it's cookie or proxy issue
         // Note: normalizedError is already declared above (line 1080)
@@ -1253,6 +1456,36 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         const isCookieIssue = normalizedError.includes('sign in') ||
                              normalizedError.includes('bot') ||
                              normalizedError.includes('login_required');
+        
+        // 🎯 FORMAT ERROR HANDLING: For cookie regeneration, only 1 retry with 1 rotated proxy
+        if (hasFormatError && code !== 0 && !skipProxy && retryCount === 0) {
+          console.log(`  ⚠️ Format error detected (proxy issue): ${errorPreview.substring(0, 100)}...`);
+          console.log(`  🔄 Retrying with different proxy (1 retry for cookie regeneration)...`);
+          
+          // Mark current proxy as dead (format error = proxy problem)
+          if (proxy && typeof proxy === 'string') {
+            const proxyMatch = proxy.match(/http:\/\/([^\/]+)/);
+            if (proxyMatch) {
+              const proxyHost = proxyMatch[1];
+              proxyManager.markFailed(proxyHost);
+              console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+            }
+          }
+          
+          // Retry with different proxy (only 1 retry for regeneration)
+          const retryResult = await testCookies(cookiePath, false, 1);
+          if (retryResult && retryResult.status === 'strong') {
+            // Success with rotated proxy - first proxy had format error, mark it as dead (already done above)
+            console.log(`  ✅ Format error resolved with rotated proxy - first proxy was the issue`);
+            resolveOnce(retryResult);
+            return;
+          } else {
+            // Same format error with rotated proxy - cookie failed
+            console.log(`  ❌ Format error persists with rotated proxy - cookie failed`);
+            resolveOnce({ status: 'fail', reason: 'format_error' });
+            return;
+          }
+        }
         
         // 🔧 FIX: Mark slow/unreliable proxies as DEAD when they timeout during cookie regeneration
         // Timeout (code === null) = timer expired, no response = slow/unreliable proxy
@@ -1275,6 +1508,13 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
           }
         }
         // Note: We DON'T mark proxies as dead for bot detection errors (cookie issues, not proxy issues)
+        
+        if (hasFormatError) {
+          console.log(`  ❌ Cookie test FAILED (format error, ${proxy ? 'with proxy' : 'no proxy'})`);
+          console.log(`     Error preview: ${errorPreview}...`);
+          resolveOnce({ status: 'fail', reason: 'format_error' });
+          return;
+        }
         
         if (code === null) {
           console.log(`  ❌ Cookie test TIMEOUT (${proxy ? 'with proxy' : 'no proxy'})`);
@@ -1762,7 +2002,8 @@ async function generateAndTestCookies(maxAttempts = 100) {
       }
       
       const startTime = Date.now();
-      let PARALLEL_TESTS = 3; // Start with 3 parallel tests (reduced from 5 to avoid rate limiting)
+      // Start with resource limit, but allow adaptive reduction for rate limiting
+      let PARALLEL_TESTS = RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN;
       const MAX_BATCHES = 50; // Safety limit: max 50 batches (250 attempts)
       const MAX_TIME = 180000; // Safety limit: 3 minutes max
       const PHASE1_TIME = 90000; // Phase 1: Get 2-3 STRONG cookies quickly (90s max)
@@ -2644,8 +2885,10 @@ async function regenerateSingleCookie(slotIndex) {
     // 🎯 STEP 2: Generate new STRONG cookies (with rate limiting to avoid bot detection)
     const startTime = Date.now();
     // 🔥 REDUCE PARALLELISM: If all cookies are failing, reduce to 1-2 to avoid rate limits
+    // Also respect RESOURCE_LIMITS for Railway stability
     const recentFailures = global['cookie_regeneration_failures'] || 0;
-    const PARALLEL_GENERATION = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : 3); // Adaptive: 3→2→1
+    const adaptiveParallel = recentFailures > 10 ? 1 : (recentFailures > 5 ? 2 : RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN);
+    const PARALLEL_GENERATION = Math.min(adaptiveParallel, RESOURCE_LIMITS.MAX_PARALLEL_COOKIE_GEN); // Cap at resource limit
     let attempts = 0;
     const maxAttempts = 30; // Reduced from 50 to avoid long loops
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
@@ -2892,8 +3135,7 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       '--no-warnings',
       '--no-check-certificates',
       '--output', '/tmp/cookie_test_%(id)s.%(ext)s', // Temp location
-      '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best', // 🔧 Flexible format fallback
-      '--extractor-args', 'youtube:player_client=android,web', // 🔧 Multiple client fallbacks
+      '--extractor-args', 'youtube:player_client=android',
       '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36',
       '--max-filesize', '5M' // Abort if file is too large (just testing)
     ];
@@ -2917,6 +3159,7 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 30000 // 30s timeout for actual extraction (matching cookie test timeout)
       });
+      trackProcess(testProcess); // Track process for cleanup
       
       let errorOutput = '';
       let stdoutData = '';
@@ -2931,25 +3174,27 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
       });
       
       testProcess.on('close', async (code) => {
+        untrackProcess(testProcess); // Remove from tracking
         if (resolved) return;
+        resolved = true;
         
         const normalizedError = errorOutput.toLowerCase();
         
-        // Check for bot detection errors
-        const hasBotDetectionError = normalizedError.includes('sign in to confirm') || 
-                                     normalizedError.includes('login_required') ||
-                                     normalizedError.includes('please sign in to continue') ||
-                                     normalizedError.includes("you're not a bot") ||
-                                     normalizedError.includes('unplayable') ||
-                                     normalizedError.includes('video unavailable') ||
-                                     normalizedError.includes('this video is unavailable');
+        // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
+        const hasFormatError = normalizedError.includes('requested format is not available') ||
+                              normalizedError.includes('failed to extract any player response') ||
+                              normalizedError.includes('format is not available') ||
+                              errorOutput.includes('Requested format is not available') ||
+                              errorOutput.includes('Failed to extract any player response');
         
-        // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
-        const hasFormatError = normalizedError.includes('failed to extract any player response') ||
-                               normalizedError.includes('requested format is not available') ||
-                               normalizedError.includes('format is not available') ||
-                               normalizedError.includes('no video formats found') ||
-                               normalizedError.includes('unable to extract video data');
+        // Check for bot detection errors
+        const hasBotDetectionError = errorOutput.includes('Sign in to confirm') || 
+                                     errorOutput.includes('LOGIN_REQUIRED') ||
+                                     errorOutput.includes('Please sign in to continue') ||
+                                     errorOutput.includes("you're not a bot") ||
+                                     errorOutput.includes('UNPLAYABLE') ||
+                                     errorOutput.includes('Video unavailable') ||
+                                     errorOutput.includes('This video is unavailable');
         
         // Check for successful extraction (got file path in stdout)
         const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
@@ -2964,17 +3209,14 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
           }
         }
         
-        // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
-        const isValid = !hasBotDetectionError && !hasFormatError && hasExtractedFile && code === 0;
-        
-        // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-        if (hasFormatError && !skipProxy && usedProxy) {
+        // 🎯 FORMAT ERROR HANDLING: For cookie re-validation, 2 retries with 2 rotated proxies
+        if (hasFormatError && code !== 0 && !skipProxy && retryCount < 2) {
           const errorPreview = errorOutput.substring(0, 200).replace(/\n/g, ' ');
-          console.log(`    ⚠️ Format error detected: ${errorPreview}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          console.log(`    🔄 Retrying with different proxy (format error - proxy issue suspected)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          console.log(`    ⚠️ Format error detected (proxy issue): ${errorPreview.substring(0, 100)}...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          console.log(`    🔄 Retrying with different proxy (attempt ${retryCount + 2}/3)...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           
           // Mark current proxy as dead (format error = proxy problem)
-          if (typeof usedProxy === 'string') {
+          if (usedProxy && typeof usedProxy === 'string') {
             const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
             if (proxyMatch) {
               const proxyHost = proxyMatch[1];
@@ -2983,43 +3225,48 @@ async function quickValidateCookie(cookiePath, index = null, retryCount = 0, ski
             }
           }
           
-          // Retry with different proxy (up to 2 proxy rotations)
-          if (retryCount < 2) {
-            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
-            if (!resolved) {
-              resolved = true;
-              resolve(retryResult);
-            }
+          // Retry with different proxy (up to 2 retries for re-validation)
+          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, false);
+          if (retryResult) {
+            // Success with rotated proxy - first proxy had format error
+            console.log(`    ✅ Format error resolved with rotated proxy - first proxy was the issue` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolve(retryResult);
             return;
-          } else if (retryCount === 2) {
-            // After 2 proxy rotations, try without proxy
-            console.log(`    🔄 Format error persists after proxy rotation - trying WITHOUT proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
-            const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
-            if (!resolved) {
-              resolved = true;
-              resolve(retryResult);
-            }
-            return;
+          } else {
+            // Still failing with rotated proxy - continue to next retry or no-proxy
+            console.log(`    ⚠️ Format error persists with rotated proxy - trying next proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
           }
-        } else if (hasFormatError && skipProxy) {
-          // Format error occurred without proxy = cookie/YouTube issue
-          console.log(`    ❌ Cookie test FAILED (format error without proxy - cookie/YouTube issue)` + (index !== null ? ` [slot ${index + 1}]` : ''));
-          if (!resolved) {
-            resolved = true;
-            resolve(false);
-          }
-          return;
         }
         
-        if (!resolved) {
-          resolved = true;
-          if (!isValid) {
-            console.log(`    ❌ Cookie test FAILED` + (hasBotDetectionError ? ' (bot detection)' : '') + (index !== null ? ` [slot ${index + 1}]` : ''));
+        // If format error after 2 proxy retries, try without proxy
+        if (hasFormatError && code !== 0 && !skipProxy && retryCount >= 2) {
+          console.log(`    🔄 All proxy retries failed with format error - trying WITHOUT proxy...` + (index !== null ? ` [slot ${index + 1}]` : ''));
+          const retryResult = await quickValidateCookie(cookiePath, index, retryCount + 1, true);
+          if (retryResult) {
+            // Success without proxy - proxies had format error, cookie is fine
+            console.log(`    ✅ Format error resolved without proxy - proxies were the issue` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolve(retryResult);
+            return;
           } else {
-            console.log(`    ✅ Cookie test STRONG PASS (successfully extracted audio file)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            // Failed even without proxy - cookie issue
+            console.log(`    ❌ Format error persists even without proxy - cookie failed` + (index !== null ? ` [slot ${index + 1}]` : ''));
+            resolve(false);
+            return;
           }
-          resolve(isValid);
         }
+        
+        // Cookie is valid ONLY if: no bot errors AND successfully extracted file AND exit code is 0
+        const isValid = !hasBotDetectionError && !hasFormatError && hasExtractedFile && code === 0;
+        
+        if (hasFormatError) {
+          console.log(`    ❌ Cookie test FAILED (format error)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        } else if (!isValid) {
+          console.log(`    ❌ Cookie test FAILED (bot detection)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        } else {
+          console.log(`    ✅ Cookie test STRONG PASS (valid JSON with title/id)` + (index !== null ? ` [slot ${index + 1}]` : ''));
+        }
+        
+        resolve(isValid);
       });
       
       testProcess.on('error', () => {
@@ -6842,6 +7089,17 @@ app.post('/api/download/start', async (req, res) => {
     }
   }
 
+  // 🛡️ Check concurrent download limit
+  if (activeDownloads.size >= RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS) {
+    const errorMsg = `Server is at maximum concurrent download limit (${RESOURCE_LIMITS.MAX_CONCURRENT_DOWNLOADS}). Please wait for current downloads to complete.`;
+    console.log(`⚠️ ${errorMsg}`);
+    return res.status(429).json({ 
+      ok: false, 
+      error: errorMsg,
+      downloadId 
+    });
+  }
+  
   // Store download info
   activeDownloads.set(downloadId, {
     playlistUrl: effectivePlaylistUrl,
@@ -6850,7 +7108,9 @@ app.post('/api/download/start', async (req, res) => {
     outputFolder,
     status: 'starting',
     progress: {},
-    socketId // Store which client initiated this download
+    socketId, // Store which client initiated this download
+    completedAt: null, // Will be set when download completes
+    startTime: Date.now()
   });
 
   res.json({ downloadId, outputFolder });
@@ -7769,13 +8029,12 @@ async function findAlternativeVideo(track, outputFolder) {
   }
 }
 
-async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false, formatRetryCount = 0) {
+async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings = {}, cookiePath = null, clientAttempt = 0, skipProxy = false, formatErrorRetryCount = 0) {
   // Declare variables outside try block for use in catch block
   let safeFilename;
   let downloadOptions;
   let expectedFilePath;
   let audioFormat;
-  let usedProxy = null;
   
   try {
     console.log(`\n🔧 Trying youtube-dl-exec (GitHub method) for: ${track.name}`);
@@ -7850,8 +8109,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       preferFreeFormats: true,
       noPlaylist: true,
       verbose: true,  // ✅ OPTION B: Enable verbose logging
-      print: 'after_move:filepath',  // ✅ OPTION B: Print final file path
-      format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best' // 🔧 Flexible format fallback
+      print: 'after_move:filepath'  // ✅ OPTION B: Print final file path
     };
     
     // Add cookies if available
@@ -7875,19 +8133,17 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     applyClientProfileToOptions(downloadOptions, profile);
     console.log(`  🤖 Client profile: ${profile.name} (attempt ${clientAttempt + 1})`);
     
-    // 🎯 COOKIE-LESS FIRST MODE: Force YouTube-validated proxy (if available)
+    // 🎯 PROXY SUPPORT: Use YouTube-validated proxy for both cookie-less and cookie-based downloads
     // 🔧 STABILITY FIX: Skip proxy if skipProxy is true (no-proxy fallback)
-    // 🔧 FORMAT ERROR RETRY: Also get proxy for format error retries
     if (!skipProxy) {
       const youtubeProxy = await proxyManager.getProxyForYtdlp();
       if (youtubeProxy) {
         // Add proxy to downloadOptions (youtube-dl-exec supports proxy via options)
         downloadOptions.proxy = youtubeProxy;
-        usedProxy = youtubeProxy;
         if (cookiePath === null) {
           console.log(`  🌐 Using YouTube-validated proxy for cookie-less download`);
         } else {
-          console.log(`  🌐 Using YouTube-validated proxy for download`);
+          console.log(`  🌐 Using YouTube-validated proxy for cookie-based download`);
         }
         if (youtubeProxy && typeof youtubeProxy === 'string') {
           if (youtubeProxy.includes('oxylabs.io')) {
@@ -7901,7 +8157,7 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
         if (cookiePath === null) {
           console.log(`  ⚠️  No YouTube-validated proxy available for cookie-less download`);
         } else {
-          console.log(`  ⚠️  No YouTube-validated proxy available for download`);
+          console.log(`  ⚠️  No YouTube-validated proxy available for cookie-based download`);
         }
       }
     } else {
@@ -7979,42 +8235,75 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
     const errorMessage = err.message || err.toString() || err.stack || '';
     const fullError = errorMessage.toLowerCase();
     
-    // 🔧 FORMAT ERROR DETECTION: Check for format-related errors
-    const hasFormatError = fullError.includes('failed to extract any player response') ||
-                           fullError.includes('requested format is not available') ||
-                           fullError.includes('format is not available') ||
-                           fullError.includes('no video formats found') ||
-                           fullError.includes('unable to extract video data');
+    // 🎯 FORMAT ERROR DETECTION: Check for format errors (proxy issue, not cookie issue)
+    const hasFormatError = fullError.includes('requested format is not available') ||
+                          fullError.includes('failed to extract any player response') ||
+                          fullError.includes('format is not available') ||
+                          errorMessage.includes('Requested format is not available') ||
+                          errorMessage.includes('Failed to extract any player response');
     
-    // 🔧 FORMAT ERROR HANDLING: Retry with proxy rotation if format error occurs
-    if (hasFormatError && !skipProxy && usedProxy) {
-      console.log(`  ⚠️ Format error detected: ${errorMessage.substring(0, 200)}...`);
-      console.log(`  🔄 Retrying with different proxy (format error - proxy issue suspected)...`);
+    // 🎯 FORMAT ERROR HANDLING: For downloads, 2 retries with 2 rotated proxies, then no-proxy
+    if (hasFormatError) {
+      // If we're already trying without proxy and still get format error, it's a cookie issue
+      if (skipProxy) {
+        console.log(`  ❌ Format error persists even without proxy - cookie issue or other problem`);
+        console.log(`  ❌ Format error: ${errorMessage.substring(0, 200)}...`);
+        return false;
+      }
       
-      // Mark current proxy as dead (format error = proxy problem)
-      if (typeof usedProxy === 'string') {
-        const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
-        if (proxyMatch) {
-          const proxyHost = proxyMatch[1];
-          proxyManager.markFailed(proxyHost);
-          console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+      // If we've tried 2 proxies and still get format error, try without proxy
+      if (formatErrorRetryCount >= 2) {
+        console.log(`  🔄 All ${formatErrorRetryCount} proxy retries failed with format error - trying WITHOUT proxy...`);
+        
+        // Mark current proxy as dead (format error = proxy problem)
+        if (downloadOptions.proxy && typeof downloadOptions.proxy === 'string') {
+          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+          }
+        }
+        
+        // Retry without proxy (4th attempt)
+        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, true, formatErrorRetryCount);
+        if (retryResult === true) {
+          // Success without proxy - proxies had format error, cookie is fine
+          console.log(`  ✅ Format error resolved without proxy - proxies were the issue`);
+          return true;
+        } else {
+          // Failed even without proxy - cookie issue or other problem
+          console.log(`  ❌ Format error persists even without proxy - cookie issue or other problem`);
+          return false;
         }
       }
       
-      // Retry with different proxy (up to 2 proxy rotations)
-      if (formatRetryCount < 2) {
-        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, false, formatRetryCount + 1);
-        return retryResult;
-      } else if (formatRetryCount === 2) {
-        // After 2 proxy rotations, try without proxy
-        console.log(`  🔄 Format error persists after proxy rotation - trying WITHOUT proxy...`);
-        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, true, formatRetryCount + 1);
-        return retryResult;
+      // If format error and we haven't tried 2 proxies yet, retry with different proxy
+      if (formatErrorRetryCount < 2) {
+        console.log(`  ⚠️ Format error detected (proxy issue): ${errorMessage.substring(0, 200)}...`);
+        console.log(`  🔄 Retrying with different proxy (attempt ${formatErrorRetryCount + 2}/3)...`);
+        
+        // Mark current proxy as dead (format error = proxy problem)
+        if (downloadOptions.proxy && typeof downloadOptions.proxy === 'string') {
+          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
+          if (proxyMatch) {
+            const proxyHost = proxyMatch[1];
+            proxyManager.markFailed(proxyHost);
+            console.log(`  🗑️ Marked proxy as DEAD (format error): ${proxyHost.substring(0, 30)}...`);
+          }
+        }
+        
+        // Retry with different proxy (up to 2 retries for downloads)
+        const retryResult = await tryYoutubeDlExec(track, outputFolder, socket, downloadId, settings, cookiePath, clientAttempt, false, formatErrorRetryCount + 1);
+        if (retryResult === true) {
+          // Success with rotated proxy - first proxy had format error
+          console.log(`  ✅ Format error resolved with rotated proxy - first proxy was the issue`);
+          return true;
+        } else {
+          // Still failing - retry logic will continue in next call
+          return retryResult;
+        }
       }
-    } else if (hasFormatError && skipProxy) {
-      // Format error occurred without proxy = cookie/YouTube issue
-      console.log(`  ❌ Format error without proxy (cookie/YouTube issue): ${errorMessage.substring(0, 200)}...`);
-      return false;
     }
     
     // 🔧 STABILITY FIX: Detect timeout/connection errors first
@@ -8035,10 +8324,10 @@ async function tryYoutubeDlExec(track, outputFolder, socket, downloadId, setting
       console.log('  ⏱️  Timeout/connection error detected in youtube-dl-exec');
       
       // If proxy was used, mark it as dead and return 'timeout' to trigger proxy rotation
-      if (usedProxy && !skipProxy) {
+      if (downloadOptions.proxy && !skipProxy) {
         // Extract proxy host and mark as dead
-        if (typeof usedProxy === 'string') {
-          const proxyMatch = usedProxy.match(/http:\/\/([^\/]+)/);
+        if (typeof downloadOptions.proxy === 'string') {
+          const proxyMatch = downloadOptions.proxy.match(/http:\/\/([^\/]+)/);
           if (proxyMatch) {
             const proxyHost = proxyMatch[1];
             proxyManager.markFailed(proxyHost);
@@ -8371,9 +8660,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
   console.log('\n=== YT-DLP FALLBACK ATTEMPT ===');
   console.log(`📍 Overall attempt: ${attemptNumber + 1}`);
   
-  // Use threads from settings (1-16, default 8)
-  const parallelDownloads = settings.threads || 8;
-  console.log(`⚡ Using ${parallelDownloads} parallel downloads (from settings)`);
+  // Use threads from settings (1-16, default reduced for Railway stability)
+  // Cap at MAX_PARALLEL_DOWNLOADS to prevent resource exhaustion
+  const requestedThreads = settings.threads || RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS;
+  const parallelDownloads = Math.min(requestedThreads, RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS);
+  console.log(`⚡ Using ${parallelDownloads} parallel downloads (capped at ${RESOURCE_LIMITS.MAX_PARALLEL_DOWNLOADS} for stability)`);
   
   // Get list of already downloaded files
   const files = await fs.readdir(outputFolder);
@@ -10199,6 +10490,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           console.log(`✅ All tracks downloaded successfully!`);
           // 🚀 IMMEDIATE COMPLETION: Emit completion event right away (don't wait for cookies)
           downloadInfo.status = 'completed';
+          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
           downloadInfo.totalSuccess = musicFilesAfter.length;
           downloadInfo.totalFailed = tracks.length - musicFilesAfter.length;
           downloadInfo.attempts = attempt;
@@ -11483,6 +11775,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
                   console.log('✅ ALL TRACKS VERIFIED - Download complete!\n');
                   const successfulTracks = tracks.length;
                   downloadInfo.status = 'completed';
+          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
                   downloadInfo.totalSuccess = successfulTracks;
                   downloadInfo.totalFailed = 0;
                   downloadInfo.attempts = attempt;
@@ -11536,6 +11829,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             // Give up - these tracks are not available on YouTube
             const successfulTracks = tracks.length - remaining;
             downloadInfo.status = 'completed';
+          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
             downloadInfo.totalSuccess = successfulTracks;
             downloadInfo.totalFailed = remaining;
             downloadInfo.attempts = attempt;
@@ -11580,6 +11874,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
             
             if (downloadInfo) {
               downloadInfo.status = 'completed';
+          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
               downloadInfo.totalSuccess = successfulTracks;
               downloadInfo.totalFailed = remaining;
               downloadInfo.attempts = attempt;
@@ -11619,6 +11914,7 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
           const downloadInfo = activeDownloads.get(downloadId);
           if (downloadInfo) {
             downloadInfo.status = 'completed';
+          downloadInfo.completedAt = Date.now(); // Mark completion time for cleanup
             downloadInfo.totalSuccess = totalSuccess;
             downloadInfo.totalFailed = totalFailed;
             downloadInfo.attempts = attempt;
