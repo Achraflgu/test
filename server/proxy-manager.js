@@ -38,15 +38,23 @@ class ProxyManager {
       'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-socks4.txt',
       'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-socks5.txt',
       
-      // 🔥 ProxyScrape V4 API (GOOD - 500+ proxies, fast, reliable)
-      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=20000',
-      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=us',
-      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=10000&country=ca,gb,de,fr',
+      // 🚀 FAST PROXIES - ProxyScrape V4 API (OPTIMIZED for speed & reliability)
+      // Using low timeouts (800ms-3000ms) to only get FAST, HIGH-QUALITY proxies
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=800',   // Ultra-fast only
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=1500',  // Very fast
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=3000',  // Fast
+      'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text&timeout=5000&country=us,ca,gb,de,fr',  // Fast + Good locations
       
-      // ProxyScrape V2 (backup)
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all',
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4&timeout=10000&country=all',
-      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all',
+      // 🎯 HIGH-QUALITY VALIDATED PROXIES (Updated frequently)
+      'https://raw.githubusercontent.com/Vann-Dev/proxy-list/main/proxies/http.txt',  // Updated hourly, high quality
+      'https://raw.githubusercontent.com/zevtyardt/proxy-list/main/http.txt',         // Well-maintained, fast updates
+      'https://raw.githubusercontent.com/officialputuid/KangProxy/KangProxy/http/http.txt',  // Fresh, tested proxies
+      'https://raw.githubusercontent.com/proxy4parsing/proxy-list/main/http.txt',     // Pre-validated working proxies
+      
+      // ProxyScrape V2 (backup - slower but more proxies)
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=5000&country=all',
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4&timeout=5000&country=all',
+      'https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=5000&country=all',
       
       // GitHub proxy lists (updated daily)
       'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
