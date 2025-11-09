@@ -1375,6 +1375,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
+      let timeoutHandled = false; // 🔧 CRITICAL: Track if timeout handler has processed (race condition fix)
 
       const resolveOnce = (value) => {
         if (resolved) return;
@@ -1399,6 +1400,21 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
 
       testProcess.on('close', async (code) => {
         untrackProcess(testProcess); // Remove from tracking
+        
+        // 🔧 CRITICAL FIX: Check if timeout handler already processed this (race condition fix)
+        // If timeout handler is waiting for successful completion, prioritize STRONG PASS result
+        if (resolved && timeoutHandled) {
+          // Timeout handler already resolved - but check if we have a successful result that should take priority
+          const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
+          if (code === 0 && hasExtractedFile) {
+            // Process completed successfully but timeout handler already resolved with failure
+            // This is a race condition - the STRONG PASS result should take priority
+            console.log('  ⚠️ WARNING: Process completed successfully but timeout handler already resolved - STRONG PASS result was lost due to race condition');
+            console.log('  🔍 DEBUG: This indicates the timeout fired just before process completion');
+          }
+          return;
+        }
+        
         if (resolved) return;
 
         const normalizedError = errorOutput.toLowerCase();
@@ -1433,10 +1449,12 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         }
 
         // STRICT: Cookie is valid ONLY if it successfully extracted audio file AND exit code is 0
+        // 🔧 CRITICAL: This MUST be processed even if timeout handler is waiting
         if (code === 0 && hasExtractedFile) {
           console.log('  ✅✅✅ Cookie test STRONG PASS (successfully extracted audio file) - RETURNING SUCCESS');
-          console.log(`  🔍 DEBUG: STRONG PASS details - code: ${code}, hasExtractedFile: ${hasExtractedFile}, stdout length: ${stdoutData.length}`);
+          console.log(`  🔍 DEBUG: STRONG PASS details - code: ${code}, hasExtractedFile: ${hasExtractedFile}, stdout length: ${stdoutData.length}, timeoutHandled: ${timeoutHandled}`);
           const result = { status: 'strong', reason: 'success', cookiePath: cookiePath };
+          // 🔧 CRITICAL: Resolve immediately with STRONG PASS - this takes priority over timeout
           resolveOnce(result);
           return;
         }
@@ -1546,7 +1564,37 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       // This ensures consistency - process will be killed by spawn timeout, but we also track it manually
       setTimeout(async () => {
         if (resolved) return;
+        
+        // 🔧 CRITICAL FIX: Check if process has already completed successfully BEFORE resolving with failure
+        // This prevents race condition where process completes just before timeout
+        const hasExtractedFile = stdoutData.includes('/tmp/cookie_test_');
+        const normalizedError = errorOutput.toLowerCase();
+        const hasBotDetectionError =
+          normalizedError.includes('sign in to confirm') ||
+          normalizedError.includes('login_required') ||
+          normalizedError.includes("you're not a bot") ||
+          normalizedError.includes('confirm you are not a bot') ||
+          normalizedError.includes('consent required') ||
+          normalizedError.includes('captcha') ||
+          normalizedError.includes('please sign in to continue') ||
+          normalizedError.includes('video unavailable') ||
+          normalizedError.includes('unplayable');
+        
+        // 🔧 CRITICAL: If we have successful extraction, wait a bit for close handler to process it
+        // Don't resolve with failure if process is about to complete successfully
+        if (hasExtractedFile && !hasBotDetectionError) {
+          console.log(`  ⏳ Timeout reached but detected successful extraction in progress - waiting 500ms for process to complete...`);
+          timeoutHandled = true;
+          // Give the close handler a chance to process the successful result
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // If still not resolved, the close handler should have processed it
+          if (resolved) return;
+          // If still not resolved after wait, process might have failed - continue with timeout handling
+        }
+        
+        if (resolved) return;
         resolved = true;
+        timeoutHandled = true;
         try { testProcess.kill('SIGKILL'); } catch {}
         const proxyType = isOxylabs ? 'Oxylabs' : (isScraperAPI ? 'ScraperAPI' : (isYouTubeValidated ? 'YouTube-validated proxy' : (proxy && !skipProxy ? 'free proxy' : 'no proxy')));
         console.log(`  ❌ Cookie test timeout - rejecting (${processTimeout/1000}s limit, ${proxyType})`);
