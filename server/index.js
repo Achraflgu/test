@@ -2706,25 +2706,6 @@ async function regenerateSingleCookie(slotIndex) {
               }
               
               console.log(`  ✅ Cookie test passed - preserving content (${cookieData.cookieContent.length} chars) for slot ${slotIndex + 1}`);
-              
-              // 🔧 CRITICAL FIX: Save cookie IMMEDIATELY when STRONG PASS is detected
-              try {
-                const savedPath = await saveCookieToPool(cookieData.cookieContent, slotIndex, { 
-                  quality: 'strong',
-                  visitorData: cookieData.visitorData
-                });
-                if (savedPath) {
-                  console.log(`  ✅ Cookie IMMEDIATELY saved to slot ${slotIndex + 1} after STRONG PASS`);
-                  if (isRedisAvailable()) {
-                    console.log(`  ☁️ Cookie automatically saved to Redis`);
-                  }
-                } else {
-                  console.log(`  ⚠️ WARNING: saveCookieToPool returned null - cookie may not be saved!`);
-                }
-              } catch (saveErr) {
-                console.log(`  ⚠️ ERROR: Failed to save cookie immediately: ${saveErr.message}`);
-              }
-              
               const cookieResult = { 
                 content: cookieData.cookieContent, 
                 quality: 'strong',
@@ -2806,8 +2787,6 @@ async function regenerateSingleCookie(slotIndex) {
       
       if (strongCookies.length > 0) {
         // ✅ STEP 3: Replace failed cookie slot with FIRST strong cookie
-        // 🔧 NOTE: Cookie is already saved immediately when STRONG PASS is detected (see line 2712)
-        // This section is kept for backward compatibility and to handle edge cases
         const firstStrongCookie = strongCookies[0];
         
         // 🔧 FIX: Validate cookie content before saving
@@ -2815,28 +2794,17 @@ async function regenerateSingleCookie(slotIndex) {
           console.log(`  ⚠️ ERROR: Strong cookie found but content is missing! Skipping save.`);
           console.log(`  🔍 Debug: firstStrongCookie = ${JSON.stringify(firstStrongCookie ? Object.keys(firstStrongCookie) : 'null')}`);
         } else {
-          // 🔧 Check if cookie was already saved (to avoid duplicate saves)
-          const existingCookies = await getWorkingCookiesFromPool();
-          const alreadySaved = existingCookies.some(c => c.index === slotIndex && c.content);
-          
-          if (!alreadySaved) {
-            try {
-              const savedPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { 
-                quality: 'strong',
-                visitorData: firstStrongCookie.visitorData
-              });
-              if (savedPath) {
-                // This replaces the failed cookie at slotIndex
-                console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie (fallback save)`);
-              } else {
-                console.log(`  ⚠️ ERROR: saveCookieToPool returned null - cookie was not saved!`);
-              }
-            } catch (saveErr) {
-              console.log(`  ⚠️ ERROR: Failed to save cookie to pool: ${saveErr.message}`);
-              console.log(`  🔍 Stack: ${saveErr.stack}`);
+          try {
+            const savedPath = await saveCookieToPool(firstStrongCookie.content, slotIndex, { quality: 'strong' });
+            if (savedPath) {
+              // This replaces the failed cookie at slotIndex
+              console.log(`✅ Cookie slot ${slotIndex + 1} replaced with new STRONG cookie`);
+            } else {
+              console.log(`  ⚠️ ERROR: saveCookieToPool returned null - cookie was not saved!`);
             }
-          } else {
-            console.log(`  ✅ Cookie already saved to slot ${slotIndex + 1} (skipping duplicate save)`);
+          } catch (saveErr) {
+            console.log(`  ⚠️ ERROR: Failed to save cookie to pool: ${saveErr.message}`);
+            console.log(`  🔍 Stack: ${saveErr.stack}`);
           }
         }
         
