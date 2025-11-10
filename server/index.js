@@ -33,6 +33,307 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ====================================
+// 🔧 RESOURCE MANAGEMENT SYSTEM
+// ====================================
+// Configurable via environment variables:
+// - MAX_MEMORY_MB: Maximum memory limit in MB (default: 512)
+// - MAX_PROCESSES: Maximum concurrent child processes (default: 5)
+// - MAX_DOWNLOADS: Maximum concurrent downloads (default: 3)
+// - CPU_THRESHOLD: CPU usage threshold percentage (default: 80)
+//
+// Railway free tier limits: 512MB RAM, 0.5 vCPU
+// Adjust these limits based on your deployment platform
+// ====================================
+
+class ResourceManager {
+  constructor() {
+    // Resource limits (configurable via environment)
+    this.limits = {
+      maxMemoryMB: parseInt(process.env.MAX_MEMORY_MB) || 512, // Railway free tier: 512MB
+      maxConcurrentProcesses: parseInt(process.env.MAX_PROCESSES) || 5,
+      maxConcurrentDownloads: parseInt(process.env.MAX_DOWNLOADS) || 3,
+      cpuThreshold: parseFloat(process.env.CPU_THRESHOLD) || 80, // 80% CPU usage
+      memoryWarningThreshold: 0.85, // 85% of max memory
+      memoryCriticalThreshold: 0.95 // 95% of max memory
+    };
+
+    // Tracked resources
+    this.childProcesses = new Set();
+    this.monitoringInterval = null;
+    this.stats = {
+      peakMemoryMB: 0,
+      totalProcessesCreated: 0,
+      processesTerminated: 0,
+      memoryWarnings: 0,
+      memoryCriticals: 0
+    };
+
+    console.log('🔧 Resource Manager initialized');
+    console.log(`   Max Memory: ${this.limits.maxMemoryMB}MB`);
+    console.log(`   Max Processes: ${this.limits.maxConcurrentProcesses}`);
+    console.log(`   Max Downloads: ${this.limits.maxConcurrentDownloads}`);
+  }
+
+  // Get current memory usage
+  getMemoryUsage() {
+    const usage = process.memoryUsage();
+    return {
+      heapUsedMB: Math.round(usage.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(usage.heapTotal / 1024 / 1024),
+      rssMB: Math.round(usage.rss / 1024 / 1024),
+      externalMB: Math.round(usage.external / 1024 / 1024),
+      arrayBuffersMB: Math.round(usage.arrayBuffers / 1024 / 1024)
+    };
+  }
+
+  // Get CPU usage
+  async getCpuUsage() {
+    const startUsage = process.cpuUsage();
+    const startTime = Date.now();
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const endUsage = process.cpuUsage(startUsage);
+    const endTime = Date.now();
+    
+    const totalTime = (endTime - startTime) * 1000; // microseconds
+    const totalUsage = endUsage.user + endUsage.system;
+    
+    return Math.min(100, (totalUsage / totalTime) * 100);
+  }
+
+  // Check if we can accept a new process
+  canAcceptProcess() {
+    const memUsage = this.getMemoryUsage();
+    const memoryPercent = memUsage.rssMB / this.limits.maxMemoryMB;
+    
+    if (this.childProcesses.size >= this.limits.maxConcurrentProcesses) {
+      console.log(`⚠️ [Resource Limit] Max processes reached (${this.childProcesses.size}/${this.limits.maxConcurrentProcesses})`);
+      return false;
+    }
+    
+    if (memoryPercent > this.limits.memoryCriticalThreshold) {
+      console.log(`⚠️ [Resource Limit] Memory critical (${memUsage.rssMB}MB / ${this.limits.maxMemoryMB}MB)`);
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Register a child process
+  registerProcess(proc, downloadId = null) {
+    if (!proc || !proc.pid) return;
+
+    const processInfo = {
+      proc,
+      pid: proc.pid,
+      downloadId,
+      startTime: Date.now()
+    };
+
+    this.childProcesses.add(processInfo);
+    this.stats.totalProcessesCreated++;
+    
+    console.log(`✅ [Process] Registered PID ${proc.pid} (${this.childProcesses.size} active)`);
+
+    // Auto-cleanup on process exit
+    proc.on('exit', () => {
+      this.unregisterProcess(processInfo);
+    });
+
+    return processInfo;
+  }
+
+  // Unregister a child process
+  unregisterProcess(processInfo) {
+    if (this.childProcesses.has(processInfo)) {
+      this.childProcesses.delete(processInfo);
+      this.stats.processesTerminated++;
+      console.log(`🗑️ [Process] Unregistered PID ${processInfo.pid} (${this.childProcesses.size} active)`);
+    }
+  }
+
+  // Terminate a specific process
+  terminateProcess(processInfo, signal = 'SIGTERM') {
+    try {
+      if (processInfo.proc && !processInfo.proc.killed) {
+        processInfo.proc.kill(signal);
+        console.log(`🛑 [Process] Terminated PID ${processInfo.pid} (${signal})`);
+      }
+    } catch (error) {
+      console.error(`❌ [Process] Failed to terminate PID ${processInfo.pid}:`, error.message);
+    }
+  }
+
+  // Terminate all child processes
+  terminateAllProcesses(signal = 'SIGTERM') {
+    console.log(`🛑 [Process] Terminating ${this.childProcesses.size} process(es)...`);
+    
+    for (const processInfo of this.childProcesses) {
+      this.terminateProcess(processInfo, signal);
+    }
+
+    // Force kill after 5 seconds if still alive
+    setTimeout(() => {
+      for (const processInfo of this.childProcesses) {
+        if (processInfo.proc && !processInfo.proc.killed) {
+          this.terminateProcess(processInfo, 'SIGKILL');
+        }
+      }
+    }, 5000);
+  }
+
+  // Clean up old processes (running longer than timeout)
+  cleanupOldProcesses(timeoutMs = 30 * 60 * 1000) { // 30 minutes default
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const processInfo of this.childProcesses) {
+      const runtime = now - processInfo.startTime;
+      if (runtime > timeoutMs) {
+        console.log(`⚠️ [Process] Cleaning up long-running process PID ${processInfo.pid} (runtime: ${Math.round(runtime / 1000)}s)`);
+        this.terminateProcess(processInfo);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      console.log(`🧹 [Process] Cleaned up ${cleaned} old process(es)`);
+    }
+
+    return cleaned;
+  }
+
+  // Force garbage collection (if available)
+  forceGarbageCollection() {
+    if (global.gc) {
+      const beforeMem = this.getMemoryUsage();
+      global.gc();
+      const afterMem = this.getMemoryUsage();
+      const freed = beforeMem.heapUsedMB - afterMem.heapUsedMB;
+      
+      console.log(`♻️ [Memory] Garbage collection: freed ${freed}MB (${afterMem.heapUsedMB}MB used)`);
+      return freed;
+    }
+    return 0;
+  }
+
+  // Monitor resources periodically
+  startMonitoring(intervalMs = 30000) { // 30 seconds
+    console.log(`🔍 [Monitor] Starting resource monitoring (interval: ${intervalMs / 1000}s)`);
+
+    this.monitoringInterval = setInterval(async () => {
+      const memUsage = this.getMemoryUsage();
+      const cpuUsage = await this.getCpuUsage();
+      const memoryPercent = memUsage.rssMB / this.limits.maxMemoryMB;
+
+      // Update peak memory
+      if (memUsage.rssMB > this.stats.peakMemoryMB) {
+        this.stats.peakMemoryMB = memUsage.rssMB;
+      }
+
+      // Log status
+      console.log(`📊 [Monitor] Memory: ${memUsage.rssMB}MB/${this.limits.maxMemoryMB}MB (${Math.round(memoryPercent * 100)}%) | CPU: ${cpuUsage.toFixed(1)}% | Processes: ${this.childProcesses.size}`);
+
+      // Memory warning
+      if (memoryPercent > this.limits.memoryWarningThreshold && memoryPercent <= this.limits.memoryCriticalThreshold) {
+        this.stats.memoryWarnings++;
+        console.log(`⚠️ [Monitor] Memory warning threshold reached (${memUsage.rssMB}MB / ${this.limits.maxMemoryMB}MB)`);
+        this.forceGarbageCollection();
+      }
+
+      // Memory critical - take action
+      if (memoryPercent > this.limits.memoryCriticalThreshold) {
+        this.stats.memoryCriticals++;
+        console.log(`🚨 [Monitor] CRITICAL: Memory limit reached (${memUsage.rssMB}MB / ${this.limits.maxMemoryMB}MB)`);
+        
+        // Force garbage collection
+        this.forceGarbageCollection();
+        
+        // Clean up old processes
+        this.cleanupOldProcesses(15 * 60 * 1000); // Kill processes older than 15 minutes
+        
+        // If still critical after cleanup, log warning
+        const newMemUsage = this.getMemoryUsage();
+        if (newMemUsage.rssMB / this.limits.maxMemoryMB > this.limits.memoryCriticalThreshold) {
+          console.log(`🚨 [Monitor] CRITICAL: Memory still high after cleanup (${newMemUsage.rssMB}MB)`);
+          console.log(`   Consider reducing concurrent operations or increasing memory limit`);
+        }
+      }
+
+      // Clean up old processes periodically
+      if (this.childProcesses.size > 0) {
+        this.cleanupOldProcesses();
+      }
+    }, intervalMs);
+  }
+
+  // Stop monitoring
+  stopMonitoring() {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = null;
+      console.log('🛑 [Monitor] Stopped resource monitoring');
+    }
+  }
+
+  // Get resource statistics
+  getStats() {
+    const memUsage = this.getMemoryUsage();
+    return {
+      ...this.stats,
+      currentMemoryMB: memUsage.rssMB,
+      activeProcesses: this.childProcesses.size,
+      limits: this.limits
+    };
+  }
+
+  // Emergency cleanup - aggressive resource freeing
+  emergencyCleanup() {
+    console.log('🚨 [Emergency] Starting emergency cleanup...');
+    
+    // Force GC
+    this.forceGarbageCollection();
+    
+    // Kill all child processes
+    this.terminateAllProcesses('SIGKILL');
+    
+    // Clear caches if they exist
+    if (global.cookieCache) {
+      global.cookieCache.clear();
+      console.log('🧹 [Emergency] Cleared cookie cache');
+    }
+    
+    console.log('✅ [Emergency] Emergency cleanup complete');
+  }
+}
+
+// Global resource manager instance
+const resourceManager = new ResourceManager();
+
+// ====================================
+// 🔧 MANAGED PROCESS SPAWNER
+// ====================================
+// Wrapper for spawn that integrates with resource manager
+
+function spawnManaged(command, args, options = {}, downloadId = null) {
+  // Check if we can accept a new process
+  if (!resourceManager.canAcceptProcess()) {
+    throw new Error('Resource limit reached - cannot spawn new process');
+  }
+
+  // Spawn the process
+  const proc = spawn(command, args, options);
+
+  // Register with resource manager
+  if (proc && proc.pid) {
+    resourceManager.registerProcess(proc, downloadId);
+  }
+
+  return proc;
+}
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -41,17 +342,48 @@ httpServer.timeout = 7200000; // 2 hours (in milliseconds)
 httpServer.keepAliveTimeout = 7200000; // 2 hours
 httpServer.headersTimeout = 7210000; // Slightly higher than keepAlive
 
-// Keep process alive for Koyeb/Vercel
-process.on('SIGTERM', () => {
-  console.log('🔄 SIGTERM received, keeping process alive...');
-  // Don't exit, keep running
-  // Child processes with detached:true will continue independently
+// Signal handlers will be set up after server starts (see gracefulShutdown function)
+
+// ====================================
+// 🚨 PROCESS ERROR HANDLERS
+// ====================================
+// Prevent crashes from unhandled errors
+
+process.on('uncaughtException', (error) => {
+  console.error('🚨 [Uncaught Exception]', error);
+  console.error('   Stack:', error.stack);
+  
+  // Try to clean up resources
+  try {
+    resourceManager.emergencyCleanup();
+  } catch (cleanupError) {
+    console.error('   Cleanup failed:', cleanupError.message);
+  }
+  
+  // Don't exit immediately on Railway - log and continue
+  if (process.env.RAILWAY_ENVIRONMENT) {
+    console.log('   Continuing operation on Railway (non-fatal error)');
+  } else {
+    console.log('   Exiting due to uncaught exception');
+    process.exit(1);
+  }
 });
 
-process.on('SIGINT', () => {
-  console.log('🔄 SIGINT received, keeping process alive...');
-  // Don't exit, keep running  
-  // Child processes with detached:true will continue independently
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 [Unhandled Rejection]', reason);
+  console.error('   Promise:', promise);
+  
+  // Log but don't crash - most promise rejections are non-fatal
+  console.log('   Continuing operation (promise rejection logged)');
+});
+
+process.on('warning', (warning) => {
+  console.warn('⚠️ [Process Warning]', warning.name, warning.message);
+  
+  // Check for memory warnings
+  if (warning.name === 'MaxListenersExceededWarning') {
+    console.warn('   Consider reducing concurrent operations');
+  }
 });
 
 // CORS configuration - supports both local and production URLs
@@ -6758,6 +7090,27 @@ app.post('/api/download/start', async (req, res) => {
   if (!tracks || !settings) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
+
+  // Check resource limits before accepting new download
+  if (activeDownloads.size >= resourceManager.limits.maxConcurrentDownloads) {
+    console.log(`⚠️ [Resource Limit] Max concurrent downloads reached (${activeDownloads.size}/${resourceManager.limits.maxConcurrentDownloads})`);
+    return res.status(429).json({ 
+      error: 'Too many concurrent downloads',
+      message: `Maximum ${resourceManager.limits.maxConcurrentDownloads} concurrent downloads allowed. Please wait for current downloads to complete.`,
+      activeDownloads: activeDownloads.size,
+      maxDownloads: resourceManager.limits.maxConcurrentDownloads
+    });
+  }
+
+  // Check if we can accept new processes (memory/CPU check)
+  if (!resourceManager.canAcceptProcess()) {
+    console.log('⚠️ [Resource Limit] Cannot accept new download due to resource constraints');
+    return res.status(503).json({ 
+      error: 'Server resources exhausted',
+      message: 'Server is currently under heavy load. Please try again in a few moments.',
+      stats: resourceManager.getStats()
+    });
+  }
   
   // Allow empty or placeholder playlist URLs for search results
   const effectivePlaylistUrl = playlistUrl || 'search-results';
@@ -7114,8 +7467,32 @@ app.get('/api/youtube/search', async (req, res) => {
   
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
+    // Try with proxy first (to bypass IP bans), fallback to direct if proxy fails
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments for search (NO PROXIES - they block searches)
+      let proxy = null;
+      let useProxy = true;
+      
+      // Try to get proxy (for Render IP ban bypass)
+      try {
+        proxy = await proxyManager.getProxyForYtdlp();
+        if (proxy) {
+          console.log('🌐 Using proxy for search (bypass IP ban)');
+          if (proxy.includes('oxylabs.io')) {
+            console.log('  🌟 Using Oxylabs premium proxy');
+          } else {
+            const shortProxy = proxy.length > 50 ? proxy.substring(0, 47) + '...' : proxy;
+            console.log(`  🌐 Using proxy: ${shortProxy}`);
+          }
+        } else {
+          console.log('⚠️ No proxy available - trying direct connection');
+          useProxy = false;
+        }
+      } catch (err) {
+        console.log('⚠️ Proxy manager not ready - trying direct connection');
+        useProxy = false;
+      }
+      
+      // Base search arguments
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -7128,7 +7505,12 @@ app.get('/api/youtube/search', async (req, res) => {
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
-      // Add cookies if available (but NO PROXIES for search)
+      // Add proxy if available
+      if (proxy && useProxy) {
+        searchArgs.push('--proxy', proxy);
+      }
+      
+      // Add cookies if available
       try {
         const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
         if (cookiesExist) {
@@ -7156,6 +7538,117 @@ app.get('/api/youtube/search', async (req, res) => {
       
       searchProcess.on('close', (code) => {
         if (code !== 0) {
+          // If search failed with proxy, try again without proxy
+          if (proxy && useProxy && (errorOutput.includes('proxy') || errorOutput.includes('timeout') || errorOutput.includes('ban'))) {
+            console.log('⚠️ Search failed with proxy, retrying without proxy...');
+            // Retry without proxy
+            const retryArgs = [
+              '-m', 'yt_dlp',
+              `ytsearch${limit}:${query}`,
+              '--dump-json',
+              '--flat-playlist',
+              '--no-warnings',
+              '--ignore-errors',
+              '--no-playlist',
+              '--extractor-args', 'youtube:player_client=web_embedded',
+              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            ];
+            
+            // Add cookies if available (check synchronously)
+            try {
+              if (fsSync.existsSync(YOUTUBE_COOKIES_PATH)) {
+                retryArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+              }
+            } catch (err) {}
+            
+            const retryProcess = spawn(PYTHON_CMD, retryArgs);
+            let retryOutput = '';
+            let retryError = '';
+            
+            retryProcess.stdout.on('data', (data) => {
+              retryOutput += data.toString();
+            });
+            
+            retryProcess.stderr.on('data', (data) => {
+              retryError += data.toString();
+            });
+            
+            retryProcess.on('close', (retryCode) => {
+              if (retryCode !== 0) {
+                console.error('Search error (retry without proxy):', retryError);
+                reject(new Error('Search failed'));
+                return;
+              }
+              
+              // Parse retry output (same parsing logic as below)
+              const lines = retryOutput.trim().split('\n').filter(line => line.trim());
+              const tracks = [];
+              
+              for (const line of lines) {
+                try {
+                  const data = JSON.parse(line);
+                  const title = data.title || '';
+                  const videoId = data.id || data.url || '';
+                  const thumbnail = data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+                  const duration = data.duration || 0;
+                  
+                  let artist = 'Unknown Artist';
+                  let songName = title;
+                  songName = songName
+                    .replace(/\s*\(Official\s+(Music\s+)?Video\)/gi, '')
+                    .replace(/\s*\(Official\s+Audio\)/gi, '')
+                    .replace(/\s*\(Lyric\s+Video\)/gi, '')
+                    .replace(/\s*\(Lyrics\)/gi, '')
+                    .replace(/\s*\[Official\s+(Music\s+)?Video\]/gi, '')
+                    .replace(/\s*\[Official\s+Audio\]/gi, '')
+                    .replace(/\s*Official\s+(Music\s+)?Video/gi, '')
+                    .replace(/\s*\|\s*Official\s+Audio/gi, '')
+                    .trim();
+                  
+                  const patterns = [
+                    /^(.+?)\s*-\s*(.+)$/,
+                    /^(.+?)\s+by\s+(.+)$/i,
+                    /^(.+?)\s*\|\s*(.+)$/,
+                    /^(.+?)\s*\/\s*(.+)$/,
+                    /^(.+?)\s*:\s*(.+)$/,
+                  ];
+                  
+                  for (const pattern of patterns) {
+                    const match = songName.match(pattern);
+                    if (match) {
+                      artist = match[1].trim();
+                      songName = match[2].trim();
+                      const ftMatch = artist.match(/^(.+?)\s+(?:ft\.?|feat\.?|featuring)\s+/i);
+                      if (ftMatch) {
+                        artist = ftMatch[1].trim();
+                      }
+                      break;
+                    }
+                  }
+                  
+                  tracks.push({
+                    id: `search-${videoId}`,
+                    name: songName,
+                    artist: artist,
+                    album: songName,
+                    duration: duration,
+                    imageUrl: thumbnail,
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    downloadStatus: 'pending',
+                    downloadProgress: 0,
+                    selected: true
+                  });
+                } catch (e) {
+                  console.error('Error parsing search result:', e.message);
+                }
+              }
+              
+              resolve(tracks);
+            });
+            
+            return;
+          }
+          
           console.error('Search error:', errorOutput);
           reject(new Error('Search failed'));
           return;
@@ -7274,8 +7767,32 @@ app.post('/api/search', async (req, res) => {
   
   try {
     // Use yt-dlp with --dump-json for MUCH faster results
+    // Try with proxy first (to bypass IP bans), fallback to direct if proxy fails
     const searchResults = await new Promise(async (resolve, reject) => {
-      // Base search arguments for search (NO PROXIES - they block searches)
+      let proxy = null;
+      let useProxy = true;
+      
+      // Try to get proxy (for Render IP ban bypass)
+      try {
+        proxy = await proxyManager.getProxyForYtdlp();
+        if (proxy) {
+          console.log('🌐 Using proxy for search (bypass IP ban)');
+          if (proxy.includes('oxylabs.io')) {
+            console.log('  🌟 Using Oxylabs premium proxy');
+          } else {
+            const shortProxy = proxy.length > 50 ? proxy.substring(0, 47) + '...' : proxy;
+            console.log(`  🌐 Using proxy: ${shortProxy}`);
+          }
+        } else {
+          console.log('⚠️ No proxy available - trying direct connection');
+          useProxy = false;
+        }
+      } catch (err) {
+        console.log('⚠️ Proxy manager not ready - trying direct connection');
+        useProxy = false;
+      }
+      
+      // Base search arguments
       const searchArgs = [
         '-m', 'yt_dlp',
         `ytsearch${limit}:${query}`,
@@ -7288,7 +7805,12 @@ app.post('/api/search', async (req, res) => {
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
       
-      // Add cookies if available (but NO PROXIES for search)
+      // Add proxy if available
+      if (proxy && useProxy) {
+        searchArgs.push('--proxy', proxy);
+      }
+      
+      // Add cookies if available
       try {
         const cookiesExist = await fs.access(YOUTUBE_COOKIES_PATH).then(() => true).catch(() => false);
         if (cookiesExist) {
@@ -7322,6 +7844,179 @@ app.post('/api/search', async (req, res) => {
         }
         
         if (code !== 0) {
+          // If search failed with proxy, try again without proxy
+          if (proxy && useProxy && (errorOutput.includes('proxy') || errorOutput.includes('timeout') || errorOutput.includes('ban'))) {
+            console.log('⚠️ Search failed with proxy, retrying without proxy...');
+            // Retry without proxy
+            const retryArgs = [
+              '-m', 'yt_dlp',
+              `ytsearch${limit}:${query}`,
+              '--dump-json',
+              '--flat-playlist',
+              '--no-warnings',
+              '--ignore-errors',
+              '--no-playlist',
+              '--extractor-args', 'youtube:player_client=web_embedded',
+              '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            ];
+            
+            // Add cookies if available (check synchronously)
+            try {
+              if (fsSync.existsSync(YOUTUBE_COOKIES_PATH)) {
+                retryArgs.push('--cookies', YOUTUBE_COOKIES_PATH);
+              }
+            } catch (err) {}
+            
+            const retryProcess = spawn(PYTHON_CMD, retryArgs);
+            let retryOutput = '';
+            let retryError = '';
+            
+            retryProcess.stdout.on('data', (data) => {
+              retryOutput += data.toString();
+            });
+            
+            retryProcess.stderr.on('data', (data) => {
+              retryError += data.toString();
+            });
+            
+            retryProcess.on('close', (retryCode) => {
+              if (retryCode !== 0) {
+                console.error('Search error (retry without proxy):', retryError);
+                reject(new Error('Search failed'));
+                return;
+              }
+              
+              // Parse retry output (same parsing logic as below)
+              const lines = retryOutput.trim().split('\n').filter(line => line.trim());
+              const tracks = [];
+              
+              for (const line of lines) {
+                try {
+                  const data = JSON.parse(line);
+                  const title = data.title || '';
+                  const videoId = data.id || data.url || '';
+                  const thumbnail = data.thumbnail || data.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+                  const duration = data.duration || 0;
+                  
+                  // Parse title to extract artist and song name
+                  let artist = 'Unknown Artist';
+                  let songName = title;
+                  
+                  const cleanTitle = title
+                    .replace(/\s*\(Official.*?\)/gi, '')
+                    .replace(/\s*\[Official.*?\]/gi, '')
+                    .replace(/\s*\(Clip.*?\)/gi, '')
+                    .replace(/\s*\[Clip.*?\]/gi, '')
+                    .replace(/\s*\(Lyric.*?\)/gi, '')
+                    .replace(/\s*\[Lyric.*?\]/gi, '')
+                    .replace(/\s*\(Audio\)/gi, '')
+                    .replace(/\s*\[Audio\]/gi, '')
+                    .replace(/\s*\(Music Video\)/gi, '')
+                    .replace(/\s*\[Music Video\]/gi, '')
+                    .replace(/\s*\(Exclusive.*?\)/gi, '')
+                    .replace(/\s*\[Exclusive.*?\]/gi, '')
+                    .replace(/\s*\(ft\.?.*?\)/gi, '')
+                    .replace(/\s*\[ft\.?.*?\]/gi, '')
+                    .replace(/\s*\|.*$/gi, '')
+                    .trim();
+                  
+                  let parsed = false;
+                  
+                  if (cleanTitle.includes(' - ') && !parsed) {
+                    const parts = cleanTitle.split(' - ');
+                    if (parts.length >= 2) {
+                      artist = parts[0].trim();
+                      songName = parts.slice(1).join(' - ').trim();
+                      parsed = true;
+                    }
+                  }
+                  
+                  if (cleanTitle.includes(': ') && !parsed) {
+                    const parts = cleanTitle.split(': ');
+                    if (parts.length >= 2) {
+                      artist = parts[0].trim();
+                      songName = parts.slice(1).join(': ').trim();
+                      parsed = true;
+                    }
+                  }
+                  
+                  if (cleanTitle.toLowerCase().includes(' by ') && !parsed) {
+                    const parts = cleanTitle.split(/ by /i);
+                    if (parts.length >= 2) {
+                      songName = parts[0].trim();
+                      artist = parts.slice(1).join(' by ').trim();
+                      parsed = true;
+                    }
+                  }
+                  
+                  if (title.includes(' | ') && !parsed) {
+                    const parts = title.split(' | ');
+                    if (parts.length >= 2) {
+                      if (parts[0].length < parts[1].length * 0.7) {
+                        artist = parts[0].trim();
+                        songName = parts.slice(1).join(' | ').trim();
+                      } else {
+                        songName = parts[0].trim();
+                        artist = parts[1].trim();
+                      }
+                      songName = songName
+                        .replace(/\s*\(Official.*?\)/gi, '')
+                        .replace(/\s*\[Official.*?\]/gi, '')
+                        .trim();
+                      parsed = true;
+                    }
+                  }
+                  
+                  if (!parsed && (title.toLowerCase().includes(' ft ') || title.toLowerCase().includes(' feat '))) {
+                    const ftMatch = title.match(/^(.+?)\s+(?:ft\.?|feat\.?)\s+(.+?)(?:\s+-\s+(.+))?$/i);
+                    if (ftMatch) {
+                      artist = `${ftMatch[1].trim()} ft ${ftMatch[2].trim()}`;
+                      songName = ftMatch[3] ? ftMatch[3].trim() : title;
+                      parsed = true;
+                    }
+                  }
+                  
+                  if (!parsed) {
+                    songName = cleanTitle;
+                  }
+                  
+                  songName = songName
+                    .replace(/\s*\(Official.*?\)/gi, '')
+                    .replace(/\s*\[Official.*?\]/gi, '')
+                    .replace(/\s*\(Clip.*?\)/gi, '')
+                    .replace(/\s*\[Clip.*?\]/gi, '')
+                    .replace(/\s*\(Lyric.*?\)/gi, '')
+                    .replace(/\s*\[Lyric.*?\]/gi, '')
+                    .replace(/\s*\(Audio\)/gi, '')
+                    .replace(/\s*\[Audio\]/gi, '')
+                    .replace(/\s*\(Music Video\)/gi, '')
+                    .replace(/\s*\[Music Video\]/gi, '')
+                    .replace(/\s*\|.*$/gi, '')
+                    .trim();
+                  
+                  tracks.push({
+                    id: `search-${videoId}`,
+                    name: songName,
+                    artist: artist,
+                    album: songName,
+                    duration: duration,
+                    imageUrl: thumbnail,
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    downloadStatus: 'pending',
+                    downloadProgress: 0,
+                    selected: true
+                  });
+                } catch (e) {
+                  console.error('Error parsing search result:', e.message);
+                }
+              }
+              
+              resolve(tracks);
+            });
+            
+            return;
+          }
+          
           console.error('Search error:', errorOutput);
           reject(new Error('Search failed'));
           return;
@@ -12000,11 +12695,32 @@ app.post('/api/proxy/refresh', async (req, res) => {
 
 app.get('/api/health', async (req, res) => {
   const spotdlInstalled = await checkSpotdlInstalled();
+  const resourceStats = resourceManager.getStats();
+  const memUsage = resourceManager.getMemoryUsage();
   
   res.json({
     status: 'ok',
     spotdlInstalled,
-    versions: versionInfo
+    versions: versionInfo,
+    resources: {
+      memory: memUsage,
+      processes: resourceStats.activeProcesses,
+      stats: resourceStats
+    }
+  });
+});
+
+// Resource monitoring endpoint
+app.get('/api/resources', (req, res) => {
+  const stats = resourceManager.getStats();
+  const memUsage = resourceManager.getMemoryUsage();
+  
+  res.json({
+    memory: memUsage,
+    limits: resourceManager.limits,
+    stats: stats,
+    activeDownloads: activeDownloads.size,
+    canAcceptProcess: resourceManager.canAcceptProcess()
   });
 });
 
@@ -12473,6 +13189,9 @@ startupSequence().then(async () => {
 ╚════════════════════════════════════════════════════════════╝
     `);
     
+    // Start resource monitoring
+    resourceManager.startMonitoring(30000); // Monitor every 30 seconds
+    
     // Keep-alive mechanism for Koyeb
     setInterval(() => {
       console.log('🔄 Keep-alive ping - Server is running');
@@ -12520,12 +13239,18 @@ startupSequence().then(async () => {
   const gracefulShutdown = (signal) => {
     console.log(`\n🛑 ${signal} received - Starting graceful shutdown...`);
     
+    // Stop resource monitoring
+    resourceManager.stopMonitoring();
+    
     // Stop accepting new connections
     httpServer.close(() => {
       console.log('✅ HTTP server closed');
       
       // Clean up resources
       console.log('🧹 Cleaning up resources...');
+      
+      // Terminate all child processes via resource manager
+      resourceManager.terminateAllProcesses();
       
       // Clear active downloads
       if (activeDownloads.size > 0) {
@@ -12550,6 +13275,13 @@ startupSequence().then(async () => {
         global['slotLastRetryTimes'].clear();
       }
       
+      // Final garbage collection
+      resourceManager.forceGarbageCollection();
+      
+      // Log final stats
+      const finalStats = resourceManager.getStats();
+      console.log(`📊 Final stats: Peak Memory: ${finalStats.peakMemoryMB}MB | Processes: ${finalStats.totalProcessesCreated} created, ${finalStats.processesTerminated} terminated`);
+      
       console.log('✅ Cleanup complete - Shutting down gracefully');
       process.exit(0);
     });
@@ -12557,6 +13289,7 @@ startupSequence().then(async () => {
     // Force shutdown after 30 seconds if graceful shutdown hangs
     setTimeout(() => {
       console.error('⚠️ Graceful shutdown timeout - forcing exit');
+      resourceManager.emergencyCleanup();
       process.exit(1);
     }, 30000);
   };

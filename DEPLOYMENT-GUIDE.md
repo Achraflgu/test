@@ -279,6 +279,174 @@ Common errors and solutions:
 
 ---
 
+## 🔧 Resource Management & Railway Stability
+
+### Overview
+The system includes comprehensive resource management to prevent crashes and auto-restarts on platforms like Railway with limited resources (512MB RAM, 0.5 vCPU).
+
+### Features Implemented
+
+#### 1. **Resource Monitoring**
+- Real-time memory and CPU usage tracking
+- Automatic monitoring every 30 seconds
+- Logs: `📊 [Monitor] Memory: 256MB/512MB (50%) | CPU: 45.2% | Processes: 3`
+
+#### 2. **Resource Limits**
+Configurable via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_MEMORY_MB` | 512 | Maximum memory limit (Railway free tier) |
+| `MAX_PROCESSES` | 5 | Maximum concurrent child processes |
+| `MAX_DOWNLOADS` | 3 | Maximum simultaneous downloads |
+| `CPU_THRESHOLD` | 80 | CPU usage warning threshold |
+
+#### 3. **Process Management**
+- Automatic registration of all spawned child processes
+- Cleanup of processes running longer than 30 minutes
+- Graceful termination on shutdown
+- Emergency cleanup on critical memory usage
+
+#### 4. **Memory Management**
+- Automatic garbage collection when memory exceeds 85%
+- Emergency cleanup at 95% memory usage
+- Process termination for long-running operations
+- Memory statistics tracking
+
+#### 5. **Download Limits**
+- Prevents server overload from too many concurrent downloads
+- Returns HTTP 429 (Too Many Requests) when limit reached
+- Returns HTTP 503 (Service Unavailable) when resources exhausted
+
+### API Endpoints
+
+#### Health Check with Resources
+```bash
+GET /api/health
+```
+
+Response includes resource statistics:
+```json
+{
+  "status": "ok",
+  "spotdlInstalled": true,
+  "versions": {...},
+  "resources": {
+    "memory": {
+      "heapUsedMB": 234,
+      "rssMB": 345,
+      ...
+    },
+    "processes": 3,
+    "stats": {
+      "peakMemoryMB": 456,
+      "totalProcessesCreated": 127,
+      "processesTerminated": 124,
+      ...
+    }
+  }
+}
+```
+
+#### Resource Monitoring Endpoint
+```bash
+GET /api/resources
+```
+
+Returns detailed resource information:
+```json
+{
+  "memory": {...},
+  "limits": {
+    "maxMemoryMB": 512,
+    "maxConcurrentProcesses": 5,
+    "maxConcurrentDownloads": 3
+  },
+  "stats": {...},
+  "activeDownloads": 2,
+  "canAcceptProcess": true
+}
+```
+
+### Graceful Shutdown
+- Stops all monitoring on SIGTERM/SIGINT
+- Terminates all child processes (SIGTERM, then SIGKILL after 5s)
+- Clears active downloads and regeneration locks
+- Final garbage collection
+- Logs peak memory and process statistics
+- Forces exit after 30s timeout if shutdown hangs
+
+### Error Handling
+- **Uncaught Exceptions**: Emergency cleanup + continue on Railway
+- **Unhandled Rejections**: Log and continue (non-fatal)
+- **Process Warnings**: Log warnings for memory issues
+
+### Monitoring Logs
+
+**Startup:**
+```
+🔧 Resource Manager initialized
+   Max Memory: 512MB
+   Max Processes: 5
+   Max Downloads: 3
+🔍 [Monitor] Starting resource monitoring (interval: 30s)
+```
+
+**During Operation:**
+```
+📊 [Monitor] Memory: 256MB/512MB (50%) | CPU: 45.2% | Processes: 3
+✅ [Process] Registered PID 12345 (3 active)
+🗑️ [Process] Unregistered PID 12345 (2 active)
+```
+
+**Warnings:**
+```
+⚠️ [Monitor] Memory warning threshold reached (435MB / 512MB)
+♻️ [Memory] Garbage collection: freed 45MB (390MB used)
+```
+
+**Critical:**
+```
+🚨 [Monitor] CRITICAL: Memory limit reached (487MB / 512MB)
+🧹 [Process] Cleaned up 2 old process(es)
+```
+
+**Resource Limits:**
+```
+⚠️ [Resource Limit] Max concurrent downloads reached (3/3)
+⚠️ [Resource Limit] Memory critical (487MB / 512MB)
+```
+
+### Configuration for Railway
+
+Add these environment variables in Railway dashboard:
+
+```bash
+# Resource Limits (Railway Free Tier: 512MB RAM, 0.5 vCPU)
+MAX_MEMORY_MB=512
+MAX_PROCESSES=5
+MAX_DOWNLOADS=3
+CPU_THRESHOLD=80
+```
+
+For Railway Pro (more resources):
+```bash
+MAX_MEMORY_MB=2048
+MAX_PROCESSES=10
+MAX_DOWNLOADS=5
+```
+
+### Benefits
+- ✅ Prevents memory-related crashes
+- ✅ Prevents Railway auto-restarts
+- ✅ Graceful handling of resource exhaustion
+- ✅ Automatic cleanup of zombie processes
+- ✅ Better stability under load
+- ✅ Real-time monitoring and statistics
+- ✅ Configurable limits per deployment platform
+
+---
+
 **Status**: ✅ All features deployed to GitHub
-**Next**: Deploy to Render with `USE_FREE_PROXIES=true`
+**Next**: Deploy to Render/Railway with resource management enabled
 
