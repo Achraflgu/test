@@ -27,12 +27,14 @@ primary_region = "cdg"
     soft_limit = 100
     hard_limit = 200
 
-[[http_service.checks]]
-  grace_period = "60s"
-  interval = "30s"
-  method = "GET"
-  timeout = "10s"
-  path = "/api/health"
+# Disable HTTP health checks - server passes TCP connection
+# HTTP health check causes issues during heavy cookie generation
+# [[http_service.checks]]
+#   grace_period = "60s"
+#   interval = "30s"
+#   method = "GET"
+#   timeout = "10s"
+#   path = "/api/health"
 
 [[vm]]
   memory = "2gb"
