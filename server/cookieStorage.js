@@ -1,270 +1,368 @@
-import { Redis } from '@upstash/redis';
+import { MongoClient } from 'mongodb';
 
-// Initialize Redis client using Upstash credentials
-const redis = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-  ? new Redis({
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
-    })
-  : null;
+// ====================================
+// 🗄️ MONGODB CONNECTION
+// ====================================
 
-const COOKIE_PREFIX = 'cookie_pool:';
-const METADATA_KEY = 'cookie_metadata';
-const POOL_METADATA_KEY = 'cookie_pool_metadata';
-const PRIMARY_COOKIE_KEY = 'cookie_primary';
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Check if Redis is available
-export function isRedisAvailable() {
-  return redis !== null;
-}
+let client = null;
+let db = null;
+let isConnected = false;
 
-// Save cookie to Redis
-export async function saveCookieToRedis(index, cookieContent, metadata = {}) {
-  if (!redis) return false;
-  
-  try {
-    const key = `${COOKIE_PREFIX}${index}`;
-    await redis.set(key, cookieContent);
-    
-    // Save metadata
-    if (Object.keys(metadata).length > 0) {
-      await redis.hset(`${key}:meta`, metadata);
-    }
-    
-    return true;
-  } catch (err) {
-    console.log(`  ⚠️ Failed to save cookie ${index} to Redis: ${err.message}`);
-    return false;
+// Collection names
+const COLLECTIONS = {
+  cookies: 'cookies',
+  cookieMetadata: 'cookie_metadata',
+  cookieBackups: 'cookie_backups',
+  proxies: 'proxies'
+};
+
+// Initialize MongoDB connection
+async function connectToMongo() {
+  if (isConnected && client) {
+    return db;
   }
-}
 
-// Get cookie from Redis
-export async function getCookieFromRedis(index) {
-  if (!redis) return null;
-  
+  if (!MONGODB_URI) {
+    console.log('⚠️ MONGODB_URI not configured - database storage disabled');
+    return null;
+  }
+
   try {
-    const key = `${COOKIE_PREFIX}${index}`;
-    const content = await redis.get(key);
-    return content;
+    client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+
+    await client.connect();
+    db = client.db(); // Uses database from connection string
+    isConnected = true;
+
+    console.log('✅ Connected to MongoDB');
+
+    // Create indexes for better performance
+    await createIndexes();
+
+    return db;
   } catch (err) {
-    console.log(`  ⚠️ Failed to get cookie ${index} from Redis: ${err.message}`);
+    console.error('❌ MongoDB connection error:', err.message);
+    isConnected = false;
     return null;
   }
 }
 
-// Get all cookies from Redis
-export async function getAllCookiesFromRedis() {
-  if (!redis) return [];
-  
+// Create indexes for better query performance
+async function createIndexes() {
   try {
-    const keys = await redis.keys(`${COOKIE_PREFIX}*`);
-    const cookies = [];
-    
-    for (const key of keys) {
-      if (!key.includes(':meta')) {
-        const index = parseInt(key.replace(COOKIE_PREFIX, ''));
-        const content = await redis.get(key);
-        
-        if (content) {
-          try {
-            const metadata = await redis.hgetall(`${key}:meta`);
-            cookies.push({
-              index,
-              path: key, // Virtual path for compatibility
-              content,
-              metadata
-            });
-          } catch {
-            cookies.push({
-              index,
-              path: key,
-              content
-            });
-          }
-        }
-      }
-    }
-    
-    return cookies.sort((a, b) => a.index - b.index);
+    const cookiesCol = db.collection(COLLECTIONS.cookies);
+    const backupsCol = db.collection(COLLECTIONS.cookieBackups);
+
+    await cookiesCol.createIndex({ index: 1 }, { unique: true });
+    await cookiesCol.createIndex({ type: 1 });
+    await backupsCol.createIndex({ createdAt: 1 });
+    await backupsCol.createIndex({ type: 1 });
   } catch (err) {
-    console.log(`  ⚠️ Failed to get cookies from Redis: ${err.message}`);
+    // Indexes may already exist
+  }
+}
+
+// Check if database is available
+export function isRedisAvailable() {
+  // Keep the same function name for compatibility
+  return isConnected || !!MONGODB_URI;
+}
+
+// Ensure connection before operations
+async function ensureConnection() {
+  if (!isConnected) {
+    await connectToMongo();
+  }
+  return db;
+}
+
+// ====================================
+// 🍪 COOKIE POOL FUNCTIONS
+// ====================================
+
+// Save cookie to database
+export async function saveCookieToRedis(index, cookieContent, metadata = {}) {
+  try {
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookies);
+
+    await collection.updateOne(
+      { index, type: 'pool' },
+      {
+        $set: {
+          index,
+          type: 'pool',
+          content: cookieContent,
+          metadata,
+          updatedAt: new Date()
+        },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+
+    return true;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to save cookie ${index} to MongoDB: ${err.message}`);
+    return false;
+  }
+}
+
+// Get cookie from database
+export async function getCookieFromRedis(index) {
+  try {
+    const database = await ensureConnection();
+    if (!database) return null;
+
+    const collection = database.collection(COLLECTIONS.cookies);
+    const doc = await collection.findOne({ index, type: 'pool' });
+
+    return doc ? doc.content : null;
+  } catch (err) {
+    console.log(`  ⚠️ Failed to get cookie ${index} from MongoDB: ${err.message}`);
+    return null;
+  }
+}
+
+// Get all cookies from database
+export async function getAllCookiesFromRedis() {
+  try {
+    const database = await ensureConnection();
+    if (!database) return [];
+
+    const collection = database.collection(COLLECTIONS.cookies);
+    const docs = await collection.find({ type: 'pool' }).sort({ index: 1 }).toArray();
+
+    return docs.map(doc => ({
+      index: doc.index,
+      path: `cookie_${doc.index}`,
+      content: doc.content,
+      metadata: doc.metadata || {}
+    }));
+  } catch (err) {
+    console.log(`  ⚠️ Failed to get cookies from MongoDB: ${err.message}`);
     return [];
   }
 }
 
 // Save primary cookie
 export async function savePrimaryCookieToRedis(cookieContent) {
-  if (!redis) return false;
-  
   try {
-    await redis.set(PRIMARY_COOKIE_KEY, cookieContent);
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookies);
+
+    await collection.updateOne(
+      { type: 'primary' },
+      {
+        $set: {
+          type: 'primary',
+          content: cookieContent,
+          updatedAt: new Date()
+        },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to save primary cookie to Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to save primary cookie to MongoDB: ${err.message}`);
     return false;
   }
 }
 
 // Get primary cookie
 export async function getPrimaryCookieFromRedis() {
-  if (!redis) return null;
-  
   try {
-    return await redis.get(PRIMARY_COOKIE_KEY);
+    const database = await ensureConnection();
+    if (!database) return null;
+
+    const collection = database.collection(COLLECTIONS.cookies);
+    const doc = await collection.findOne({ type: 'primary' });
+
+    return doc ? doc.content : null;
   } catch (err) {
-    console.log(`  ⚠️ Failed to get primary cookie from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to get primary cookie from MongoDB: ${err.message}`);
     return null;
   }
 }
 
+// ====================================
+// 📊 METADATA FUNCTIONS
+// ====================================
+
 // Save cookie metadata
 export async function saveCookieMetadataToRedis(metadata) {
-  if (!redis) return false;
-  
   try {
-    await redis.set(METADATA_KEY, JSON.stringify(metadata));
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookieMetadata);
+
+    await collection.updateOne(
+      { type: 'cookie_metadata' },
+      {
+        $set: {
+          type: 'cookie_metadata',
+          data: metadata,
+          updatedAt: new Date()
+        },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to save cookie metadata to Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to save cookie metadata to MongoDB: ${err.message}`);
     return false;
   }
 }
 
 // Load cookie metadata
 export async function loadCookieMetadataFromRedis() {
-  if (!redis) return null;
-  
   try {
-    const data = await redis.get(METADATA_KEY);
-    if (!data) return null;
-    
-    // Handle both string and already-parsed objects (Upstash may return either)
-    if (typeof data === 'string') {
-      try {
-        return JSON.parse(data);
-      } catch (parseErr) {
-        // If parsing fails, it might be stored incorrectly - return null
-        console.log(`  ⚠️ Invalid JSON in Redis metadata: ${parseErr.message}`);
-        return null;
-      }
-    }
-    return data; // Already parsed
+    const database = await ensureConnection();
+    if (!database) return null;
+
+    const collection = database.collection(COLLECTIONS.cookieMetadata);
+    const doc = await collection.findOne({ type: 'cookie_metadata' });
+
+    return doc ? doc.data : null;
   } catch (err) {
-    console.log(`  ⚠️ Failed to load cookie metadata from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to load cookie metadata from MongoDB: ${err.message}`);
     return null;
   }
 }
 
 // Save cookie pool metadata
 export async function saveCookiePoolMetadataToRedis(metadata) {
-  if (!redis) return false;
-  
   try {
-    await redis.set(POOL_METADATA_KEY, JSON.stringify(metadata));
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookieMetadata);
+
+    await collection.updateOne(
+      { type: 'pool_metadata' },
+      {
+        $set: {
+          type: 'pool_metadata',
+          data: metadata,
+          updatedAt: new Date()
+        },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to save pool metadata to Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to save pool metadata to MongoDB: ${err.message}`);
     return false;
   }
 }
 
 // Load cookie pool metadata
 export async function loadCookiePoolMetadataFromRedis() {
-  if (!redis) return null;
-  
   try {
-    const data = await redis.get(POOL_METADATA_KEY);
-    if (!data) return null;
-    
-    // Handle both string and already-parsed objects (Upstash may return either)
-    if (typeof data === 'string') {
-      try {
-        return JSON.parse(data);
-      } catch (parseErr) {
-        // If parsing fails, it might be stored incorrectly - return null
-        console.log(`  ⚠️ Invalid JSON in Redis pool metadata: ${parseErr.message}`);
-        return null;
-      }
-    }
-    return data; // Already parsed
+    const database = await ensureConnection();
+    if (!database) return null;
+
+    const collection = database.collection(COLLECTIONS.cookieMetadata);
+    const doc = await collection.findOne({ type: 'pool_metadata' });
+
+    return doc ? doc.data : null;
   } catch (err) {
-    console.log(`  ⚠️ Failed to load pool metadata from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to load pool metadata from MongoDB: ${err.message}`);
     return null;
   }
 }
 
-// Delete cookie from Redis
+// Delete cookie from database
 export async function deleteCookieFromRedis(index) {
-  if (!redis) return false;
-  
   try {
-    const key = `${COOKIE_PREFIX}${index}`;
-    await redis.del(key);
-    await redis.del(`${key}:meta`);
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookies);
+    await collection.deleteOne({ index, type: 'pool' });
+
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to delete cookie ${index} from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to delete cookie ${index} from MongoDB: ${err.message}`);
     return false;
   }
 }
 
-// Clear all cookies from Redis
+// Clear all cookies from database
 export async function clearAllCookiesFromRedis() {
-  if (!redis) return false;
-  
   try {
-    const keys = await redis.keys(`${COOKIE_PREFIX}*`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-    await redis.del(METADATA_KEY);
-    await redis.del(POOL_METADATA_KEY);
-    await redis.del(PRIMARY_COOKIE_KEY);
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const cookiesCol = database.collection(COLLECTIONS.cookies);
+    const metadataCol = database.collection(COLLECTIONS.cookieMetadata);
+
+    await cookiesCol.deleteMany({});
+    await metadataCol.deleteMany({});
+
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to clear cookies from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to clear cookies from MongoDB: ${err.message}`);
     return false;
   }
 }
 
 // ====================================
-// 🎁 COOKIE BACKUP POOL (for extra strong cookies)
+// 🎁 COOKIE BACKUP POOL
 // ====================================
-const BACKUP_PREFIX = 'cookie_backup:';
-const BACKUP_MAX_SIZE = 10; // Keep max 10 backup cookies
+const BACKUP_MAX_SIZE = 10;
 
 // Save cookie to backup pool
 export async function saveCookieToBackup(cookieContent, metadata = {}) {
-  if (!redis) return false;
-  
   try {
-    // Get current backup count
-    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
-    const currentCount = keys.filter(k => !k.includes(':meta')).length;
-    
-    // If at max size, remove oldest (FIFO)
-    if (currentCount >= BACKUP_MAX_SIZE) {
-      const allKeys = await redis.keys(`${BACKUP_PREFIX}*`);
-      const backupKeys = allKeys.filter(k => !k.includes(':meta')).sort();
-      if (backupKeys.length > 0) {
-        const oldestKey = backupKeys[0];
-        await redis.del(oldestKey);
-        await redis.del(`${oldestKey}:meta`);
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.cookieBackups);
+
+    // Count current backups
+    const count = await collection.countDocuments({ type: 'backup' });
+
+    // If at max size, remove oldest
+    if (count >= BACKUP_MAX_SIZE) {
+      const oldest = await collection.findOne(
+        { type: 'backup' },
+        { sort: { createdAt: 1 } }
+      );
+      if (oldest) {
+        await collection.deleteOne({ _id: oldest._id });
       }
     }
-    
-    // Generate unique backup ID (timestamp-based)
-    const backupId = `${BACKUP_PREFIX}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    await redis.set(backupId, cookieContent);
-    
-    // Save metadata
-    const fullMetadata = {
-      quality: 'strong',
-      savedAt: new Date().toISOString(),
-      ...metadata
-    };
-    await redis.set(`${backupId}:meta`, JSON.stringify(fullMetadata));
-    
+
+    // Insert new backup
+    await collection.insertOne({
+      type: 'backup',
+      content: cookieContent,
+      metadata: {
+        quality: 'strong',
+        savedAt: new Date().toISOString(),
+        ...metadata
+      },
+      createdAt: new Date()
+    });
+
     return true;
   } catch (err) {
     console.log(`  ⚠️ Failed to save cookie to backup pool: ${err.message}`);
@@ -272,44 +370,26 @@ export async function saveCookieToBackup(cookieContent, metadata = {}) {
   }
 }
 
-// Get one cookie from backup pool (FIFO - oldest first)
+// Get one cookie from backup pool (FIFO)
 export async function getCookieFromBackup() {
-  if (!redis) return null;
-  
   try {
-    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
-    const backupKeys = keys.filter(k => !k.includes(':meta')).sort();
-    
-    if (backupKeys.length === 0) return null;
-    
-    // Get oldest (first in sorted list)
-    const oldestKey = backupKeys[0];
-    const content = await redis.get(oldestKey);
-    
-    if (!content) {
-      // Clean up if content is missing
-      await redis.del(oldestKey);
-      await redis.del(`${oldestKey}:meta`);
-      return null;
-    }
-    
-    // Get metadata
-    let metadata = {};
-    try {
-      const metaStr = await redis.get(`${oldestKey}:meta`);
-      if (metaStr) {
-        metadata = typeof metaStr === 'string' ? JSON.parse(metaStr) : metaStr;
-      }
-    } catch {}
-    
-    // Remove from backup (it's being used)
-    await redis.del(oldestKey);
-    await redis.del(`${oldestKey}:meta`);
-    
+    const database = await ensureConnection();
+    if (!database) return null;
+
+    const collection = database.collection(COLLECTIONS.cookieBackups);
+
+    // Get and delete oldest backup
+    const oldest = await collection.findOneAndDelete(
+      { type: 'backup' },
+      { sort: { createdAt: 1 } }
+    );
+
+    if (!oldest) return null;
+
     return {
-      content,
-      metadata,
-      backupId: oldestKey
+      content: oldest.content,
+      metadata: oldest.metadata || {},
+      backupId: oldest._id.toString()
     };
   } catch (err) {
     console.log(`  ⚠️ Failed to get cookie from backup pool: ${err.message}`);
@@ -319,121 +399,98 @@ export async function getCookieFromBackup() {
 
 // Get backup pool count
 export async function getBackupPoolCount() {
-  if (!redis) return 0;
-  
   try {
-    const keys = await redis.keys(`${BACKUP_PREFIX}*`);
-    return keys.filter(k => !k.includes(':meta')).length;
+    const database = await ensureConnection();
+    if (!database) return 0;
+
+    const collection = database.collection(COLLECTIONS.cookieBackups);
+    return await collection.countDocuments({ type: 'backup' });
   } catch (err) {
     return 0;
   }
 }
 
 // ====================================
-// 🌐 YOUTUBE-WORKING PROXY PERSISTENCE
+// 🌐 YOUTUBE PROXY PERSISTENCE
 // ====================================
-const PROXY_PREFIX = 'youtube_proxy:';
-const PROXY_LIST_KEY = 'youtube_proxy_list';
-const PROXY_METADATA_KEY = 'youtube_proxy_metadata';
 
-// Save YouTube-working proxies to Redis
+// Save YouTube-working proxies
 export async function saveYouTubeProxiesToRedis(proxies) {
-  if (!redis) return false;
-  
   try {
-    // Save as a list (array) for easy retrieval
-    if (proxies.length === 0) {
-      await redis.del(PROXY_LIST_KEY);
-      return true;
-    }
-    
-    await redis.set(PROXY_LIST_KEY, JSON.stringify(proxies));
-    
-    // Also save metadata (timestamp, count)
-    const metadata = {
-      savedAt: Date.now(),
-      count: proxies.length,
-      lastValidated: Date.now()
-    };
-    await redis.set(PROXY_METADATA_KEY, JSON.stringify(metadata));
-    
-    console.log(`  💾 Saved ${proxies.length} YouTube-working proxies to Redis`);
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.proxies);
+
+    await collection.updateOne(
+      { type: 'youtube_proxies' },
+      {
+        $set: {
+          type: 'youtube_proxies',
+          proxies: proxies,
+          count: proxies.length,
+          savedAt: Date.now(),
+          lastValidated: Date.now(),
+          updatedAt: new Date()
+        },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+
+    console.log(`  💾 Saved ${proxies.length} YouTube-working proxies to MongoDB`);
     return true;
   } catch (err) {
-    console.log(`  ⚠️ Failed to save YouTube proxies to Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to save YouTube proxies to MongoDB: ${err.message}`);
     return false;
   }
 }
 
-// Load YouTube-working proxies from Redis
+// Load YouTube-working proxies
 export async function loadYouTubeProxiesFromRedis() {
-  if (!redis) return [];
-  
   try {
-    const data = await redis.get(PROXY_LIST_KEY);
-    if (!data) return [];
-    
-    // Handle both string and already-parsed arrays
-    let proxies;
-    if (typeof data === 'string') {
-      try {
-        proxies = JSON.parse(data);
-      } catch (parseErr) {
-        console.log(`  ⚠️ Invalid JSON in Redis proxy list: ${parseErr.message}`);
-        return [];
-      }
-    } else {
-      proxies = data;
-    }
-    
-    if (!Array.isArray(proxies)) {
-      console.log(`  ⚠️ Redis proxy data is not an array`);
-      return [];
-    }
-    
-    // Get metadata
-    let metadata = null;
-    try {
-      const metaData = await redis.get(PROXY_METADATA_KEY);
-      if (metaData) {
-        metadata = typeof metaData === 'string' ? JSON.parse(metaData) : metaData;
-      }
-    } catch {}
-    
+    const database = await ensureConnection();
+    if (!database) return [];
+
+    const collection = database.collection(COLLECTIONS.proxies);
+    const doc = await collection.findOne({ type: 'youtube_proxies' });
+
+    if (!doc || !doc.proxies) return [];
+
+    const proxies = doc.proxies;
+    const age = doc.savedAt ? Date.now() - doc.savedAt : 0;
+    const ageHours = Math.floor(age / (1000 * 60 * 60));
+
     if (proxies.length > 0) {
-      const age = metadata ? Date.now() - metadata.savedAt : 0;
-      const ageHours = Math.floor(age / (1000 * 60 * 60));
-      console.log(`  📥 Loaded ${proxies.length} YouTube-working proxies from Redis (saved ${ageHours}h ago)`);
+      console.log(`  📥 Loaded ${proxies.length} YouTube-working proxies from MongoDB (saved ${ageHours}h ago)`);
     }
-    
+
     return proxies;
   } catch (err) {
-    console.log(`  ⚠️ Failed to load YouTube proxies from Redis: ${err.message}`);
+    console.log(`  ⚠️ Failed to load YouTube proxies from MongoDB: ${err.message}`);
     return [];
   }
 }
 
 // Update proxy metadata
 export async function updateProxyMetadata(metadata = {}) {
-  if (!redis) return false;
-  
   try {
-    const existing = await redis.get(PROXY_METADATA_KEY);
-    let currentMetadata = {};
-    
-    if (existing) {
-      try {
-        currentMetadata = typeof existing === 'string' ? JSON.parse(existing) : existing;
-      } catch {}
-    }
-    
-    const updatedMetadata = {
-      ...currentMetadata,
-      ...metadata,
-      lastUpdated: Date.now()
-    };
-    
-    await redis.set(PROXY_METADATA_KEY, JSON.stringify(updatedMetadata));
+    const database = await ensureConnection();
+    if (!database) return false;
+
+    const collection = database.collection(COLLECTIONS.proxies);
+
+    await collection.updateOne(
+      { type: 'youtube_proxies' },
+      {
+        $set: {
+          ...metadata,
+          lastUpdated: Date.now(),
+          updatedAt: new Date()
+        }
+      }
+    );
+
     return true;
   } catch (err) {
     console.log(`  ⚠️ Failed to update proxy metadata: ${err.message}`);
@@ -441,3 +498,20 @@ export async function updateProxyMetadata(metadata = {}) {
   }
 }
 
+// ====================================
+// 🔌 CONNECTION MANAGEMENT
+// ====================================
+
+// Graceful shutdown
+export async function closeDatabaseConnection() {
+  if (client) {
+    await client.close();
+    isConnected = false;
+    console.log('✅ MongoDB connection closed');
+  }
+}
+
+// Initialize connection on module load
+connectToMongo().catch(err => {
+  console.log('⚠️ Initial MongoDB connection failed:', err.message);
+});
