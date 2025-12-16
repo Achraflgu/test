@@ -6,30 +6,59 @@ import { Playlist, Track, DownloadSettings } from '@/types';
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 const WS_URL = ((import.meta.env as any).VITE_WS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 
-console.log('🌐 API Configuration:', {
-  API_URL,
-  WS_URL,
-  mode: (import.meta.env as any).MODE
-});
+// Log configuration in development only
+if (import.meta.env.DEV) {
+  console.log('🌐 API Configuration:', {
+    API_URL,
+    WS_URL,
+    mode: (import.meta.env as any).MODE
+  });
+}
+
+// Validate API URL is configured in production
+if (import.meta.env.PROD && API_URL === 'http://localhost:3001') {
+  console.warn('⚠️ Warning: Using localhost API URL in production. Set VITE_API_URL environment variable.');
+}
 
 let socket: Socket | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 export const initWebSocket = (): Socket => {
   if (!socket) {
     socket = io(WS_URL, {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
     });
 
     socket.on('connect', () => {
-      console.log('WebSocket connected');
+      reconnectAttempts = 0;
+      if (import.meta.env.DEV) {
+        console.log('WebSocket connected');
+      }
     });
 
-    socket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
+    socket.on('disconnect', (reason) => {
+      if (import.meta.env.DEV) {
+        console.log('WebSocket disconnected:', reason);
+      }
     });
 
     socket.on('connect_error', (error) => {
-      console.error('WebSocket connection error:', error);
+      reconnectAttempts++;
+      if (reconnectAttempts <= 3) {
+        console.error('WebSocket connection error:', error.message);
+      }
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      if (import.meta.env.DEV) {
+        console.log('WebSocket reconnected after', attemptNumber, 'attempts');
+      }
     });
   }
 
@@ -44,8 +73,10 @@ export const disconnectWebSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
+    reconnectAttempts = 0;
   }
 };
+
 
 interface HealthResponse {
   status: string;
@@ -104,7 +135,7 @@ interface StartDownloadResponse {
 export const startDownload = async (request: StartDownloadRequest): Promise<StartDownloadResponse> => {
   // Get current socket ID to send events only to this client (not broadcast to all browsers!)
   const socketId = socket?.id;
-  
+
   const response = await fetch(`${API_URL}/api/download/start`, {
     method: 'POST',
     headers: {
@@ -156,7 +187,7 @@ export const cancelDownload = async (downloadId: string): Promise<CancelDownload
   // Get socket ID to verify ownership
   const currentSocket = getSocket();
   const socketId = currentSocket?.id || null;
-  
+
   const response = await fetch(`${API_URL}/api/download/cancel`, {
     method: 'POST',
     headers: {
@@ -235,7 +266,7 @@ export const youtubeSearchForPlayer = async (query: string, limit: number = 5): 
 };
 
 // Create short share on server
-export const createShare = async (payload: { playlistId?: string; playlistName: string; playlistData: any; expiry?: '1h'|'1d'|'1w' }): Promise<{ shareId: string; expiresAt: number }> => {
+export const createShare = async (payload: { playlistId?: string; playlistName: string; playlistData: any; expiry?: '1h' | '1d' | '1w' }): Promise<{ shareId: string; expiresAt: number }> => {
   const response = await fetch(`${API_URL}/api/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
