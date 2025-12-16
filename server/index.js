@@ -13214,12 +13214,12 @@ startupSequence().then(async () => {
     console.log('   Will retry on first download request');
   });
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║     🎵 Spotify Playlist Downloader Server Running 🎵      ║
 ╠════════════════════════════════════════════════════════════╣
-║  Server: http://localhost:${PORT}                            ║
+║  Server: http://0.0.0.0:${PORT}                              ║
 ║  spotdl: ${versionInfo.spotdl.padEnd(45)}║
 ║  yt-dlp: ${versionInfo.ytdlp.padEnd(45)}║
 ║  youtube-dl-exec: ${versionInfo.youtubedlexec.padEnd(36)}║
