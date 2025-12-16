@@ -8,7 +8,11 @@ primary_region = "cdg"
 [env]
   NODE_ENV = "production"
   PORT = "3001"
+  # Resource limits matching 2GB VM
   MAX_MEMORY_MB = "1800"
+  MAX_PROCESSES = "20"
+  MAX_DOWNLOADS = "50"
+  CPU_THRESHOLD = "90"
 
 [http_service]
   internal_port = 3001
@@ -24,7 +28,7 @@ primary_region = "cdg"
     hard_limit = 200
 
 [[http_service.checks]]
-  grace_period = "120s"
+  grace_period = "60s"
   interval = "30s"
   method = "GET"
   timeout = "10s"
