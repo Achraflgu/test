@@ -1175,12 +1175,13 @@ function recordCookieFailure(index) {
 async function saveCookieToPool(cookieContent, index, options = {}) {
   try {
     // Save to Redis first (if available)
+    // Save to Redis first (if available) - BACKGROUND to avoid blocking
     if (isRedisAvailable()) {
-      await saveCookieToRedis(index, cookieContent, {
+      saveCookieToRedis(index, cookieContent, {
         quality: options.quality || 'strong',
         created: new Date().toISOString(),
         ...options
-      });
+      }).catch(err => console.log(`  ⚠️ Background DB save failed: ${err.message}`));
     }
 
     // Also save to filesystem (fallback)
