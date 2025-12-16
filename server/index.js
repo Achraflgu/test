@@ -13067,153 +13067,8 @@ async function startupSequence() {
 startupSequence().then(async () => {
   // ✅ Python detected - continue with server startup
 
-  // 🔍 INITIALIZE PROXY SYSTEM (Priority: Oxylabs > Validated Free > Free)
-  console.log('\n🔍 Initializing proxy system...');
-
-  // 🌟 PRIORITY 1: Initialize Oxylabs premium proxy (BEST)
-  const oxylabsReady = await proxyManager.initOxylabs();
-
-  // Check ScraperAPI (for future use)
-  if (process.env.SCRAPERAPI_KEY) {
-    console.log('✅ ScraperAPI key configured (not used yet)');
-    console.log(`   Key: ${process.env.SCRAPERAPI_KEY.substring(0, 8)}...`);
-  }
-
-  // 🎯 PRIORITY 2-3: Initialize free proxy pool (fallback if no Oxylabs)
-  if (process.env.USE_FREE_PROXIES === 'true') {
-    console.log('✅ Free proxies enabled (fallback)');
-    console.log('\n🌐 Initializing free proxy pool...');
-    try {
-      // Step 1: Load saved proxies from Redis (if available)
-      console.log('📥 Loading saved YouTube-working proxies from Redis...');
-      const savedProxies = await proxyManager.loadProxiesFromRedis();
-      if (savedProxies && savedProxies.length > 0) {
-        const stats = proxyManager.getStats();
-        console.log(`✅ Loaded ${stats.youtubeWorking} saved YouTube-working proxies from Redis`);
-      }
-
-      // Step 2: Fetch proxies from sources (if we need more)
-      await proxyManager.fetchProxies();
-      const stats = proxyManager.getStats();
-      console.log(`✅ Fetched ${stats.total} proxies from sources`);
-
-      // Step 3: Validate proxies (test first 100 to save time)
-      console.log('\n🧪 Testing proxies to find working ones...');
-      await proxyManager.validateProxies(null, 50, 100);
-      const validatedStats = proxyManager.getStats();
-      console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
-
-      // 🎯 Step 3.5: Filter working proxies for YouTube compatibility (CRITICAL if Oxylabs doesn't work with YouTube)
-      if (validatedStats.working > 0) {
-        console.log('\n🎯 Filtering proxies for YouTube compatibility...');
-        await proxyManager.validateProxiesForYouTube(null, 20, 50); // Test 50 working proxies, 20 at a time
-        const youtubeStats = proxyManager.getStats();
-        console.log(`✅ YouTube-validated proxies: ${youtubeStats.youtubeWorking}/${youtubeStats.working} working with YouTube (${youtubeStats.youtubeValidationRate} success rate)`);
-
-        // 🔥 Ensure minimum 30 YouTube-working proxies (CRITICAL for stability)
-        if (youtubeStats.youtubeWorking < 30) {
-          console.log(`\n🔄 Ensuring minimum 30 YouTube-working proxies (currently: ${youtubeStats.youtubeWorking})...`);
-          await proxyManager.ensureMinimumYouTubeProxies(30);
-          const finalStats = proxyManager.getStats();
-          console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
-        }
-
-        // 🔥 If Oxylabs doesn't work with YouTube, ensure we have YouTube-validated proxies
-        if (oxylabsReady && !proxyManager.oxylabsWorksWithYouTube) {
-          const currentStats = proxyManager.getStats();
-          if (currentStats.youtubeWorking === 0) {
-            console.log('⚠️  WARNING: Oxylabs doesn\'t work with YouTube AND no YouTube-validated proxies found!');
-            console.log('   🔄 Testing more proxies for YouTube compatibility...');
-            // Test more proxies if we have none
-            await proxyManager.validateProxiesForYouTube(null, 20, 100); // Test up to 100 proxies
-            await proxyManager.ensureMinimumYouTubeProxies(30); // Ensure minimum 30
-            const retryStats = proxyManager.getStats();
-            if (retryStats.youtubeWorking > 0) {
-              console.log(`✅ Found ${retryStats.youtubeWorking} YouTube-working proxies after extended testing`);
-            } else {
-              console.log('⚠️  Still no YouTube-working proxies - cookie generation may fail');
-            }
-          } else {
-            console.log(`✅ YouTube-validated proxies ready: ${currentStats.youtubeWorking} proxies available for cookie generation`);
-          }
-        }
-      }
-
-      // Step 4: Start background validation task (re-validate every 10 minutes)
-      setInterval(async () => {
-        console.log('\n🔄 Background proxy validation starting...');
-
-        // Step 1: Re-validate working proxies (removes dead ones)
-        await proxyManager.ensureValidatedProxies();
-
-        // Step 2: Re-validate YouTube proxies (removes dead ones)
-        const stats = proxyManager.getStats();
-        if (stats.working > 0 || stats.youtubeWorking > 0) {
-          console.log('🎯 Re-validating YouTube proxies (removing dead ones)...');
-
-          // Re-validate ALL existing YouTube-working proxies to remove dead ones
-          if (stats.youtubeWorking > 0) {
-            await proxyManager.revalidateSavedProxies();
-          }
-
-          // Also test new working proxies for YouTube compatibility
-          if (stats.working > 0) {
-            await proxyManager.validateProxiesForYouTube(null, 20, 30); // Test 30 proxies, 20 at a time
-          }
-
-          // Step 3: Ensure minimum 30 YouTube-working proxies (ALWAYS)
-          const youtubeStats = proxyManager.getStats();
-          if (youtubeStats.youtubeWorking < 30) {
-            console.log(`🔄 YouTube proxies below minimum (${youtubeStats.youtubeWorking}/30) - ensuring minimum 30...`);
-            await proxyManager.ensureMinimumYouTubeProxies(30);
-            const finalStats = proxyManager.getStats();
-            console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
-          } else {
-            console.log(`✅ YouTube-working proxies: ${youtubeStats.youtubeWorking}/30 (✅ SUFFICIENT)`);
-          }
-        }
-      }, 10 * 60 * 1000); // Every 10 minutes
-
-    } catch (error) {
-      console.log('⚠️ Failed to load proxies:', error.message);
-      console.log('Will try to fetch proxies on first use');
-    }
-  } else {
-    console.log('⚠️  Free proxies NOT enabled');
-  }
-
-  console.log('\n📊 Download Success Rate Estimate:');
-  if (oxylabsReady) {
-    console.log('   🟢🟢🟢 85-99% (Oxylabs Premium - ACTIVE)');
-    console.log('   ✨ Residential IPs, best quality, minimal detection');
-  } else if (process.env.USE_FREE_PROXIES === 'true') {
-    const stats = proxyManager.getStats();
-    if (stats.working > 10) {
-      console.log(`   🟡 15-35% (${stats.working} Validated Free Proxies)`);
-      console.log('   ⚠️  Free proxies - success rate varies, consider upgrading to Oxylabs');
-    } else {
-      console.log('   🔴 1-8% (Free Proxies - Low Quality)');
-      console.log('   ⚠️  Very few working proxies, downloads will likely fail');
-    }
-  } else {
-    console.log('   ⚫ 0% (No Proxies Configured)');
-    console.log('   ❌ YouTube downloads will fail 100% - configure Oxylabs or free proxies');
-  }
-  console.log('');
-
-  // 🍪 NOW initialize cookies AFTER proxies are ready!
-  console.log('🍪 Initializing cookie system (proxies ready)...');
-  initializeAutoCookies().then(cookiePath => {
-    if (cookiePath) {
-      console.log('✅ Cookie system initialized');
-    } else {
-      console.log('⚠️  Cookie initialization in progress (will retry on first download)');
-    }
-  }).catch(err => {
-    console.log('⚠️  Cookie initialization error:', err.message);
-    console.log('   Will retry on first download request');
-  });
-
+  // 🚀 START SERVER IMMEDIATELY (before heavy initialization)
+  // This ensures health checks pass while proxy/cookie init happens in background
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
@@ -13229,50 +13084,204 @@ startupSequence().then(async () => {
     `);
 
     // Start resource monitoring
-    resourceManager.startMonitoring(30000); // Monitor every 30 seconds
+    resourceManager.startMonitoring(30000);
 
-    // Keep-alive mechanism for Koyeb
+    // Keep-alive mechanism
     setInterval(() => {
       console.log('🔄 Keep-alive ping - Server is running');
-    }, 30000); // Every 30 seconds
-
-    // Auto-update check - runs daily (24 hours)
-    if (process.env.AUTO_UPDATE !== 'false') {
-      setInterval(async () => {
-        console.log('\n🔄 Daily auto-update check starting...');
-
-        try {
-          // Update Python tools
-          console.log('📦 Updating Python tools...');
-          await updateDependencies();
-
-          // Update Node.js packages
-          console.log('📦 Updating Node.js packages...');
-          await updateNodePackages();
-
-          // Get new versions
-          versionInfo.spotdl = await getSpotdlVersion();
-          versionInfo.ytdlp = await getYtDlpVersion();
-          versionInfo.youtubedlexec = await getYoutubeDlExecVersion();
-          versionInfo.youtubei = await getYoutubeiVersion();
-          versionInfo.lastUpdated = new Date().toISOString();
-
-          console.log('✅ Auto-update complete!');
-          console.log(`   spotdl: ${versionInfo.spotdl}`);
-          console.log(`   yt-dlp: ${versionInfo.ytdlp}`);
-          console.log(`   youtube-dl-exec: ${versionInfo.youtubedlexec}`);
-          console.log(`   youtubei.js: ${versionInfo.youtubei}\n`);
-        } catch (error) {
-          console.log('⚠️ Auto-update failed:', error.message);
-        }
-      }, 24 * 60 * 60 * 1000); // Every 24 hours
-
-      console.log('✅ Auto-update enabled (runs daily)');
-      console.log('   To disable: set AUTO_UPDATE=false');
-    } else {
-      console.log('⚠️ Auto-update disabled (AUTO_UPDATE=false)');
-    }
+    }, 30000);
   });
+
+  // 🔍 INITIALIZE PROXY SYSTEM IN BACKGROUND (after server is listening)
+  console.log('\n🔍 Initializing proxy system in background...');
+
+  // Run initialization in background (don't await)
+  (async () => {
+    try {
+      // 🌟 Initialize Oxylabs premium proxy 
+      const oxylabsReady = await proxyManager.initOxylabs();
+
+      // Check ScraperAPI (for future use)
+      if (process.env.SCRAPERAPI_KEY) {
+        console.log('✅ ScraperAPI key configured (not used yet)');
+        console.log(`   Key: ${process.env.SCRAPERAPI_KEY.substring(0, 8)}...`);
+      }
+
+      // 🎯 PRIORITY 2-3: Initialize free proxy pool (fallback if no Oxylabs)
+      if (process.env.USE_FREE_PROXIES === 'true') {
+        console.log('✅ Free proxies enabled (fallback)');
+        console.log('\n🌐 Initializing free proxy pool...');
+        try {
+          // Step 1: Load saved proxies from Redis (if available)
+          console.log('📥 Loading saved YouTube-working proxies from Redis...');
+          const savedProxies = await proxyManager.loadProxiesFromRedis();
+          if (savedProxies && savedProxies.length > 0) {
+            const stats = proxyManager.getStats();
+            console.log(`✅ Loaded ${stats.youtubeWorking} saved YouTube-working proxies from Redis`);
+          }
+
+          // Step 2: Fetch proxies from sources (if we need more)
+          await proxyManager.fetchProxies();
+          const stats = proxyManager.getStats();
+          console.log(`✅ Fetched ${stats.total} proxies from sources`);
+
+          // Step 3: Validate proxies (test first 100 to save time)
+          console.log('\n🧪 Testing proxies to find working ones...');
+          await proxyManager.validateProxies(null, 50, 100);
+          const validatedStats = proxyManager.getStats();
+          console.log(`✅ Proxy pool ready: ${validatedStats.working}/${validatedStats.total} working (${validatedStats.validationRate} success rate)`);
+
+          // 🎯 Step 3.5: Filter working proxies for YouTube compatibility (CRITICAL if Oxylabs doesn't work with YouTube)
+          if (validatedStats.working > 0) {
+            console.log('\n🎯 Filtering proxies for YouTube compatibility...');
+            await proxyManager.validateProxiesForYouTube(null, 20, 50); // Test 50 working proxies, 20 at a time
+            const youtubeStats = proxyManager.getStats();
+            console.log(`✅ YouTube-validated proxies: ${youtubeStats.youtubeWorking}/${youtubeStats.working} working with YouTube (${youtubeStats.youtubeValidationRate} success rate)`);
+
+            // 🔥 Ensure minimum 30 YouTube-working proxies (CRITICAL for stability)
+            if (youtubeStats.youtubeWorking < 30) {
+              console.log(`\n🔄 Ensuring minimum 30 YouTube-working proxies (currently: ${youtubeStats.youtubeWorking})...`);
+              await proxyManager.ensureMinimumYouTubeProxies(30);
+              const finalStats = proxyManager.getStats();
+              console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
+            }
+
+            // 🔥 If Oxylabs doesn't work with YouTube, ensure we have YouTube-validated proxies
+            if (oxylabsReady && !proxyManager.oxylabsWorksWithYouTube) {
+              const currentStats = proxyManager.getStats();
+              if (currentStats.youtubeWorking === 0) {
+                console.log('⚠️  WARNING: Oxylabs doesn\'t work with YouTube AND no YouTube-validated proxies found!');
+                console.log('   🔄 Testing more proxies for YouTube compatibility...');
+                // Test more proxies if we have none
+                await proxyManager.validateProxiesForYouTube(null, 20, 100); // Test up to 100 proxies
+                await proxyManager.ensureMinimumYouTubeProxies(30); // Ensure minimum 30
+                const retryStats = proxyManager.getStats();
+                if (retryStats.youtubeWorking > 0) {
+                  console.log(`✅ Found ${retryStats.youtubeWorking} YouTube-working proxies after extended testing`);
+                } else {
+                  console.log('⚠️  Still no YouTube-working proxies - cookie generation may fail');
+                }
+              } else {
+                console.log(`✅ YouTube-validated proxies ready: ${currentStats.youtubeWorking} proxies available for cookie generation`);
+              }
+            }
+          }
+
+          // Step 4: Start background validation task (re-validate every 10 minutes)
+          setInterval(async () => {
+            console.log('\n🔄 Background proxy validation starting...');
+
+            // Step 1: Re-validate working proxies (removes dead ones)
+            await proxyManager.ensureValidatedProxies();
+
+            // Step 2: Re-validate YouTube proxies (removes dead ones)
+            const stats = proxyManager.getStats();
+            if (stats.working > 0 || stats.youtubeWorking > 0) {
+              console.log('🎯 Re-validating YouTube proxies (removing dead ones)...');
+
+              // Re-validate ALL existing YouTube-working proxies to remove dead ones
+              if (stats.youtubeWorking > 0) {
+                await proxyManager.revalidateSavedProxies();
+              }
+
+              // Also test new working proxies for YouTube compatibility
+              if (stats.working > 0) {
+                await proxyManager.validateProxiesForYouTube(null, 20, 30); // Test 30 proxies, 20 at a time
+              }
+
+              // Step 3: Ensure minimum 30 YouTube-working proxies (ALWAYS)
+              const youtubeStats = proxyManager.getStats();
+              if (youtubeStats.youtubeWorking < 30) {
+                console.log(`🔄 YouTube proxies below minimum (${youtubeStats.youtubeWorking}/30) - ensuring minimum 30...`);
+                await proxyManager.ensureMinimumYouTubeProxies(30);
+                const finalStats = proxyManager.getStats();
+                console.log(`✅ YouTube-working proxies: ${finalStats.youtubeWorking}/30 (${finalStats.youtubeWorking >= 30 ? '✅ SUFFICIENT' : '⚠️ INSUFFICIENT'})`);
+              } else {
+                console.log(`✅ YouTube-working proxies: ${youtubeStats.youtubeWorking}/30 (✅ SUFFICIENT)`);
+              }
+            }
+          }, 10 * 60 * 1000); // Every 10 minutes
+
+        } catch (error) {
+          console.log('⚠️ Failed to load proxies:', error.message);
+          console.log('Will try to fetch proxies on first use');
+        }
+      } else {
+        console.log('⚠️  Free proxies NOT enabled');
+      }
+
+      console.log('\n📊 Download Success Rate Estimate:');
+      if (oxylabsReady) {
+        console.log('   🟢🟢🟢 85-99% (Oxylabs Premium - ACTIVE)');
+        console.log('   ✨ Residential IPs, best quality, minimal detection');
+      } else if (process.env.USE_FREE_PROXIES === 'true') {
+        const stats = proxyManager.getStats();
+        if (stats.working > 10) {
+          console.log(`   🟡 15-35% (${stats.working} Validated Free Proxies)`);
+          console.log('   ⚠️  Free proxies - success rate varies, consider upgrading to Oxylabs');
+        } else {
+          console.log('   🔴 1-8% (Free Proxies - Low Quality)');
+          console.log('   ⚠️  Very few working proxies, downloads will likely fail');
+        }
+      } else {
+        console.log('   ⚫ 0% (No Proxies Configured)');
+        console.log('   ❌ YouTube downloads will fail 100% - configure Oxylabs or free proxies');
+      }
+      console.log('');
+
+      // 🍪 NOW initialize cookies AFTER proxies are ready!
+      console.log('🍪 Initializing cookie system (proxies ready)...');
+      initializeAutoCookies().then(cookiePath => {
+        if (cookiePath) {
+          console.log('✅ Cookie system initialized');
+        } else {
+          console.log('⚠️  Cookie initialization in progress (will retry on first download)');
+        }
+      }).catch(err => {
+        console.log('⚠️  Cookie initialization error:', err.message);
+        console.log('   Will retry on first download request');
+      });
+
+      // Auto-update check - runs daily (24 hours)
+      if (process.env.AUTO_UPDATE !== 'false') {
+        setInterval(async () => {
+          console.log('\n🔄 Daily auto-update check starting...');
+
+          try {
+            // Update Python tools
+            console.log('📦 Updating Python tools...');
+            await updateDependencies();
+
+            // Update Node.js packages
+            console.log('📦 Updating Node.js packages...');
+            await updateNodePackages();
+
+            // Get new versions
+            versionInfo.spotdl = await getSpotdlVersion();
+            versionInfo.ytdlp = await getYtDlpVersion();
+            versionInfo.youtubedlexec = await getYoutubeDlExecVersion();
+            versionInfo.youtubei = await getYoutubeiVersion();
+            versionInfo.lastUpdated = new Date().toISOString();
+
+            console.log('✅ Auto-update complete!');
+            console.log(`   spotdl: ${versionInfo.spotdl}`);
+            console.log(`   yt-dlp: ${versionInfo.ytdlp}`);
+            console.log(`   youtube-dl-exec: ${versionInfo.youtubedlexec}`);
+            console.log(`   youtubei.js: ${versionInfo.youtubei}\n`);
+          } catch (error) {
+            console.log('⚠️ Auto-update failed:', error.message);
+          }
+        }, 24 * 60 * 60 * 1000); // Every 24 hours
+
+        console.log('✅ Auto-update enabled (runs daily)');
+        console.log('   To disable: set AUTO_UPDATE=false');
+      } else {
+        console.log('⚠️ Auto-update disabled (AUTO_UPDATE=false)');
+      }
+    } catch (error) {
+      console.error('❌ Background initialization error:', error.message);
+    }
+  })(); // End of background initialization IIFE
 
   // 🔧 GRACEFUL SHUTDOWN: Handle termination signals to prevent Railway auto-restarts
   const gracefulShutdown = (signal) => {

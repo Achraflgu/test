@@ -60,3 +60,5 @@ pnpm-lock.yaml
 # Download outputs (optional - uncomment if you don't want to track downloads)
 # Downloads/
 # server/Downloads/
+.vercel
+.env*.local
