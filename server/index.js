@@ -2836,6 +2836,15 @@ async function ensurePoolIsFull() {
           .filter(i => !existingIndices.includes(i));
 
         while (true) { // Continue until we have 5/5 cookies
+          // 🛡️ CIRCUIT BREAKER: If generation got globally paused mid-fill, stop the loop
+          // (prevents infinite "Still generating cookies" log spam every 10s)
+          maybeResetCookieGenerationBreaker();
+          if (isCookieGenerationBlocked()) {
+            console.log(`  ⏹️ Stopping pool fill - cookie generation paused (circuit breaker)`);
+            isFillingPool = false;
+            return false; // Stop spinning - generation cannot succeed right now
+          }
+
           // Check if downloads became active (unless waiting for strong cookie)
           const hasActiveNow = hasActiveDownloads();
           let waitingForStrongCookie = false;
