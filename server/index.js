@@ -8489,7 +8489,10 @@ async function searchViaYouTubeMusic(query, limit) {
       const title = item.title ? String(item.title) : '';
       const artists = Array.isArray(item.artists) ? item.artists.map(a => (a && a.name) || '').filter(Boolean) : [];
       const artist = artists.join(', ') || 'Unknown Artist';
-      const duration = (item.duration && typeof item.duration === 'object' && item.duration.seconds) ? item.duration.seconds : 0;
+      // NOTE: youtubei.js v17 mis-parses `duration` as the album name column
+      // (e.g. Adele's album "25"). Real durations are >= 30s, album names are short numbers.
+      const rawDuration = (item.duration && typeof item.duration === 'object' && typeof item.duration.seconds === 'number') ? item.duration.seconds : 0;
+      const duration = rawDuration >= 30 ? rawDuration : 0;
       const thumbnail = `https://i.ytimg.com/vi/${item.id}/maxresdefault.jpg`;
 
       tracks.push({
