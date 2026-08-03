@@ -368,6 +368,11 @@ function spawnManaged(command, args, options = {}, downloadId = null) {
 const app = express();
 const httpServer = createServer(app);
 
+// 🔧 TRUST PROXY: Required behind Fly.io's proxy (sets X-Forwarded-For).
+// Without this, express-rate-limit v7 throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// on every /api request and returns 500 to the frontend.
+app.set('trust proxy', true);
+
 // Set server timeouts for large file downloads (unlimited size support)
 httpServer.timeout = 7200000; // 2 hours (in milliseconds)
 httpServer.keepAliveTimeout = 7200000; // 2 hours
@@ -7681,7 +7686,7 @@ app.get('/api/youtube/search', async (req, res) => {
         '--no-warnings',
         '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--extractor-args', 'youtube:player_client=default,tv',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
 
@@ -7730,7 +7735,7 @@ app.get('/api/youtube/search', async (req, res) => {
               '--no-warnings',
               '--ignore-errors',
               '--no-playlist',
-              '--extractor-args', 'youtube:player_client=web_embedded',
+              '--extractor-args', 'youtube:player_client=default,tv',
               '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             ];
 
@@ -7981,7 +7986,7 @@ app.post('/api/search', async (req, res) => {
         '--no-warnings',
         '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--extractor-args', 'youtube:player_client=default,tv',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
 
@@ -8036,7 +8041,7 @@ app.post('/api/search', async (req, res) => {
               '--no-warnings',
               '--ignore-errors',
               '--no-playlist',
-              '--extractor-args', 'youtube:player_client=web_embedded',
+              '--extractor-args', 'youtube:player_client=default,tv',
               '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             ];
 
@@ -8576,7 +8581,7 @@ async function findAlternativeVideo(track, outputFolder) {
         '--no-warnings',
         '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--extractor-args', 'youtube:player_client=default,tv',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
 
@@ -9295,7 +9300,7 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
         '--no-warnings',
         '--ignore-errors',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=web_embedded',
+        '--extractor-args', 'youtube:player_client=default,tv',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       ];
 
