@@ -5149,12 +5149,13 @@ async function detectPythonCommand() {
 
 // Helper to get git commit hash
 function getCommitHash() {
+  if (process.env.SOURCE_VERSION) return process.env.SOURCE_VERSION.substring(0, 7);
   if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.substring(0, 7);
   try {
     const gitHash = require('child_process').execSync('git rev-parse --short HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
     if (gitHash) return gitHash;
   } catch (e) {}
-  return 'c592b41';
+  return 'unknown';
 }
 
 // Store version information
@@ -8403,9 +8404,81 @@ app.post('/api/search', async (req, res) => {
 
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).json({ error: 'Failed to search for music' });
+    try {
+      console.log(`🎵 yt-dlp search failed - trying YouTube Music API fallback for "${query}"`);
+      const ytMusicResults = await searchViaYouTubeMusic(query, limit);
+      if (ytMusicResults.length > 0) {
+        const searchElapsed = ((Date.now() - searchStartTime) / 1000).toFixed(2);
+        console.log(`✅ YTMusic fallback found ${ytMusicResults.length} results for "${query}" in ${searchElapsed}s`);
+        searchCache.set(cacheKey, { results: ytMusicResults, timestamp: Date.now() });
+        return res.json({ results: ytMusicResults });
+      }
+    } catch (fallbackError) {
+      console.error('YTMusic fallback search error:', fallbackError.message || fallbackError);
+    }
+    res.status(500).json({ error: 'Failed to search for music', details: error.message || String(error) });
   }
 });
+
+// YouTube Music (Innertube API) fallback search - no cookies/proxy/PO token needed,
+// works from datacenter IPs where yt-dlp's web search gets blocked
+let _innertubePromise = null;
+
+function getInnertube() {
+  if (!_innertubePromise) {
+    _innertubePromise = import('youtubei.js')
+      .then(({ Innertube }) => Innertube.create({ language: 'en', location: 'US' }))
+      .catch((err) => {
+        console.error('❌ Failed to init youtubei.js:', err.message);
+        _innertubePromise = null;
+        throw err;
+      });
+  }
+  return _innertubePromise;
+}
+
+async function searchViaYouTubeMusic(query, limit) {
+  const yt = await getInnertube();
+  const results = await Promise.race([
+    yt.music.search(query, { type: 'song' }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('YTMusic search timed out')), 15000))
+  ]);
+
+  const tracks = [];
+  const shelves = Array.isArray(results.contents) ? results.contents : [];
+
+  for (const shelf of shelves) {
+    if (!shelf || !Array.isArray(shelf.contents)) continue;
+    for (const item of shelf.contents) {
+      if (!item || typeof item.id !== 'string' || !item.id) continue;
+      if (tracks.length >= limit) break;
+
+      const title = item.title ? String(item.title) : '';
+      const artists = Array.isArray(item.artists) ? item.artists.map(a => (a && a.name) || '').filter(Boolean) : [];
+      const artist = artists.join(', ') || 'Unknown Artist';
+      const duration = (item.duration && typeof item.duration === 'object' && item.duration.seconds) ? item.duration.seconds : 0;
+      const thumbnail = `https://i.ytimg.com/vi/${item.id}/maxresdefault.jpg`;
+
+      tracks.push({
+        id: `search-${item.id}`,
+        name: title,
+        artist: artist,
+        album: title,
+        duration: duration,
+        imageUrl: thumbnail,
+        url: `https://www.youtube.com/watch?v=${item.id}`,
+        downloadStatus: 'pending',
+        downloadProgress: 0,
+        selected: true,
+        source: 'youtube-music-search',
+        videoId: item.id
+      });
+    }
+    if (tracks.length >= limit) break;
+  }
+
+  return tracks;
+}
 
 // Helper function to parse duration string (e.g., "3:45" or "225" -> 225 seconds)
 function parseDuration(durationStr) {
