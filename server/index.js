@@ -1935,6 +1935,11 @@ async function injectPOToken(options) {
 // 🚀 SMART COOKIE GENERATION with realistic patterns and proper randomization
 async function generateRealisticYouTubeCookies(attempt = 0) {
   try {
+    // 🛡️ CIRCUIT BREAKER: Skip generation when cookie generation is globally paused
+    if (isCookieGenerationBlocked()) {
+      return null;
+    }
+
     console.log(`  🤖 Generating smart YouTube cookies (attempt ${attempt + 1})...`);
 
     // Realistic timestamps and expiry (more authentic patterns)
@@ -2085,6 +2090,19 @@ async function generateRealisticYouTubeCookies(attempt = 0) {
 
 // 🚀 PARALLEL COOKIE TESTING - Test multiple cookies at once (5x faster!) + EARLY STOP
 async function generateAndTestCookies(maxAttempts = 100) {
+  // 🛡️ CIRCUIT BREAKER: Skip generation when cookie generation is globally paused
+  maybeResetCookieGenerationBreaker();
+  if (isCookieGenerationBlocked()) {
+    logCookieGenerationBlockedOnce();
+    const currentCookies = await getWorkingCookiesFromPool();
+    return {
+      strongCookies: currentCookies.filter(c => c.quality === 'strong').length,
+      mediumCookies: currentCookies.filter(c => c.quality === 'medium').length,
+      totalCookies: currentCookies.length,
+      cookies: currentCookies
+    };
+  }
+
   // 🛡️ SAFETY CHECK: Pause if downloads are active (regardless of cookie count)
   const hasActive = hasActiveDownloads();
   const currentCookies = await getWorkingCookiesFromPool();
@@ -2576,6 +2594,45 @@ let consecutivePoolFillFailures = 0;
 const POOL_FILL_COOLDOWN = 60000; // 1 minute cooldown after failure
 const MAX_CONSECUTIVE_FAILURES = 3; // Circuit breaker threshold
 
+// 🛡️ GLOBAL COOKIE GENERATION CIRCUIT BREAKER
+// Fabricated cookies can NEVER pass validation when YouTube blocks the datacenter IP.
+// After repeated failures, STOP all cookie generation for a long cooldown so the
+// server goes quiet and downloads proceed cookie-less (PO token + client rotation).
+const COOKIE_GEN_FAILURE_THRESHOLD = 8; // Open the breaker after this many failed generations
+const COOKIE_GEN_COOLDOWN = 30 * 60 * 1000; // 30 minutes before retrying generation
+
+function isCookieGenerationBlocked() {
+  const disabledUntil = global['cookie_generation_disabled_until'] || 0;
+  return Date.now() < disabledUntil;
+}
+
+function maybeResetCookieGenerationBreaker() {
+  const disabledUntil = global['cookie_generation_disabled_until'] || 0;
+  if (disabledUntil > 0 && Date.now() >= disabledUntil) {
+    global['cookie_generation_disabled_until'] = 0;
+    global['cookie_regeneration_failures'] = 0;
+    global['cookie_generation_blocked_logged'] = false;
+    console.log('  🔌 Cookie generation circuit breaker reset - will retry generation after cooldown');
+  }
+}
+
+function maybeOpenCookieGenerationBreaker() {
+  const failures = global['cookie_regeneration_failures'] || 0;
+  if (failures >= COOKIE_GEN_FAILURE_THRESHOLD && !(global['cookie_generation_disabled_until'] || 0)) {
+    global['cookie_generation_disabled_until'] = Date.now() + COOKIE_GEN_COOLDOWN;
+    global['cookie_generation_blocked_logged'] = false;
+    console.log(`  🔌 CIRCUIT BREAKER OPENED: Cookie generation failed ${failures} times in a row. Pausing ALL cookie generation for ${COOKIE_GEN_COOLDOWN / 60000} minutes.`);
+    console.log(`  💡 Downloads will continue cookie-less (PO token + client rotation). Set YOUTUBE_COOKIES with real browser cookies to fix permanently.`);
+  }
+}
+
+function logCookieGenerationBlockedOnce() {
+  if (!global['cookie_generation_blocked_logged']) {
+    global['cookie_generation_blocked_logged'] = true;
+    console.log(`  🔌 Cookie generation paused (circuit breaker open) - downloads will run cookie-less`);
+  }
+}
+
 // 🔒 GLOBAL LOCKS: Prevent overlapping regeneration
 const activeRegenerations = new Set(); // Track which slots are being regenerated
 
@@ -2636,6 +2693,14 @@ async function waitForWorkingCookie(maxWaitTime = 300000, checkInterval = 5000) 
   let lastStatus = '';
 
   while (Date.now() - startTime < maxWaitTime) {
+    // 🛡️ CIRCUIT BREAKER: If generation is paused and we have no cookies, don't stall the download
+    maybeResetCookieGenerationBreaker();
+    if (isCookieGenerationBlocked()) {
+      logCookieGenerationBlockedOnce();
+      console.log(`  ⚠️ Cookie generation paused (circuit breaker) - proceeding without cookies (PO token + client rotation)`);
+      return false; // Proceed cookie-less immediately instead of waiting 5 minutes for nothing
+    }
+
     // Just check if cookies EXIST (don't validate - too expensive!)
     await initCookiePool();
     const existingCookies = await getWorkingCookiesFromPool();
@@ -2655,7 +2720,8 @@ async function waitForWorkingCookie(maxWaitTime = 300000, checkInterval = 5000) 
     }
 
     // Trigger regeneration if not already in progress
-    if (!isFillingPool) {
+    // 🛡️ CIRCUIT BREAKER: Skip triggering generation when globally paused
+    if (!isFillingPool && !isCookieGenerationBlocked()) {
       ensurePoolIsFull().catch(() => { });
     }
 
@@ -2681,6 +2747,14 @@ async function ensurePoolIsFull() {
     lastPoolFillAttempt = Date.now();
 
     try {
+      // 🛡️ CIRCUIT BREAKER: If cookie generation is globally paused, don't start pool fill
+      maybeResetCookieGenerationBreaker();
+      if (isCookieGenerationBlocked()) {
+        logCookieGenerationBlockedOnce();
+        isFillingPool = false; // Release lock before returning
+        return false; // Skip pool fill entirely - generation would only waste resources
+      }
+
       // 🛡️ SAFETY: If downloads are active and we have at least 1 cookie, PAUSE regeneration
       // Don't validate (too expensive) - just check existence
       const hasActive = hasActiveDownloads();
@@ -2979,6 +3053,13 @@ async function ensurePoolIsFull() {
 // 🔄 REGENERATE SINGLE COOKIE SLOT (when one dies during download)
 async function regenerateSingleCookie(slotIndex) {
   try {
+    // 🛡️ CIRCUIT BREAKER: Skip regeneration when cookie generation is globally paused
+    maybeResetCookieGenerationBreaker();
+    if (isCookieGenerationBlocked()) {
+      logCookieGenerationBlockedOnce();
+      return false; // Don't regenerate - generation cannot succeed in this environment
+    }
+
     // 🔒 PREVENT OVERLAPPING REGENERATION - Only one regeneration per slot at a time
     if (activeRegenerations.has(slotIndex)) {
       console.log(`  ⏭️ Regeneration for slot ${slotIndex + 1} already in progress - skipping duplicate call`);
@@ -3057,7 +3138,7 @@ async function regenerateSingleCookie(slotIndex) {
     const recentFailures = global['cookie_regeneration_failures'] || 0;
     const PARALLEL_GENERATION = recentFailures > 10 ? 1 : 2; // Adaptive: 2→1 (optimized for stability)
     let attempts = 0;
-    const maxAttempts = 30; // Reduced from 50 to avoid long loops
+    const maxAttempts = 6; // Reduced from 30 - 30 attempts of 2min each = 60min of churn per slot
     const DELAY_BETWEEN_BATCHES = recentFailures > 10 ? 5000 : (recentFailures > 5 ? 3000 : 2000); // 2s→3s→5s
 
     while (attempts < maxAttempts) {
@@ -3171,6 +3252,7 @@ async function regenerateSingleCookie(slotIndex) {
         console.log(`  ⏳ All ${PARALLEL_GENERATION} cookies failed - waiting ${DELAY_BETWEEN_BATCHES / 1000}s before next batch...`);
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + PARALLEL_GENERATION;
+        maybeOpenCookieGenerationBreaker();
 
         // 🔧 FIX: Check if downloads became active during wait (might need to pause)
         const hasActiveNow = hasActiveDownloads();
@@ -3262,6 +3344,7 @@ async function regenerateSingleCookie(slotIndex) {
 
     // 🔥 TRACK FAILURES: If regeneration failed, increment counter
     global['cookie_regeneration_failures'] = (global['cookie_regeneration_failures'] || 0) + 1;
+    maybeOpenCookieGenerationBreaker();
     console.log(`⚠️ Failed to regenerate cookie slot ${slotIndex + 1} after ${attempts} attempts (no STRONG cookies found)`);
     console.log(`  💡 Tip: Consider using real browser cookies if all generated cookies fail`);
     // Release lock
