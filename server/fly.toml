@@ -14,6 +14,7 @@ primary_region = "cdg"
   MAX_DOWNLOADS = "15"
   CPU_THRESHOLD = "90"
   AUTO_UPDATE = "true"
+  USE_FREE_PROXIES = "false"
 
 [http_service]
   internal_port = 3001
