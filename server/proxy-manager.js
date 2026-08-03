@@ -228,7 +228,7 @@ class ProxyManager {
       this.sources.map(async (url) => {
         try {
           const response = await fetch(url, { 
-            timeout: 15000, // Increased timeout for V4 API
+            signal: AbortSignal.timeout(8000), // Standard Node.js fetch timeout
             headers: { 
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Accept': 'text/plain, application/json, */*'
@@ -278,7 +278,13 @@ class ProxyManager {
     this.proxies = Array.from(allProxies);
     this.lastFetch = now;
     
-    console.log(`✅ Total proxies collected: ${this.proxies.length} from ${successCount}/${this.sources.length} sources`);
+    if (this.proxies.length === 0) {
+      // 🔧 FIX: Cooldown when 0 proxies collected from sources - pause for 15 minutes to prevent spam
+      this.lastFetch = now + 15 * 60 * 1000;
+      console.log(`⚠️ 0 proxies collected from ${this.sources.length} sources. Pausing proxy fetching for 15 minutes.`);
+    } else {
+      console.log(`✅ Total proxies collected: ${this.proxies.length} from ${successCount}/${this.sources.length} sources`);
+    }
     return this.proxies;
   }
 
@@ -347,11 +353,8 @@ class ProxyManager {
   async getProxyForYtdlp(autoRefresh = true) {
     // 🎯 Check and maintain minimum 30 YouTube-working proxies
     if (autoRefresh && this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
-      console.log(`  🔄 YouTube proxies low (${this.youtubeWorkingProxies.length}/${this.MIN_YOUTUBE_PROXIES}) - refreshing in background...`);
       // Refresh in background (don't await to avoid blocking)
-      this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(err => {
-        console.log(`  ⚠️ Background proxy refresh failed: ${err.message}`);
-      });
+      this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(() => {});
     }
     
     // 🌟 PRIORITY 1: Oxylabs premium proxy (ONLY if it works with YouTube!)
@@ -407,8 +410,7 @@ class ProxyManager {
     
     // Check and refresh if needed
     if (autoRefresh && this.youtubeWorkingProxies.length < this.MIN_YOUTUBE_PROXIES) {
-      console.log(`  🔄 YouTube proxies low (${this.youtubeWorkingProxies.length}/${this.MIN_YOUTUBE_PROXIES}) - refreshing...`);
-      await this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(() => {});
+      this.ensureMinimumYouTubeProxies(this.MIN_YOUTUBE_PROXIES).catch(() => {});
     }
     
     // Get next proxy
@@ -710,26 +712,18 @@ class ProxyManager {
       // Fetch and validate more proxies
       if (!this.isValidating) {
         await this.fetchProxies();
+        if (this.proxies.length === 0) {
+          console.log(`  ⚠️ No proxies available from sources. Skipping YouTube proxy validation.`);
+          return this.youtubeWorkingProxies;
+        }
         await this.validateProxies(null, 50, Math.max(200, needed * 3));
       }
     }
     
     // Now validate for YouTube (test more proxies to reach minimum)
-    const proxiesToTest = Math.max(needed * 3, 100); // Test 3x needed to account for failures
-    await this.validateProxiesForYouTube(null, 20, proxiesToTest);
-    
-    // If still not enough, fetch and test more
-    if (this.youtubeWorkingProxies.length < targetCount) {
-      console.log(`  ⚠️ Only ${this.youtubeWorkingProxies.length}/${targetCount} YouTube-working proxies found, fetching more...`);
-      
-      // Fetch fresh proxies
-      if (!this.isValidating) {
-        await this.fetchProxies();
-        await this.validateProxies(null, 50, 200);
-      }
-      
-      // Test more for YouTube
-      await this.validateProxiesForYouTube(null, 20, Math.max(200, needed * 4));
+    if (this.workingProxies.length > 0) {
+      const proxiesToTest = Math.max(needed * 3, 100); // Test 3x needed to account for failures
+      await this.validateProxiesForYouTube(null, 20, proxiesToTest);
     }
     
     // Save to Redis after validation
