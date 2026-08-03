@@ -8,11 +8,12 @@ primary_region = "cdg"
 [env]
   NODE_ENV = "production"
   PORT = "3001"
-  # Resource limits matching 2GB VM
+  NODE_OPTIONS = "--max-old-space-size=1536"
   MAX_MEMORY_MB = "1800"
   MAX_PROCESSES = "20"
-  MAX_DOWNLOADS = "50"
+  MAX_DOWNLOADS = "15"
   CPU_THRESHOLD = "90"
+  AUTO_UPDATE = "true"
 
 [http_service]
   internal_port = 3001
@@ -24,17 +25,15 @@ primary_region = "cdg"
 
   [http_service.concurrency]
     type = "requests"
-    soft_limit = 100
-    hard_limit = 200
+    soft_limit = 150
+    hard_limit = 300
 
-# Disable HTTP health checks - server passes TCP connection
-# HTTP health check causes issues during heavy cookie generation
-# [[http_service.checks]]
-#   grace_period = "60s"
-#   interval = "30s"
-#   method = "GET"
-#   timeout = "10s"
-#   path = "/api/health"
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  path = "/api/health"
+  timeout = "5s"
 
 [[vm]]
   memory = "2gb"

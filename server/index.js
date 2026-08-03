@@ -415,7 +415,13 @@ const io = new Server(httpServer, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  // Tuned for Fly.io edge proxy stability
+  pingTimeout: 25000,
+  pingInterval: 15000,
+  transports: ['websocket', 'polling'],
+  maxHttpBufferSize: 1e6,
+  allowEIO3: false
 });
 
 app.use(cors({
@@ -1745,9 +1751,9 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
   return new Promise((resolve) => {
     const scriptPath = path.join(__dirname, 'generate-potoken.py');
 
-    const proc = spawn('python3', [scriptPath, videoUrl], {
+    const proc = spawn(PYTHON_CMD, [scriptPath, videoUrl], {
       cwd: __dirname,
-      timeout: 5000 // 5s timeout - PO tokens are optional, don't delay downloads
+      timeout: 15000 // 15s timeout - PO tokens are optional, don't delay downloads too long
     });
 
     let output = '';
@@ -1822,7 +1828,7 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
       resolveOnce(null);
     });
 
-    // Handle timeout (reduced to 5s - PO tokens are optional, don't delay downloads)
+    // Handle timeout (increased to 15s - PO token generation needs time)
     setTimeout(() => {
       if (resolved) return;
       try {
@@ -1832,7 +1838,7 @@ async function generatePOToken(videoUrl = 'https://www.youtube.com/watch?v=jNQXA
       } catch (e) {
         // Process already finished
       }
-    }, 5000); // 5s timeout instead of 30s - don't delay downloads
+    }, 15000); // 15s timeout - don't block downloads indefinitely
   });
 }
 
@@ -4416,8 +4422,8 @@ async function addYouTubeEnhancements(args, attempt = 0) {
     tv_clients: ['tv', 'tv_embedded', 'tv_kids', 'mediaconnect'],
     web_clients: ['web', 'web_embedded', 'web_music', 'web_creator', 'web_safari'],
     mixed: ['android,web_embedded', 'ios,web_embedded', 'tv,android'],
-    // NEW: More effective clients for bot bypass
-    effective: ['web_embedded', 'android_embedded', 'ios_embedded', 'tv_embedded']
+    // NEW: More effective clients for bot bypass (default = modern client rotation)
+    effective: ['default', 'web_embedded', 'android_embedded', 'ios_embedded', 'tv_embedded']
   };
 
   // 🌍 GEO-SPOOFING HEADERS (Different countries)
@@ -4508,6 +4514,27 @@ async function addYouTubeEnhancements(args, attempt = 0) {
   // ===== STRATEGY 1: Advanced Bot Detection Bypass (0-1) - BEST FOR FIRST ATTEMPTS =====
   if (strategy === 0) {
     console.log('🤖 Strategy: Advanced Bot Detection Bypass (Optimized)');
+
+    // 🔥 NEW: Try PO token with modern default client FIRST (2026 fix)
+    const poToken = await getPOToken();
+    if (poToken && poToken.po_token) {
+      console.log('✅ Using PO token with default client (modern YouTube bypass)');
+      args.push('--extractor-args', 'youtube:player_client=default');
+      args.push('--extractor-args', `youtube:po_token=default+${poToken.po_token}`);
+      if (poToken.visitor_data) {
+        args.push('--extractor-args', `youtube:visitor_data=${poToken.visitor_data}`);
+      }
+      args.push('--extractor-args', 'youtube:player_skip=webpage,configs,js');
+      args.push('--geo-bypass');
+
+      const userAgent = userAgents.desktop[attempt % userAgents.desktop.length];
+      args.push('--user-agent', userAgent);
+
+      await addFreeProxy();
+
+      console.log('   🔑 PO token client: default');
+      return { userAgent, clientType: 'default+po_token', strategy: 'PO-Token (Modern)' };
+    }
 
     // Use most effective clients in order: web_embedded, android_embedded, ios_embedded
     const client = clientTypes.effective[attempt % clientTypes.effective.length];
@@ -5183,9 +5210,6 @@ async function checkAndUpdateVersions() {
   versionInfo.youtubei = await getYoutubeiVersion();
 
   console.log('✅ All dependencies checked and updated');
-
-  // Clear console for cleaner display
-  console.clear();
 }
 
 // Helper function to sanitize folder names
@@ -9692,7 +9716,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');
-      ytdlpArgs.push('--http-chunk-size', '1M');
+      ytdlpArgs.push('--http-chunk-size', '5M');
+      ytdlpArgs.push('--concurrent-fragments', '4');
 
       // 🔧 STABILITY FIX: Add read timeout for Python requests (prevents "Read timed out" errors)
       const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
@@ -9765,13 +9790,23 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       const enhancementResult = await addYouTubeEnhancements(ytdlpArgs, attemptNumber);
       console.log(`✅ Applied strategy: ${enhancementResult.strategy}`);
 
-      // Force web_embedded for search phase (but keep all the bot bypass headers)
-      // Find and replace any existing player_client args with web_embedded for search compatibility
+      // 🔧 FIX: web_embedded is heavily blocked by YouTube now.
+      // Use PO token + default client when available, otherwise tv (least blocked)
       const clientArgIndex = ytdlpArgs.findIndex(arg => arg.includes('youtube:player_client='));
       if (clientArgIndex !== -1 && clientArgIndex + 1 < ytdlpArgs.length) {
         const originalArg = ytdlpArgs[clientArgIndex + 1];
-        ytdlpArgs[clientArgIndex + 1] = originalArg.replace(/youtube:player_client=[^,]+/, 'youtube:player_client=web_embedded');
-        console.log(`🔍 Modified for search compatibility: ${ytdlpArgs[clientArgIndex + 1]}`);
+        const poToken = poTokenCache;
+        if (poToken && poToken.po_token) {
+          ytdlpArgs[clientArgIndex + 1] = 'youtube:player_client=default';
+          ytdlpArgs.push('--extractor-args', `youtube:po_token=default+${poToken.po_token}`);
+          if (poToken.visitor_data) {
+            ytdlpArgs.push('--extractor-args', `youtube:visitor_data=${poToken.visitor_data}`);
+          }
+          console.log('🔍 Modified for search compatibility: default + PO token');
+        } else {
+          ytdlpArgs[clientArgIndex + 1] = originalArg.replace(/youtube:player_client=[^,]+/, 'youtube:player_client=tv');
+          console.log(`🔍 Modified for search compatibility: ${ytdlpArgs[clientArgIndex + 1]}`);
+        }
       }
 
       // 🔧 STABILITY FIX: Dynamic timeout based on song duration and proxy type
@@ -9781,7 +9816,8 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
       ytdlpArgs.push('--retries', '15');
       ytdlpArgs.push('--fragment-retries', '15');
       ytdlpArgs.push('--skip-unavailable-fragments');
-      ytdlpArgs.push('--http-chunk-size', '1M');
+      ytdlpArgs.push('--http-chunk-size', '5M');
+      ytdlpArgs.push('--concurrent-fragments', '4');
 
       // 🔧 STABILITY FIX: Add read timeout for Python requests
       const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
@@ -10391,10 +10427,11 @@ async function tryYtDlpFallback(tracks, outputFolder, outputTemplate, socket, do
           const timeoutConfig = calculateTimeoutForTrack(track, ytdlpArgs);
           ytdlpArgs.push('--socket-timeout', timeoutConfig.socket);
           console.log(`  ⏱️  Using dynamic timeout: socket=${timeoutConfig.socket}s, read=${timeoutConfig.read}s`);
-          ytdlpArgs.push('--retries', '15');
-          ytdlpArgs.push('--fragment-retries', '15');
-          ytdlpArgs.push('--skip-unavailable-fragments');
-          ytdlpArgs.push('--http-chunk-size', '1M');
+      ytdlpArgs.push('--retries', '15');
+      ytdlpArgs.push('--fragment-retries', '15');
+      ytdlpArgs.push('--skip-unavailable-fragments');
+      ytdlpArgs.push('--http-chunk-size', '5M');
+      ytdlpArgs.push('--concurrent-fragments', '4');
 
           // Add read timeout
           const extractorArgsIndex = ytdlpArgs.findIndex(arg => arg === '--extractor-args');
@@ -12734,13 +12771,11 @@ app.post('/api/proxy/refresh', async (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
-  const spotdlInstalled = await checkSpotdlInstalled();
   const resourceStats = resourceManager.getStats();
   const memUsage = resourceManager.getMemoryUsage();
 
   res.json({
     status: 'ok',
-    spotdlInstalled,
     versions: versionInfo,
     resources: {
       memory: memUsage,
@@ -13041,45 +13076,25 @@ io.on('connection', (socket) => {
   });
 });
 
-// ⚡ STARTUP SEQUENCE: Detect Python FIRST, then check versions
+// ⚡ STARTUP SEQUENCE: Start HTTP server IMMEDIATELY, then do slow work in background
 async function startupSequence() {
-  // Step 1: Detect Python command
-  console.log('🔄 Checking dependencies...');
+  // Step 1: Detect Python command (fast - subprocess --version check)
   await detectPythonCommand();
 
-  // Step 2: Check and update versions
-  await checkAndUpdateVersions();
-
-  // Step 3: If dependencies are not installed, try to install them
-  if (versionInfo.spotdl === 'Unknown' || versionInfo.ytdlp === 'Unknown') {
-    console.log('\n🔄 Dependencies not found, attempting to install...');
-    try {
-      await updateDependencies();
-      await checkAndUpdateVersions();
-      console.log('✅ Dependencies installed successfully!');
-    } catch (error) {
-      console.log('⚠️ Failed to install dependencies:', error.message);
-      console.log('   Server will continue - some features may be limited');
-    }
-  }
+  // Step 2: Start HTTP server right away so Fly health checks pass
+  return httpServer;
 }
 
-// Start the sequence
+// 🚀 Start the server immediately (before heavy initialization)
 startupSequence().then(async () => {
   // ✅ Python detected - continue with server startup
 
-  // 🚀 START SERVER IMMEDIATELY (before heavy initialization)
-  // This ensures health checks pass while proxy/cookie init happens in background
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║     🎵 Spotify Playlist Downloader Server Running 🎵      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Server: http://0.0.0.0:${PORT}                              ║
-║  spotdl: ${versionInfo.spotdl.padEnd(45)}║
-║  yt-dlp: ${versionInfo.ytdlp.padEnd(45)}║
-║  youtube-dl-exec: ${versionInfo.youtubedlexec.padEnd(36)}║
-║  youtubei.js: ${versionInfo.youtubei.padEnd(40)}║
 ║  Status: Ready to download playlists                       ║
 ╚════════════════════════════════════════════════════════════╝
     `);
@@ -13093,8 +13108,31 @@ startupSequence().then(async () => {
     }, 30000);
   });
 
+  // 🔄 UPDATE DEPENDENCIES IN BACKGROUND (don't block server startup)
+  // yt-dlp / spotdl / pytubefix update via pip on boot - keeps tools current
+  console.log('\n🔄 Updating dependencies in background...');
+  checkAndUpdateVersions()
+    .then(() => {
+      console.log('✅ Dependencies updated:', {
+        spotdl: versionInfo.spotdl,
+        ytdlp: versionInfo.ytdlp,
+        youtubedlexec: versionInfo.youtubedlexec,
+        youtubei: versionInfo.youtubei
+      });
+    })
+    .catch((error) => {
+      console.log('⚠️ Background dependency update failed:', error.message);
+      console.log('   Server will continue with existing installations');
+    });
+
   // 🔍 INITIALIZE PROXY SYSTEM IN BACKGROUND (after server is listening)
   console.log('\n🔍 Initializing proxy system in background...');
+
+  // 🔑 Pre-generate PO token in background (cached 1h, YouTube bypass)
+  console.log('🔑 Pre-generating PO token in background...');
+  getPOToken()
+    .then(() => console.log('✅ PO token ready'))
+    .catch(() => console.log('⚠️ PO token pre-generation failed (will retry on download)'));
 
   // Run initialization in background (don't await)
   (async () => {
