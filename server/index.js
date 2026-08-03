@@ -5108,7 +5108,16 @@ const STUCK_CHECK_INTERVAL = 30000; // Check every 30 seconds
 let PYTHON_CMD = 'python';
 
 async function detectPythonCommand() {
-  const commands = ['py', 'python3', 'python'];
+  const venvPython = process.env.VIRTUAL_ENV 
+    ? path.join(process.env.VIRTUAL_ENV, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+    : null;
+    
+  const commands = [
+    ...(venvPython ? [venvPython] : []),
+    '/opt/venv/bin/python',
+    '/opt/render/project/src/.venv/bin/python',
+    'py', 'python3', 'python'
+  ];
 
   for (const cmd of commands) {
     try {
