@@ -1547,10 +1547,24 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       processTimeout = 30000; // 30s for no proxy
     }
 
+    // 🔧 MEMORY GUARD: Cap concurrent yt-dlp cookie-test processes globally
+    // (5 slots x 2 parallel was spawning up to 10 Python processes and OOM-killing 512MB instances)
+    const MAX_CONCURRENT_YTDLP_TESTS = 2;
+    while ((global['activeYtDlpTestSpawns'] || 0) >= MAX_CONCURRENT_YTDLP_TESTS) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    global['activeYtDlpTestSpawns'] = (global['activeYtDlpTestSpawns'] || 0) + 1;
+
     return await new Promise((resolve) => {
       let stdoutData = '';
       let errorOutput = '';
       let resolved = false;
+      let spawnSlotReleased = false;
+      const releaseSpawnSlot = () => {
+        if (spawnSlotReleased) return;
+        spawnSlotReleased = true;
+        global['activeYtDlpTestSpawns'] = Math.max(0, (global['activeYtDlpTestSpawns'] || 0) - 1);
+      };
 
       const resolveOnce = (value) => {
         if (resolved) return;
@@ -1576,6 +1590,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       let timeoutHandled = false;
 
       testProcess.on('close', async (code) => {
+        releaseSpawnSlot();
         if (resolved) return;
         // 🔧 FIX: If timeout handler is handling retry, don't resolve here - let retry handle it
         if (timeoutHandled) return;
@@ -1704,6 +1719,7 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
       });
 
       testProcess.on('error', (err) => {
+        releaseSpawnSlot();
         console.log(`  ❌ Cookie test error: ${err.message}`);
         resolveOnce({ status: 'fail', reason: 'error' });
       });
@@ -7981,6 +7997,23 @@ app.post('/api/search', async (req, res) => {
   const searchStartTime = Date.now();
 
   try {
+    // ⚡ PRIMARY: YouTube Music API search (fast, no cookies/proxy/PO token needed,
+    // works from datacenter IPs where yt-dlp's web search gets blocked)
+    try {
+      console.log(`🎵 Searching via YouTube Music API: "${query}"`);
+      const ytMusicResults = await searchViaYouTubeMusic(query, limit);
+      if (ytMusicResults.length > 0) {
+        const searchElapsed = ((Date.now() - searchStartTime) / 1000).toFixed(2);
+        console.log(`✅ YTMusic found ${ytMusicResults.length} results for "${query}" in ${searchElapsed}s`);
+        searchCache.set(cacheKey, { results: ytMusicResults, timestamp: Date.now() });
+        return res.json({ results: ytMusicResults });
+      }
+      console.log('⚠️ YTMusic returned no results - falling back to yt-dlp');
+    } catch (ytMusicError) {
+      console.log('⚠️ YTMusic search failed:', ytMusicError.message || ytMusicError);
+      console.log('   Falling back to yt-dlp search...');
+    }
+
     // Use yt-dlp with --dump-json for MUCH faster results
     // Try with proxy first (to bypass IP bans), fallback to direct if proxy fails
     const searchResults = await new Promise(async (resolve, reject) => {
