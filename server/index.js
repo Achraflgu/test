@@ -49,6 +49,34 @@ const __dirname = path.dirname(__filename);
 // Adjust these limits based on your deployment platform
 // ====================================
 
+// ========== PROXY/CONNECTION CIRCUIT BREAKERS ==========
+// ScraperAPI circuit breaker - disables ScraperAPI for 10 min after 3 consecutive failures
+let scraperApiFailures = 0;
+let scraperApiDisabledUntil = 0;
+const SCRAPERAPI_MAX_FAILURES = 3;
+const SCRAPERAPI_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+function isScraperAPIAvailable() {
+  if (!process.env.SCRAPERAPI_KEY) return false;
+  if (Date.now() < scraperApiDisabledUntil) {
+    console.log('⏸️  ScraperAPI in cooldown (disabled until', new Date(scraperApiDisabledUntil).toISOString() + ')');
+    return false;
+  }
+  return true;
+}
+
+function markScraperAPISuccess() {
+  scraperApiFailures = 0;
+}
+
+function markScraperAPIFailure() {
+  scraperApiFailures++;
+  if (scraperApiFailures >= SCRAPERAPI_MAX_FAILURES) {
+    scraperApiDisabledUntil = Date.now() + SCRAPERAPI_COOLDOWN_MS;
+    console.log(`🚫 ScraperAPI circuit breaker TRIPPED (${scraperApiFailures} failures) - disabled for 10 minutes`);
+  }
+}
+
 class ResourceManager {
   constructor() {
     // Resource limits (configurable via environment)
@@ -1477,8 +1505,8 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
         const shortProxy = proxy.length > 30 ? proxy.substring(0, 27) + '...' : proxy;
         console.log(`  🌐 Testing cookie via proxy: ${shortProxy}`);
       }
-    } else if (process.env.SCRAPERAPI_KEY && !skipProxy) {
-      // Fallback to ScraperAPI if proxy manager has nothing
+    } else if (isScraperAPIAvailable() && !skipProxy) {
+      // Fallback to ScraperAPI if proxy manager has nothing (with circuit breaker)
       const scraperProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       testArgs.push('--proxy', scraperProxy);
       proxy = scraperProxy; // Set proxy variable for timeout calculation
@@ -1693,6 +1721,11 @@ async function testCookies(cookiePath, skipProxy = false, retryCount = 0) {
             proxyManager.markFailed(proxyHost);
             console.log(`  🗑️ Marked proxy as DEAD (timeout handler - ${proxyType}): ${proxyHost.substring(0, 30)}...`);
           }
+        }
+
+        // 🔧 CIRCUIT BREAKER: Track ScraperAPI failures
+        if (isScraperAPI) {
+          markScraperAPIFailure();
         }
 
         // 🔄 RETRY: Try with different proxy (attempts 1-3) or without proxy (attempt 4)
@@ -4459,8 +4492,8 @@ async function addYouTubeEnhancements(args, attempt = 0) {
         console.log(`   🌐 Using proxy to bypass YouTube blocking`);
       }
     }
-    // 🎯 PRIORITY 2: ScraperAPI (GOOD - 40-60% success rate)
-    else if (process.env.SCRAPERAPI_KEY) {
+    // 🎯 PRIORITY 2: ScraperAPI (GOOD - 40-60% success rate) - with circuit breaker
+    else if (isScraperAPIAvailable()) {
       proxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       proxyType = 'ScraperAPI';
       console.log(`   🌐 Using ScraperAPI proxy`);
@@ -11650,8 +11683,8 @@ async function startDownload(downloadId, playlistUrl, tracks, settings, outputFo
       } else {
         console.log(`🌐 Proxy enabled for spotdl downloads: ${proxy.substring(0, 30)}...`);
       }
-    } else if (process.env.SCRAPERAPI_KEY) {
-      // Fallback to ScraperAPI if proxy manager has nothing
+    } else if (isScraperAPIAvailable()) {
+      // Fallback to ScraperAPI if proxy manager has nothing (with circuit breaker)
       const scraperApiProxy = `http://scraperapi:${process.env.SCRAPERAPI_KEY}@proxy-server.scraperapi.com:8001`;
       ytdlpArgs += ` --proxy ${scraperApiProxy} --no-check-certificate`;
       console.log('🌐 ScraperAPI proxy enabled for spotdl downloads');

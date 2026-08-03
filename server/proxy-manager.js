@@ -213,7 +213,8 @@ class ProxyManager {
   // Fetch proxies from all sources
   async fetchProxies() {
     const now = Date.now();
-    if (this.proxies.length > 0 && now - this.lastFetch < this.FETCH_INTERVAL) {
+    // 🔧 FIX: Cache even when 0 proxies are found - prevents hot-looping every 3 seconds
+    if (now - this.lastFetch < this.FETCH_INTERVAL) {
       console.log(`🔄 Using cached proxies (${this.proxies.length} available)`);
       return this.proxies;
     }
@@ -674,6 +675,15 @@ class ProxyManager {
   // 🎯 Ensure minimum 30 YouTube-working proxies (called automatically)
   async ensureMinimumYouTubeProxies(minCount = null) {
     const targetCount = minCount || this.MIN_YOUTUBE_PROXIES;
+    
+    // 🔧 FIX: Cooldown - don't hammer sources more than once per 5 minutes
+    // Prevents infinite hot-loop when all proxy sources are down (CPU/network waste)
+    const now = Date.now();
+    if (!this.lastEnsureAttempt) this.lastEnsureAttempt = 0;
+    if (now - this.lastEnsureAttempt < 5 * 60 * 1000) {
+      return this.youtubeWorkingProxies;
+    }
+    this.lastEnsureAttempt = now;
     
     // Check if we already have enough
     if (this.youtubeWorkingProxies.length >= targetCount) {
