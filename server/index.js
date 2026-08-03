@@ -5138,8 +5138,19 @@ async function detectPythonCommand() {
 
 // Detect Python on startup (will be awaited before use)
 
+// Helper to get git commit hash
+function getCommitHash() {
+  if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.substring(0, 7);
+  try {
+    const gitHash = require('child_process').execSync('git rev-parse --short HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    if (gitHash) return gitHash;
+  } catch (e) {}
+  return 'c592b41';
+}
+
 // Store version information
 let versionInfo = {
+  commit: getCommitHash(),
   spotdl: 'Unknown',
   ytdlp: 'Unknown',
   youtubedlexec: 'Unknown',
@@ -13220,13 +13231,15 @@ startupSequence().then(async () => {
   // ✅ Python detected - continue with server startup
 
   httpServer.listen(PORT, '0.0.0.0', () => {
+    const commitHash = getCommitHash();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║     🎵 Spotify Playlist Downloader Server Running 🎵      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Server: http://0.0.0.0:${PORT}                              ║
+║  Commit: ${commitHash.padEnd(42)}║
 ║  Status: Ready to download playlists                       ║
-╚════════════════════════════════════════════════════════════╝
+╚═══════════════════════════════════════════════════════════╝
     `);
 
     // Start resource monitoring
